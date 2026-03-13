@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  dailyEntries   DailyEntry[]
+  categoryScores CategoryScore[]
+  habits         Habit[]
+  projects       Project[]
+}
+
+model DailyEntry {
+  id                      String   @id @default(cuid())
+  userId                  String
+  date                    DateTime @unique
+  sleepHours              Float?
+  workoutCompleted        Boolean  @default(false)
+  sportsTrainingMinutes   Int?
+  steps                   Int?
+  deepWorkHours           Float?
+  screenTimeHours         Float?
+  tasksPlanned            Int?
+  tasksCompleted          Int?
+  taskDifficultyRating    Int?
+  moneySpent              Float?
+  moneySaved              Float?
+  wakeTime                String?
+  bedtime                 String?
+  notes                   String?
+  overallDayRating        Int?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryScores CategoryScore[]
+}
+
+model CategoryScore {
+  id             String     @id @default(cuid())
+  userId         String
+  dailyEntryId   String?
+  date           DateTime
+  physical       Float      @default(0)
+  focus          Float      @default(0)
+  consistency    Float      @default(0)
+  financial      Float      @default(0)
+  responsibility Float      @default(0)
+  overall        Float      @default(0)
+  createdAt      DateTime   @default(now())
+
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyEntry     DailyEntry? @relation(fields: [dailyEntryId], references: [id], onDelete: SetNull)
+}
+
+model Habit {
+  id          String     @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  category    String     @default("general")
+  targetDays  String[]   @default(["mon","tue","wed","thu","fri","sat","sun"])
+  color       String     @default("#3b82f6")
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs        HabitLog[]
+}
+
+model HabitLog {
+  id          String   @id @default(cuid())
+  habitId     String
+  date        DateTime
+  completed   Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  habit       Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@unique([habitId, date])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  specs       String?
+  priority    String        @default("medium")
+  status      String        @default("active")
+  deadline    DateTime?
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       ProjectTask[]
+}
+
+model ProjectTask {
+  id               String        @id @default(cuid())
+  projectId        String
+  parentTaskId     String?
+  title            String
+  description      String?
+  status           String        @default("todo")
+  order            Int           @default(0)
+  priority         String        @default("medium")
+  estimatedMinutes Int?
+  actualMinutes    Int?
+  dueDate          DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  project          Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentTask       ProjectTask?  @relation("SubTasks", fields: [parentTaskId], references: [id])
+  subTasks         ProjectTask[] @relation("SubTasks")
+}

@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import {
   generateProjectChecklist,
-  isOllamaAvailable,
+  isAIAvailable,
   ProjectTask,
 } from "@/lib/ollama";
 
@@ -62,9 +62,9 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
     let taskTemplates: ProjectTask[];
     let aiGenerated = false;
 
-    const ollamaUp = await isOllamaAvailable();
+    const aiUp = await isAIAvailable();
 
-    if (ollamaUp) {
+    if (aiUp) {
       try {
         taskTemplates = await generateProjectChecklist(
           project.title,
@@ -72,7 +72,7 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
         );
         aiGenerated = true;
       } catch {
-        // Ollama available but generation failed — use fallback
+        // AI available but generation failed — use fallback
         taskTemplates = FALLBACK_TASKS.map((t, idx) => ({ ...t, order: idx }));
       }
     } else {

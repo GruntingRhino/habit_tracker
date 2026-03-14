@@ -43,6 +43,9 @@ model DailyEntry {
   bedtime                 String?
   notes                   String?
   overallDayRating        Int?
+  incomeActivity          Boolean  @default(false)
+  workoutRoutineName      String?
+  caloriesEaten           Int?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 

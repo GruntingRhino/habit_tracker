@@ -6,27 +6,31 @@ import {
   CheckCircle2,
   AlertCircle,
   Moon,
-  Sun,
   Dumbbell,
-  Timer,
   Footprints,
   Brain,
-  Monitor,
   ListChecks,
   Wallet,
   PiggyBank,
   Star,
   Loader2,
+  TrendingUp,
+  Utensils,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ScoreCard from "@/components/ScoreCard";
-import { Activity, RefreshCw, DollarSign, ClipboardCheck } from "lucide-react";
+import { Activity, RefreshCw, DollarSign, Sparkles } from "lucide-react";
 import { type LucideIcon } from "lucide-react";
+
+interface WeightRoutine {
+  id: string;
+  name: string;
+}
 
 interface DailyEntryForm {
   date: string;
   sleepHours: number;
-  workoutCompleted: boolean;
+  workoutRoutineName: string; // "" = no workout
   sportsTrainingMinutes: number;
   steps: number;
   deepWorkHours: number;
@@ -36,6 +40,8 @@ interface DailyEntryForm {
   taskDifficultyRating: number;
   moneySpent: number;
   moneySaved: number;
+  incomeActivity: boolean;
+  caloriesEaten: number;
   wakeTime: string;
   bedtime: string;
   notes: string;
@@ -45,19 +51,31 @@ interface DailyEntryForm {
 interface CategoryScores {
   physical: number;
   focus: number;
-  consistency: number;
+  discipline: number;
   financial: number;
-  responsibility: number;
+  mental: number;
+  appearance: number;
   overall: number;
 }
 
 const SCORE_ICONS: Record<keyof CategoryScores, LucideIcon> = {
   physical: Activity,
   focus: Brain,
-  consistency: RefreshCw,
+  discipline: RefreshCw,
   financial: DollarSign,
-  responsibility: ClipboardCheck,
+  mental: Sparkles,
+  appearance: Star,
   overall: Star,
+};
+
+const SCORE_LABELS: Record<keyof CategoryScores, string> = {
+  physical: "Physical",
+  focus: "Focus",
+  discipline: "Discipline",
+  financial: "Financial",
+  mental: "Mental",
+  appearance: "Appearance",
+  overall: "Overall",
 };
 
 function getToday(): string {
@@ -90,30 +108,6 @@ function RatingButtons({
         </button>
       ))}
     </div>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        checked ? "bg-blue-600" : "bg-[#334155]"
-      }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-          checked ? "translate-x-6" : "translate-x-1"
-        }`}
-      />
-    </button>
   );
 }
 
@@ -189,7 +183,7 @@ function FormField({
 const defaultForm: DailyEntryForm = {
   date: getToday(),
   sleepHours: 0,
-  workoutCompleted: false,
+  workoutRoutineName: "",
   sportsTrainingMinutes: 0,
   steps: 0,
   deepWorkHours: 0,
@@ -199,6 +193,8 @@ const defaultForm: DailyEntryForm = {
   taskDifficultyRating: 0,
   moneySpent: 0,
   moneySaved: 0,
+  incomeActivity: false,
+  caloriesEaten: 0,
   wakeTime: "",
   bedtime: "",
   notes: "",
@@ -213,13 +209,23 @@ export default function EntryPage() {
   const [error, setError] = useState("");
   const [scores, setScores] = useState<CategoryScores | null>(null);
   const [existingId, setExistingId] = useState<string | null>(null);
+  const [routines, setRoutines] = useState<WeightRoutine[]>([]);
 
   const fetchTodayEntry = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/daily-entries", { credentials: "include" });
-      if (res.ok) {
-        const entries = await res.json();
+      const [entriesRes, routinesRes] = await Promise.all([
+        fetch("/api/daily-entries", { credentials: "include" }),
+        fetch("/api/weights/routines", { credentials: "include" }),
+      ]);
+
+      if (routinesRes.ok) {
+        const data = await routinesRes.json();
+        setRoutines(data);
+      }
+
+      if (entriesRes.ok) {
+        const entries = await entriesRes.json();
         const today = getToday();
         const todayEntry = entries.find((e: { date: string; id: string }) =>
           e.date.startsWith(today)
@@ -229,7 +235,7 @@ export default function EntryPage() {
           setForm({
             date: today,
             sleepHours: todayEntry.sleepHours ?? 0,
-            workoutCompleted: todayEntry.workoutCompleted ?? false,
+            workoutRoutineName: todayEntry.workoutRoutineName ?? "",
             sportsTrainingMinutes: todayEntry.sportsTrainingMinutes ?? 0,
             steps: todayEntry.steps ?? 0,
             deepWorkHours: todayEntry.deepWorkHours ?? 0,
@@ -239,6 +245,8 @@ export default function EntryPage() {
             taskDifficultyRating: todayEntry.taskDifficultyRating ?? 0,
             moneySpent: todayEntry.moneySpent ?? 0,
             moneySaved: todayEntry.moneySaved ?? 0,
+            incomeActivity: todayEntry.incomeActivity ?? false,
+            caloriesEaten: todayEntry.caloriesEaten ?? 0,
             wakeTime: todayEntry.wakeTime ?? "",
             bedtime: todayEntry.bedtime ?? "",
             notes: todayEntry.notes ?? "",
@@ -249,9 +257,10 @@ export default function EntryPage() {
             setScores({
               physical: s.physical,
               focus: s.focus,
-              consistency: s.consistency,
+              discipline: s.discipline,
               financial: s.financial,
-              responsibility: s.responsibility,
+              mental: s.mental,
+              appearance: s.appearance,
               overall: s.overall,
             });
           }
@@ -285,7 +294,8 @@ export default function EntryPage() {
       const payload = {
         date: form.date,
         sleepHours: form.sleepHours || null,
-        workoutCompleted: form.workoutCompleted,
+        workoutCompleted: form.workoutRoutineName !== "",
+        workoutRoutineName: form.workoutRoutineName || null,
         sportsTrainingMinutes: form.sportsTrainingMinutes || null,
         steps: form.steps || null,
         deepWorkHours: form.deepWorkHours || null,
@@ -295,6 +305,8 @@ export default function EntryPage() {
         taskDifficultyRating: form.taskDifficultyRating || null,
         moneySpent: form.moneySpent || null,
         moneySaved: form.moneySaved || null,
+        incomeActivity: form.incomeActivity,
+        caloriesEaten: form.caloriesEaten || null,
         wakeTime: form.wakeTime || null,
         bedtime: form.bedtime || null,
         notes: form.notes || null,
@@ -319,9 +331,10 @@ export default function EntryPage() {
         setScores({
           physical: data.scores.physical,
           focus: data.scores.focus,
-          consistency: data.scores.consistency,
+          discipline: data.scores.discipline,
           financial: data.scores.financial,
-          responsibility: data.scores.responsibility,
+          mental: data.scores.mental,
+          appearance: data.scores.appearance,
           overall: data.scores.overall,
         });
       }
@@ -344,7 +357,6 @@ export default function EntryPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-100">Daily Entry</h1>
         <p className="text-slate-400 text-sm mt-1">
@@ -367,7 +379,6 @@ export default function EntryPage() {
       )}
 
       <form onSubmit={handleSubmit}>
-        {/* Date */}
         <div className="mb-5">
           <FormField label="Date">
             <input
@@ -380,7 +391,7 @@ export default function EntryPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* Sleep & Physical */}
+          {/* Sleep & Recovery */}
           <FormSection title="Sleep & Recovery" icon={Moon}>
             <div className="space-y-4">
               <FormField label={`Sleep Hours: ${form.sleepHours}h`}>
@@ -397,7 +408,7 @@ export default function EntryPage() {
                 />
                 <div className="flex justify-between text-xs text-slate-600">
                   <span>0h</span>
-                  <span>6h</span>
+                  <span className="text-green-500/60">7.5–8.5h ✓</span>
                   <span>12h</span>
                 </div>
               </FormField>
@@ -423,18 +434,29 @@ export default function EntryPage() {
           {/* Physical Activity */}
           <FormSection title="Physical Activity" icon={Dumbbell}>
             <div className="space-y-4">
-              <FormField label="Workout Completed">
-                <div className="flex items-center gap-3">
-                  <Toggle
-                    checked={form.workoutCompleted}
-                    onChange={(v) => setField("workoutCompleted", v)}
-                  />
-                  <span className="text-sm text-slate-400">
-                    {form.workoutCompleted ? "Yes" : "No"}
-                  </span>
-                </div>
+              <FormField label="Workout Routine">
+                <select
+                  value={form.workoutRoutineName}
+                  onChange={(e) => setField("workoutRoutineName", e.target.value)}
+                  className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="" className="bg-[#0f172a] text-slate-400">
+                    — No workout today —
+                  </option>
+                  {routines.map((r) => (
+                    <option key={r.id} value={r.name} className="bg-[#0f172a]">
+                      {r.name}
+                    </option>
+                  ))}
+                  <option value="Other" className="bg-[#0f172a]">Other</option>
+                </select>
+                {form.workoutRoutineName && (
+                  <p className="text-green-400 text-xs mt-1">
+                    ✓ Workout logged: {form.workoutRoutineName}
+                  </p>
+                )}
               </FormField>
-              <FormField label="Sports Training (minutes)">
+              <FormField label="Sports / Extra Training (minutes)">
                 <NumberInput
                   value={form.sportsTrainingMinutes}
                   onChange={(v) => setField("sportsTrainingMinutes", v)}
@@ -442,8 +464,9 @@ export default function EntryPage() {
                   max={480}
                   placeholder="0"
                 />
+                <p className="text-xs text-slate-600 mt-0.5">90+ min = max points</p>
               </FormField>
-              <FormField label="Steps (optional)">
+              <FormField label="Steps">
                 <div className="relative">
                   <Footprints className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
@@ -455,6 +478,22 @@ export default function EntryPage() {
                     }}
                     min={0}
                     placeholder="e.g. 8000"
+                    className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-600 rounded-lg pl-10 pr-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </FormField>
+              <FormField label="Calories Eaten">
+                <div className="relative">
+                  <Utensils className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="number"
+                    value={form.caloriesEaten === 0 ? "" : form.caloriesEaten}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value);
+                      setField("caloriesEaten", isNaN(v) ? 0 : v);
+                    }}
+                    min={0}
+                    placeholder="e.g. 2000"
                     className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-600 rounded-lg pl-10 pr-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -479,7 +518,7 @@ export default function EntryPage() {
                 />
                 <div className="flex justify-between text-xs text-slate-600">
                   <span>0h</span>
-                  <span>8h</span>
+                  <span className="text-green-500/60">6h+ = max</span>
                   <span>16h</span>
                 </div>
               </FormField>
@@ -497,7 +536,7 @@ export default function EntryPage() {
                 />
                 <div className="flex justify-between text-xs text-slate-600">
                   <span>0h</span>
-                  <span>8h</span>
+                  <span className="text-red-500/60">5h+ = penalty</span>
                   <span>16h</span>
                 </div>
               </FormField>
@@ -537,6 +576,35 @@ export default function EntryPage() {
           {/* Finance */}
           <FormSection title="Finance" icon={Wallet}>
             <div className="space-y-4">
+              {/* Income activity checkbox — major scoring factor */}
+              <div
+                onClick={() => setField("incomeActivity", !form.incomeActivity)}
+                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  form.incomeActivity
+                    ? "bg-green-500/10 border-green-500/30"
+                    : "bg-[#0a0f1e] border-[#334155] hover:border-[#475569]"
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                    form.incomeActivity ? "bg-green-500" : "bg-[#1e293b]"
+                  }`}
+                >
+                  {form.incomeActivity && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                  )}
+                </div>
+                <div>
+                  <p className={`text-sm font-medium ${form.incomeActivity ? "text-green-400" : "text-slate-300"}`}>
+                    Did something to make money today?
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Work, business, side project, investment — counts for 4pts
+                  </p>
+                </div>
+                <TrendingUp className={`w-4 h-4 ml-auto flex-shrink-0 ${form.incomeActivity ? "text-green-400" : "text-slate-600"}`} />
+              </div>
+
               <FormField label="Money Spent ($)">
                 <div className="relative">
                   <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -582,6 +650,9 @@ export default function EntryPage() {
                   value={form.overallDayRating}
                   onChange={(v) => setField("overallDayRating", v)}
                 />
+                <p className="text-xs text-slate-600 mt-1">
+                  Be honest. 9–10 requires an exceptional day.
+                </p>
               </FormField>
             </div>
           </FormSection>
@@ -600,7 +671,6 @@ export default function EntryPage() {
           </FormField>
         </div>
 
-        {/* Submit */}
         <div className="mt-5 flex justify-end">
           <button
             type="submit"
@@ -629,27 +699,17 @@ export default function EntryPage() {
             Calculated Scores
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {(
-              Object.entries(scores) as [keyof CategoryScores, number][]
-            ).map(([key, value]) => {
-              const labels: Record<keyof CategoryScores, string> = {
-                physical: "Physical",
-                focus: "Focus",
-                consistency: "Consistency",
-                financial: "Financial",
-                responsibility: "Responsibility",
-                overall: "Overall",
-              };
-              return (
+            {(Object.entries(scores) as [keyof CategoryScores, number][]).map(
+              ([key, value]) => (
                 <ScoreCard
                   key={key}
-                  title={labels[key]}
+                  title={SCORE_LABELS[key]}
                   score={value}
                   trend="stable"
                   icon={SCORE_ICONS[key]}
                 />
-              );
-            })}
+              )
+            )}
           </div>
         </section>
       )}

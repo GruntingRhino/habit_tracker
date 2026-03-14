@@ -2,62 +2,19 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
-  Activity,
-  Brain,
-  RefreshCw,
-  DollarSign,
   Star,
   ArrowRight,
   Flame,
   CheckCircle2,
   Circle,
   PlusCircle,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Sparkles,
 } from "lucide-react";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import ScoreCard from "@/components/ScoreCard";
 import EmptyState from "@/components/EmptyState";
-import { format, subDays } from "date-fns";
-import { type LucideIcon } from "lucide-react";
-
-interface CategoryScoreRow {
-  physical: number;
-  financial: number;
-  discipline: number;
-  focus: number;
-  mental: number;
-  appearance: number;
-  overall: number;
-}
-
-const SCORE_CARDS: {
-  key: keyof CategoryScoreRow;
-  title: string;
-  icon: LucideIcon;
-}[] = [
-  { key: "physical",   title: "Physical",   icon: Activity },
-  { key: "financial",  title: "Financial",  icon: DollarSign },
-  { key: "discipline", title: "Discipline", icon: RefreshCw },
-  { key: "focus",      title: "Focus",      icon: Brain },
-  { key: "mental",     title: "Mental",     icon: Sparkles },
-  { key: "appearance", title: "Appearance", icon: Star },
-  { key: "overall",    title: "Overall",    icon: Star },
-];
-
-function getTrend(
-  current: number,
-  previous: number | undefined
-): "up" | "down" | "stable" {
-  if (previous === undefined) return "stable";
-  const delta = current - previous;
-  if (delta > 0.2) return "up";
-  if (delta < -0.2) return "down";
-  return "stable";
-}
+import DashboardScores from "@/components/DashboardScores";
+import { format } from "date-fns";
+import type { ScoreData } from "@/components/DashboardScores";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -181,25 +138,19 @@ export default async function DashboardPage() {
           <section className="mb-8">
             <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">
               Performance Scores
+              <span className="text-slate-600 font-normal ml-2 normal-case">— click any score to see analysis</span>
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {SCORE_CARDS.map(({ key, title, icon }) => {
-                const score = latestScore[key];
-                const prevScore = previousScore
-                  ? previousScore[key]
-                  : undefined;
-                const trend = getTrend(score, prevScore);
-                return (
-                  <ScoreCard
-                    key={key}
-                    title={title}
-                    score={score}
-                    trend={trend}
-                    icon={icon}
-                  />
-                );
-              })}
-            </div>
+            <DashboardScores
+              scores={[
+                { key: "physical",   title: "Physical",   score: latestScore.physical,   prevScore: previousScore?.physical },
+                { key: "financial",  title: "Financial",  score: latestScore.financial,  prevScore: previousScore?.financial },
+                { key: "discipline", title: "Discipline", score: latestScore.discipline, prevScore: previousScore?.discipline },
+                { key: "focus",      title: "Focus",      score: latestScore.focus,      prevScore: previousScore?.focus },
+                { key: "mental",     title: "Mental",     score: latestScore.mental,     prevScore: previousScore?.mental },
+                { key: "appearance", title: "Appearance", score: latestScore.appearance, prevScore: previousScore?.appearance },
+                { key: "overall",    title: "Overall",    score: latestScore.overall,    prevScore: previousScore?.overall },
+              ] satisfies ScoreData[]}
+            />
             <p className="text-slate-500 text-xs mt-2">
               Last updated:{" "}
               {format(new Date(latestScore.date), "MMM d, yyyy")}

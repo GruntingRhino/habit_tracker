@@ -41,10 +41,11 @@ interface CategoryScore {
   id: string;
   date: string;
   physical: number;
-  focus: number;
-  consistency: number;
   financial: number;
-  responsibility: number;
+  discipline: number;
+  focus: number;
+  mental: number;
+  appearance: number;
   overall: number;
 }
 
@@ -72,10 +73,11 @@ interface ProjectStats {
 
 interface Trends {
   physical: string;
-  focus: string;
-  consistency: string;
   financial: string;
-  responsibility: string;
+  discipline: string;
+  focus: string;
+  mental: string;
+  appearance: string;
   overall: string;
 }
 
@@ -93,12 +95,13 @@ const SCORE_META: {
   color: string;
   icon: LucideIcon;
 }[] = [
-  { key: "physical", label: "Physical", color: "#22c55e", icon: Activity },
-  { key: "focus", label: "Focus", color: "#3b82f6", icon: Brain },
-  { key: "consistency", label: "Consistency", color: "#f59e0b", icon: RefreshCw },
-  { key: "financial", label: "Financial", color: "#8b5cf6", icon: DollarSign },
-  { key: "responsibility", label: "Responsibility", color: "#ec4899", icon: ClipboardCheck },
-  { key: "overall", label: "Overall", color: "#14b8a6", icon: Star },
+  { key: "physical",   label: "Physical",   color: "#22c55e", icon: Activity },
+  { key: "financial",  label: "Financial",  color: "#8b5cf6", icon: DollarSign },
+  { key: "discipline", label: "Discipline", color: "#f59e0b", icon: RefreshCw },
+  { key: "focus",      label: "Focus",      color: "#3b82f6", icon: Brain },
+  { key: "mental",     label: "Mental",     color: "#a78bfa", icon: ClipboardCheck },
+  { key: "appearance", label: "Appearance", color: "#ec4899", icon: Star },
+  { key: "overall",    label: "Overall",    color: "#14b8a6", icon: BarChart3 },
 ];
 
 const PIE_COLORS = ["#3b82f6", "#1e293b", "#ef4444"];
@@ -418,20 +421,18 @@ export default function AnalyticsPage() {
 
   // Prepare line chart data
   const lineData = categoryScores.map((s) => ({
-    date: new Date(s.date).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    }),
-    physical: s.physical,
-    focus: s.focus,
-    consistency: s.consistency,
-    financial: s.financial,
-    responsibility: s.responsibility,
-    overall: s.overall,
+    date:       new Date(s.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    physical:   s.physical,
+    financial:  s.financial,
+    discipline: s.discipline,
+    focus:      s.focus,
+    mental:     s.mental,
+    appearance: s.appearance,
+    overall:    s.overall,
   }));
 
-  // Radar chart data: current week averages
-  const radarData = SCORE_META.map(({ key, label }) => {
+  // Radar chart data: current week averages (exclude overall)
+  const radarData = SCORE_META.filter((m) => m.key !== "overall").map(({ key, label }) => {
     const last7 = categoryScores.slice(-7);
     const avg =
       last7.length > 0
@@ -498,7 +499,7 @@ export default function AnalyticsPage() {
           <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">
             Current Scores
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {SCORE_META.map(({ key, label, color, icon: Icon }) => {
               const score = latest[key];
               const trend = trends[key as keyof Trends];

@@ -128,10 +128,11 @@ const INSIGHTS_PROMPT = (scores: CategoryScores, entrySummary: string) =>
 
 Current Scores (out of 10):
 - Physical: ${scores.physical}
-- Focus: ${scores.focus}
-- Consistency: ${scores.consistency}
 - Financial: ${scores.financial}
-- Responsibility: ${scores.responsibility}
+- Discipline: ${scores.discipline}
+- Focus: ${scores.focus}
+- Mental: ${scores.mental}
+- Appearance: ${scores.appearance}
 - Overall: ${scores.overall}
 
 Recent Daily Entries (last 7 days):

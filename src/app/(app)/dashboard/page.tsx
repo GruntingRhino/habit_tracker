@@ -6,7 +6,6 @@ import {
   Brain,
   RefreshCw,
   DollarSign,
-  ClipboardCheck,
   Star,
   ArrowRight,
   Flame,
@@ -16,6 +15,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Sparkles,
 } from "lucide-react";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -26,10 +26,11 @@ import { type LucideIcon } from "lucide-react";
 
 interface CategoryScoreRow {
   physical: number;
-  focus: number;
-  consistency: number;
   financial: number;
-  responsibility: number;
+  discipline: number;
+  focus: number;
+  mental: number;
+  appearance: number;
   overall: number;
 }
 
@@ -38,12 +39,13 @@ const SCORE_CARDS: {
   title: string;
   icon: LucideIcon;
 }[] = [
-  { key: "physical", title: "Physical", icon: Activity },
-  { key: "focus", title: "Focus", icon: Brain },
-  { key: "consistency", title: "Consistency", icon: RefreshCw },
-  { key: "financial", title: "Financial", icon: DollarSign },
-  { key: "responsibility", title: "Responsibility", icon: ClipboardCheck },
-  { key: "overall", title: "Overall", icon: Star },
+  { key: "physical",   title: "Physical",   icon: Activity },
+  { key: "financial",  title: "Financial",  icon: DollarSign },
+  { key: "discipline", title: "Discipline", icon: RefreshCw },
+  { key: "focus",      title: "Focus",      icon: Brain },
+  { key: "mental",     title: "Mental",     icon: Sparkles },
+  { key: "appearance", title: "Appearance", icon: Star },
+  { key: "overall",    title: "Overall",    icon: Star },
 ];
 
 function getTrend(

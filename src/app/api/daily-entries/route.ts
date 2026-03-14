@@ -195,12 +195,13 @@ export async function POST(req: NextRequest) {
       savedScores = await prisma.categoryScore.update({
         where: { id: existingScore.id },
         data: {
-          physical: scores.physical,
-          focus: scores.focus,
-          consistency: scores.consistency,
-          financial: scores.financial,
-          responsibility: scores.responsibility,
-          overall: scores.overall,
+          physical:   scores.physical,
+          financial:  scores.financial,
+          discipline: scores.discipline,
+          focus:      scores.focus,
+          mental:     scores.mental,
+          appearance: scores.appearance,
+          overall:    scores.overall,
           dailyEntryId: entry.id,
         },
       });
@@ -209,13 +210,14 @@ export async function POST(req: NextRequest) {
         data: {
           userId,
           dailyEntryId: entry.id,
-          date: entryDate,
-          physical: scores.physical,
-          focus: scores.focus,
-          consistency: scores.consistency,
-          financial: scores.financial,
-          responsibility: scores.responsibility,
-          overall: scores.overall,
+          date:       entryDate,
+          physical:   scores.physical,
+          financial:  scores.financial,
+          discipline: scores.discipline,
+          focus:      scores.focus,
+          mental:     scores.mental,
+          appearance: scores.appearance,
+          overall:    scores.overall,
         },
       });
     }

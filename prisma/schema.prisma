@@ -17,8 +17,10 @@ model User {
 
   dailyEntries   DailyEntry[]
   categoryScores CategoryScore[]
-  habits         Habit[]
-  projects       Project[]
+  habits          Habit[]
+  projects        Project[]
+  weightRoutines  WeightRoutine[]
+  workoutSessions WorkoutSession[]
 }
 
 model DailyEntry {
@@ -108,6 +110,46 @@ model Project {
 
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks       ProjectTask[]
+}
+
+model WeightRoutine {
+  id          String           @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  order       Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises   WeightExercise[]
+  sessions    WorkoutSession[]
+}
+
+model WeightExercise {
+  id        String        @id @default(cuid())
+  routineId String
+  name      String
+  sets      Int?
+  reps      String?
+  weight    Float?
+  notes     String?
+  order     Int           @default(0)
+  createdAt DateTime      @default(now())
+
+  routine   WeightRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+}
+
+model WorkoutSession {
+  id        String        @id @default(cuid())
+  userId    String
+  routineId String
+  date      DateTime      @default(now())
+  notes     String?
+  createdAt DateTime      @default(now())
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routine   WeightRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
 }
 
 model ProjectTask {

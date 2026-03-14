@@ -10,8 +10,11 @@ export async function GET() {
   const sessions = await prisma.workoutSession.findMany({
     where: { userId: session.user.id },
     orderBy: { date: "desc" },
-    take: 50,
-    include: { routine: { select: { name: true } } },
+    take: 100,
+    include: {
+      routine: { select: { id: true, name: true } },
+      exerciseLogs: { orderBy: { createdAt: "asc" } },
+    },
   });
 
   return NextResponse.json(sessions);
@@ -28,14 +31,38 @@ export async function POST(req: NextRequest) {
   if (!routine || routine.userId !== session.user.id)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  type ExerciseLogInput = {
+    exerciseId?: string;
+    exerciseName: string;
+    weight?: number;
+    sets?: number;
+    reps?: string;
+    notes?: string;
+  };
+
   const workoutSession = await prisma.workoutSession.create({
     data: {
       userId: session.user.id,
       routineId: body.routineId,
       date: body.date ? new Date(body.date) : new Date(),
       notes: body.notes ?? undefined,
+      exerciseLogs: body.exerciseLogs?.length
+        ? {
+            create: (body.exerciseLogs as ExerciseLogInput[]).map((l) => ({
+              exerciseId: l.exerciseId ?? undefined,
+              exerciseName: l.exerciseName,
+              weight: l.weight ?? undefined,
+              sets: l.sets ?? undefined,
+              reps: l.reps ?? undefined,
+              notes: l.notes ?? undefined,
+            })),
+          }
+        : undefined,
     },
-    include: { routine: { select: { name: true } } },
+    include: {
+      routine: { select: { id: true, name: true } },
+      exerciseLogs: true,
+    },
   });
 
   return NextResponse.json(workoutSession, { status: 201 });

@@ -31,6 +31,7 @@ import {
   TrendingDown,
   Minus,
   BarChart3,
+  Dumbbell,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
@@ -178,10 +179,201 @@ function CustomBarTooltip({ active, payload, label }: CustomBarTooltipProps) {
   );
 }
 
+// ─── Progression types ────────────────────────────────────────────────────────
+interface ProgressionEntry {
+  date: string;
+  weight: number | null;
+  sets: number | null;
+  reps: string | null;
+  routineName: string;
+}
+interface ExerciseProgression {
+  exerciseName: string;
+  entries: ProgressionEntry[];
+}
+
+interface ProgressionTooltipProps {
+  active?: boolean;
+  payload?: Array<{ value: number; payload: { date: string; sets: number | null; reps: string | null } }>;
+  label?: string;
+}
+
+function ProgressionTooltip({ active, payload }: ProgressionTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0];
+  return (
+    <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg px-3 py-2 text-xs shadow-xl">
+      <p className="text-slate-400 mb-1">{new Date(p.payload.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+      <p className="text-blue-400 font-semibold">{p.value} lbs</p>
+      {p.payload.sets && p.payload.reps && (
+        <p className="text-slate-500">{p.payload.sets}×{p.payload.reps}</p>
+      )}
+    </div>
+  );
+}
+
+function ProgressionTab() {
+  const [progressions, setProgressions] = useState<ExerciseProgression[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/weights/progression", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        setProgressions(data);
+        if (data.length > 0) setSelectedExercise(data[0].exerciseName);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-48">
+      <LoadingSpinner size="lg" />
+    </div>
+  );
+
+  if (progressions.length === 0) return (
+    <EmptyState
+      icon={Dumbbell}
+      title="No progression data yet"
+      description="Log workouts with weights in the Routines tab to track your progression here."
+      ctaLabel="Go to Routines"
+      ctaHref="/weights"
+    />
+  );
+
+  const current = progressions.find((p) => p.exerciseName === selectedExercise);
+  const chartData = current?.entries
+    .filter((e) => e.weight !== null)
+    .map((e) => ({
+      date: e.date,
+      dateLabel: new Date(e.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      weight: e.weight!,
+      sets: e.sets,
+      reps: e.reps,
+    })) ?? [];
+
+  const maxWeight = chartData.length ? Math.max(...chartData.map((d) => d.weight)) : 0;
+  const minWeight = chartData.length ? Math.min(...chartData.map((d) => d.weight)) : 0;
+  const firstWeight = chartData[0]?.weight ?? 0;
+  const lastWeight = chartData[chartData.length - 1]?.weight ?? 0;
+  const change = lastWeight - firstWeight;
+
+  return (
+    <div>
+      <div className="flex gap-6">
+        {/* Exercise list */}
+        <div className="w-52 flex-shrink-0">
+          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-3">Exercises</p>
+          <div className="space-y-1">
+            {progressions.map((p) => (
+              <button
+                key={p.exerciseName}
+                onClick={() => setSelectedExercise(p.exerciseName)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  selectedExercise === p.exerciseName
+                    ? "bg-blue-600/15 text-blue-300 border border-blue-500/20"
+                    : "text-slate-400 hover:text-slate-100 hover:bg-[#1e293b]"
+                }`}
+              >
+                <p className="font-medium truncate">{p.exerciseName}</p>
+                <p className="text-xs text-slate-600 mt-0.5">{p.entries.filter((e) => e.weight).length} sessions</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Chart area */}
+        <div className="flex-1 min-w-0">
+          {current && chartData.length > 0 ? (
+            <>
+              {/* Stat row */}
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-slate-100">{lastWeight}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Latest (lbs)</p>
+                </div>
+                <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-slate-100">{maxWeight}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">All-time Max</p>
+                </div>
+                <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-center">
+                  <p className={`text-xl font-bold ${change > 0 ? "text-green-400" : change < 0 ? "text-red-400" : "text-slate-400"}`}>
+                    {change > 0 ? "+" : ""}{change}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">Total Change</p>
+                </div>
+              </div>
+
+              <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-slate-100 mb-4">{current.exerciseName} — Weight Progression</h3>
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="dateLabel" tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <YAxis
+                      domain={[Math.max(0, minWeight - 10), maxWeight + 10]}
+                      tick={{ fill: "#475569", fontSize: 10 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v: number) => `${v}`}
+                    />
+                    <Tooltip content={<ProgressionTooltip />} />
+                    <Line
+                      type="monotone"
+                      dataKey="weight"
+                      stroke="#3b82f6"
+                      strokeWidth={2.5}
+                      dot={{ fill: "#3b82f6", r: 4, strokeWidth: 0 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Session table */}
+              <div className="mt-4 bg-[#0f172a] border border-[#1e293b] rounded-xl overflow-hidden">
+                <div className="grid grid-cols-4 px-4 py-2 border-b border-[#1e293b] text-xs text-slate-500 uppercase tracking-wide font-medium">
+                  <span>Date</span><span>Weight</span><span>Sets × Reps</span><span>Routine</span>
+                </div>
+                <div className="divide-y divide-[#1e293b] max-h-48 overflow-y-auto">
+                  {[...chartData].reverse().map((d, i) => {
+                    const entry = current.entries.find((e) => e.date === d.date);
+                    return (
+                      <div key={i} className="grid grid-cols-4 px-4 py-2.5 text-xs">
+                        <span className="text-slate-400">
+                          {new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </span>
+                        <span className="text-blue-400 font-semibold">{d.weight} lbs</span>
+                        <span className="text-slate-500">
+                          {d.sets && d.reps ? `${d.sets}×${d.reps}` : "—"}
+                        </span>
+                        <span className="text-slate-600 truncate">{entry?.routineName ?? "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-48 text-center">
+              <p className="text-slate-400 text-sm">No weight data for this exercise</p>
+              <p className="text-slate-600 text-xs mt-1">Log workouts with weight to see progression</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState<"overview" | "progression">("overview");
 
   const fetchAnalytics = useCallback(async () => {
     try {
@@ -267,12 +459,38 @@ export default function AnalyticsPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-100">Analytics</h1>
-        <p className="text-slate-400 text-sm mt-0.5">
-          Last 30 days performance overview
-        </p>
+      <div className="flex items-end justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100">Analytics</h1>
+          <p className="text-slate-400 text-sm mt-0.5">
+            {activeTab === "overview" ? "Last 30 days performance overview" : "Exercise weight progression"}
+          </p>
+        </div>
+        <div className="flex gap-1 bg-[#0f172a] border border-[#1e293b] rounded-lg p-1">
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "overview" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-100"
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab("progression")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "progression" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-100"
+            }`}
+          >
+            <Dumbbell className="w-3.5 h-3.5" />
+            Progression
+          </button>
+        </div>
       </div>
+
+      {activeTab === "progression" && <ProgressionTab />}
+
+      {activeTab === "overview" && <>
 
       {/* Score cards with trends */}
       {latest && (
@@ -601,6 +819,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </div>
+      </>}
     </div>
   );
 }

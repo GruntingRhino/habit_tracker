@@ -30,10 +30,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     data: {
       routineId,
       name: body.name.trim(),
-      sets: body.sets ?? undefined,
-      reps: body.reps ?? undefined,
-      weight: body.weight ?? undefined,
-      notes: body.notes ?? undefined,
+      descriptor: body.descriptor ?? undefined,
       order: (last?.order ?? -1) + 1,
     },
   });
@@ -53,19 +50,16 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   if (!Array.isArray(body.exercises))
     return NextResponse.json({ error: "exercises array required" }, { status: 400 });
 
-  type ExerciseInput = { name: string; sets?: number; reps?: string; weight?: number; notes?: string };
+  type ExerciseInput = { name: string; descriptor?: string };
 
   await prisma.$transaction([
     prisma.weightExercise.deleteMany({ where: { routineId } }),
-    ...( body.exercises as ExerciseInput[]).map((ex, idx) =>
+    ...(body.exercises as ExerciseInput[]).map((ex, idx) =>
       prisma.weightExercise.create({
         data: {
           routineId,
           name: ex.name.trim(),
-          sets: ex.sets ?? undefined,
-          reps: ex.reps ?? undefined,
-          weight: ex.weight ?? undefined,
-          notes: ex.notes ?? undefined,
+          descriptor: ex.descriptor ?? undefined,
           order: idx,
         },
       })

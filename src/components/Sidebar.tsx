@@ -20,7 +20,7 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/entry", label: "Daily Entry", icon: BookOpen },
   { href: "/habits", label: "Habits", icon: CheckSquare },
-  { href: "/weights", label: "Weights", icon: Dumbbell },
+  { href: "/weights", label: "Routines", icon: Dumbbell },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },

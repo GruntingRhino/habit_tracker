@@ -127,29 +127,43 @@ model WeightRoutine {
 }
 
 model WeightExercise {
-  id        String        @id @default(cuid())
-  routineId String
-  name      String
-  sets      Int?
-  reps      String?
-  weight    Float?
-  notes     String?
-  order     Int           @default(0)
-  createdAt DateTime      @default(now())
+  id         String               @id @default(cuid())
+  routineId  String
+  name       String
+  descriptor String?
+  order      Int                  @default(0)
+  createdAt  DateTime             @default(now())
 
-  routine   WeightRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  routine    WeightRoutine        @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  logs       WorkoutExerciseLog[]
 }
 
 model WorkoutSession {
-  id        String        @id @default(cuid())
-  userId    String
-  routineId String
-  date      DateTime      @default(now())
-  notes     String?
-  createdAt DateTime      @default(now())
+  id           String               @id @default(cuid())
+  userId       String
+  routineId    String
+  date         DateTime             @default(now())
+  notes        String?
+  createdAt    DateTime             @default(now())
 
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  routine   WeightRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routine      WeightRoutine        @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  exerciseLogs WorkoutExerciseLog[]
+}
+
+model WorkoutExerciseLog {
+  id           String          @id @default(cuid())
+  sessionId    String
+  exerciseId   String?
+  exerciseName String
+  weight       Float?
+  sets         Int?
+  reps         String?
+  notes        String?
+  createdAt    DateTime        @default(now())
+
+  session      WorkoutSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise     WeightExercise? @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
 }
 
 model ProjectTask {

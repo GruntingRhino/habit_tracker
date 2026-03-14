@@ -16,6 +16,10 @@ import {
   ChevronDown,
   Trash2,
   ClipboardList,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  BarChart2,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
@@ -45,6 +49,23 @@ interface Project {
   deadline: string | null;
   completedAt: string | null;
   tasks: ProjectTask[];
+}
+
+interface TaskAnalysis {
+  taskId: string;
+  estimatedHours: number;
+  effortLabel: "light" | "moderate" | "heavy" | "very-heavy";
+}
+
+interface ProjectAnalysis {
+  trackStatus: "on_track" | "at_risk" | "behind" | "no_deadline";
+  message: string;
+  totalEstimatedHours: number;
+  remainingHours: number;
+  daysLeft: number | null;
+  requiredHoursPerDay: number | null;
+  currentPacePerDay: number | null;
+  tasks: TaskAnalysis[];
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -168,13 +189,22 @@ function AddTaskForm({ projectId, onSaved, onCancel }: AddTaskFormProps) {
   );
 }
 
+const EFFORT_STYLES: Record<string, string> = {
+  light: "text-green-400 bg-green-500/10",
+  moderate: "text-yellow-400 bg-yellow-500/10",
+  heavy: "text-orange-400 bg-orange-500/10",
+  "very-heavy": "text-red-400 bg-red-500/10",
+};
+
 interface TaskCardProps {
   task: ProjectTask;
   projectId: string;
   onUpdated: () => void;
+  effortHours?: number;
+  effortLabel?: string;
 }
 
-function TaskCard({ task, projectId, onUpdated }: TaskCardProps) {
+function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: TaskCardProps) {
   const [updating, setUpdating] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
@@ -255,6 +285,13 @@ function TaskCard({ task, projectId, onUpdated }: TaskCardProps) {
           <span className="flex items-center gap-1 text-xs text-slate-500">
             <Clock className="w-3 h-3" />
             {formatMinutes(task.estimatedMinutes)}
+          </span>
+        )}
+
+        {/* AI effort estimate */}
+        {effortHours !== undefined && effortLabel && (
+          <span className={`text-xs px-1.5 py-0.5 rounded ${EFFORT_STYLES[effortLabel] ?? ""}`}>
+            ~{effortHours}h
           </span>
         )}
 
@@ -347,6 +384,7 @@ export default function ProjectDetailPage() {
   const [pasteError, setPasteError] = useState("");
   const [pasteSuccess, setPasteSuccess] = useState("");
   const [error, setError] = useState("");
+  const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -373,6 +411,14 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     fetchProject();
   }, [fetchProject]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetch(`/api/projects/${projectId}/analyze`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setAnalysis(data); })
+      .catch(() => {});
+  }, [projectId]);
 
   async function handleGenerate() {
     setGenerating(true);
@@ -632,6 +678,38 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
+      {/* Analysis banner */}
+      {analysis && analysis.trackStatus !== "no_deadline" && (
+        <div
+          className={`mb-5 flex items-start gap-3 px-4 py-3.5 rounded-xl border text-sm ${
+            analysis.trackStatus === "on_track"
+              ? "bg-green-500/10 border-green-500/20 text-green-300"
+              : analysis.trackStatus === "at_risk"
+              ? "bg-yellow-500/10 border-yellow-500/20 text-yellow-300"
+              : "bg-red-500/10 border-red-500/20 text-red-300"
+          }`}
+        >
+          {analysis.trackStatus === "on_track" && <TrendingUp className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+          {analysis.trackStatus === "at_risk" && <Minus className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+          {analysis.trackStatus === "behind" && <TrendingDown className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+          <div className="flex-1">
+            <p className="font-medium">{analysis.message}</p>
+            <p className="text-xs opacity-70 mt-0.5">
+              {analysis.remainingHours}h estimated remaining
+              {analysis.daysLeft !== null && ` · ${analysis.daysLeft} days left`}
+              {analysis.requiredHoursPerDay !== null && ` · ${analysis.requiredHoursPerDay}h/day needed`}
+            </p>
+          </div>
+          <BarChart2 className="w-4 h-4 mt-0.5 flex-shrink-0 opacity-50" />
+        </div>
+      )}
+      {analysis && analysis.trackStatus === "no_deadline" && (
+        <div className="mb-5 flex items-center gap-2 px-4 py-3 rounded-xl border border-[#1e293b] bg-[#0a0f1e]/50 text-slate-500 text-sm">
+          <Calendar className="w-4 h-4 flex-shrink-0" />
+          <span>No deadline set — {analysis.totalEstimatedHours}h of total work estimated. Add a deadline to track progress.</span>
+        </div>
+      )}
+
       {/* AI Generate + Add task + Paste list */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
         <button
@@ -823,14 +901,19 @@ export default function ProjectDetailPage() {
               </div>
 
               <div className="space-y-2">
-                {colTasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    projectId={projectId}
-                    onUpdated={fetchProject}
-                  />
-                ))}
+                {colTasks.map((task) => {
+                  const ta = analysis?.tasks.find((t) => t.taskId === task.id);
+                  return (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      projectId={projectId}
+                      onUpdated={fetchProject}
+                      effortHours={ta?.estimatedHours}
+                      effortLabel={ta?.effortLabel}
+                    />
+                  );
+                })}
                 {colTasks.length === 0 && (
                   <div className="border border-dashed border-[#1e293b] rounded-lg p-4 text-center">
                     <p className="text-slate-600 text-xs">No tasks</p>

@@ -46,20 +46,14 @@ export async function GET() {
     });
 
     // --- Trend directions ---
-    const physicalValues = categoryScores.map((s) => s.physical);
-    const focusValues = categoryScores.map((s) => s.focus);
-    const consistencyValues = categoryScores.map((s) => s.consistency);
-    const financialValues = categoryScores.map((s) => s.financial);
-    const responsibilityValues = categoryScores.map((s) => s.responsibility);
-    const overallValues = categoryScores.map((s) => s.overall);
-
     const trends: Record<string, TrendDirection> = {
-      physical: calcTrend(physicalValues),
-      focus: calcTrend(focusValues),
-      consistency: calcTrend(consistencyValues),
-      financial: calcTrend(financialValues),
-      responsibility: calcTrend(responsibilityValues),
-      overall: calcTrend(overallValues),
+      physical:   calcTrend(categoryScores.map((s) => s.physical)),
+      financial:  calcTrend(categoryScores.map((s) => s.financial)),
+      discipline: calcTrend(categoryScores.map((s) => s.discipline)),
+      focus:      calcTrend(categoryScores.map((s) => s.focus)),
+      mental:     calcTrend(categoryScores.map((s) => s.mental)),
+      appearance: calcTrend(categoryScores.map((s) => s.appearance)),
+      overall:    calcTrend(categoryScores.map((s) => s.overall)),
     };
 
     // --- Habits with completion rates and streaks ---

@@ -14,6 +14,7 @@ import {
   LogOut,
   User,
   Dumbbell,
+  Utensils,
 } from "lucide-react";
 
 const navLinks = [
@@ -21,6 +22,7 @@ const navLinks = [
   { href: "/entry", label: "Daily Entry", icon: BookOpen },
   { href: "/habits", label: "Habits", icon: CheckSquare },
   { href: "/weights", label: "Routines", icon: Dumbbell },
+  { href: "/meals", label: "Meals", icon: Utensils },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },

@@ -89,6 +89,56 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 }
 
+export async function PUT(req: NextRequest, { params }: RouteParams) {
+  // Bulk create tasks from pasted list
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { id: projectId } = await params;
+    const body = await req.json();
+
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project || project.userId !== session.user.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    if (!Array.isArray(body.tasks) || body.tasks.length === 0) {
+      return NextResponse.json({ error: "tasks array is required" }, { status: 400 });
+    }
+
+    const lastTask = await prisma.projectTask.findFirst({
+      where: { projectId },
+      orderBy: { order: "desc" },
+    });
+    const orderOffset = (lastTask?.order ?? -1) + 1;
+
+    const created = await prisma.$transaction(
+      (body.tasks as { title: string; description?: string; priority?: string; estimatedMinutes?: number }[]).map(
+        (t, idx) =>
+          prisma.projectTask.create({
+            data: {
+              projectId,
+              title: t.title.trim(),
+              description: t.description ?? undefined,
+              priority: t.priority ?? "medium",
+              estimatedMinutes: t.estimatedMinutes ?? undefined,
+              status: "todo",
+              order: orderOffset + idx,
+            },
+          })
+      )
+    );
+
+    return NextResponse.json({ tasks: created, count: created.length }, { status: 201 });
+  } catch (error) {
+    console.error("[tasks PUT bulk-create] error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   // Bulk update task orders (for drag-and-drop reorder)
   const session = await getServerSession(authOptions);

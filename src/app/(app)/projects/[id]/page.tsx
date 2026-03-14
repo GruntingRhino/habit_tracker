@@ -15,6 +15,7 @@ import {
   Calendar,
   ChevronDown,
   Trash2,
+  ClipboardList,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
@@ -340,6 +341,11 @@ export default function ProjectDetailPage() {
   const [generateError, setGenerateError] = useState("");
   const [generateSuccess, setGenerateSuccess] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
+  const [showPastePanel, setShowPastePanel] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteImporting, setPasteImporting] = useState(false);
+  const [pasteError, setPasteError] = useState("");
+  const [pasteSuccess, setPasteSuccess] = useState("");
   const [error, setError] = useState("");
 
   const fetchProject = useCallback(async () => {
@@ -396,6 +402,90 @@ export default function ProjectDetailPage() {
       setGenerating(false);
     }
   }
+
+  function parsePasteText(raw: string) {
+    const PRIORITIES = new Set(["high", "medium", "low"]);
+
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const colonIdx = line.indexOf(":");
+        if (colonIdx === -1) {
+          // No colon — treat whole line as task title
+          return { title: line, priority: "medium" as const };
+        }
+
+        const title = line.slice(0, colonIdx).trim();
+        const value = line.slice(colonIdx + 1).trim();
+
+        if (!title) return null;
+
+        // Right side: priority keyword?
+        if (PRIORITIES.has(value.toLowerCase())) {
+          return { title, priority: value.toLowerCase() as "high" | "medium" | "low" };
+        }
+
+        // Right side: pure number → estimated minutes
+        const mins = parseInt(value, 10);
+        if (!isNaN(mins) && String(mins) === value) {
+          return { title, priority: "medium" as const, estimatedMinutes: mins };
+        }
+
+        // Right side: "Nh" or "Nm" format (e.g. "2h", "30m")
+        const timeMatch = value.match(/^(\d+)(h|m)$/i);
+        if (timeMatch) {
+          const estimatedMinutes =
+            timeMatch[2].toLowerCase() === "h"
+              ? parseInt(timeMatch[1]) * 60
+              : parseInt(timeMatch[1]);
+          return { title, priority: "medium" as const, estimatedMinutes };
+        }
+
+        // Otherwise use right side as description
+        return { title, description: value, priority: "medium" as const };
+      })
+      .filter(Boolean) as { title: string; description?: string; priority: "high" | "medium" | "low"; estimatedMinutes?: number }[];
+  }
+
+  async function handlePasteImport() {
+    const tasks = parsePasteText(pasteText);
+    if (tasks.length === 0) {
+      setPasteError("No valid tasks found. Use format: Task Name:priority");
+      return;
+    }
+    setPasteImporting(true);
+    setPasteError("");
+    setPasteSuccess("");
+    try {
+      const res = await fetch(`/api/projects/${projectId}/tasks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tasks }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error ?? "Import failed");
+      }
+      const data = await res.json();
+      setPasteSuccess(`Created ${data.count} task${data.count !== 1 ? "s" : ""}`);
+      setPasteText("");
+      fetchProject();
+      setTimeout(() => {
+        setShowPastePanel(false);
+        setPasteSuccess("");
+      }, 1500);
+    } catch (err) {
+      setPasteError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setPasteImporting(false);
+    }
+  }
+
+  // Live preview of parsed tasks
+  const parsedPreview = pasteText.trim() ? parsePasteText(pasteText) : [];
 
   async function updateProjectStatus(status: string) {
     try {
@@ -520,8 +610,8 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {/* AI Generate + Add task */}
-      <div className="flex items-center gap-3 mb-5">
+      {/* AI Generate + Add task + Paste list */}
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
         <button
           onClick={handleGenerate}
           disabled={generating}
@@ -540,13 +630,127 @@ export default function ProjectDetailPage() {
           )}
         </button>
         <button
-          onClick={() => setShowAddTask(!showAddTask)}
+          onClick={() => { setShowPastePanel(!showPastePanel); setShowAddTask(false); }}
+          className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 text-emerald-400 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          <ClipboardList className="w-4 h-4" />
+          Paste List
+        </button>
+        <button
+          onClick={() => { setShowAddTask(!showAddTask); setShowPastePanel(false); }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add Task
         </button>
       </div>
+
+      {/* Paste List panel */}
+      {showPastePanel && (
+        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-slate-100 font-semibold text-sm">Paste Task List</h3>
+              <p className="text-slate-500 text-xs mt-0.5">
+                One task per line. Format:{" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name:priority</code>
+                {" "}or{" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name:30m</code>
+                {" "}or just{" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name</code>
+              </p>
+            </div>
+            <button
+              onClick={() => { setShowPastePanel(false); setPasteText(""); setPasteError(""); setPasteSuccess(""); }}
+              className="text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Input */}
+            <div>
+              <textarea
+                value={pasteText}
+                onChange={(e) => { setPasteText(e.target.value); setPasteError(""); }}
+                placeholder={"Write business plan:high\nMarket research:2h\nBuild MVP:medium\nLaunch campaign"}
+                rows={8}
+                className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-emerald-500/50 resize-none font-mono"
+              />
+            </div>
+
+            {/* Live preview */}
+            <div>
+              <p className="text-slate-500 text-xs mb-2">
+                Preview — {parsedPreview.length} task{parsedPreview.length !== 1 ? "s" : ""} detected
+              </p>
+              <div className="space-y-1.5 max-h-[196px] overflow-y-auto">
+                {parsedPreview.length === 0 ? (
+                  <p className="text-slate-600 text-xs italic">Start typing to see preview…</p>
+                ) : (
+                  parsedPreview.map((t, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 bg-[#0a0f1e] border border-[#1e293b] rounded-lg px-3 py-2"
+                    >
+                      <span className="flex-1 text-slate-200 text-xs truncate">{t.title}</span>
+                      <span
+                        className={`text-xs px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                          t.priority === "high"
+                            ? "text-red-400 bg-red-500/10 border-red-500/20"
+                            : t.priority === "low"
+                            ? "text-green-400 bg-green-500/10 border-green-500/20"
+                            : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20"
+                        }`}
+                      >
+                        {t.priority}
+                      </span>
+                      {t.estimatedMinutes && (
+                        <span className="text-slate-500 text-xs flex-shrink-0">
+                          {t.estimatedMinutes >= 60
+                            ? `${Math.floor(t.estimatedMinutes / 60)}h${t.estimatedMinutes % 60 ? ` ${t.estimatedMinutes % 60}m` : ""}`
+                            : `${t.estimatedMinutes}m`}
+                        </span>
+                      )}
+                      {t.description && !t.estimatedMinutes && (
+                        <span className="text-slate-600 text-xs truncate max-w-[80px]">{t.description}</span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {pasteError && (
+            <div className="flex items-center gap-2 mt-3 text-red-400 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              {pasteError}
+            </div>
+          )}
+          {pasteSuccess && (
+            <div className="flex items-center gap-2 mt-3 text-emerald-400 text-xs">
+              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+              {pasteSuccess}
+            </div>
+          )}
+
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={handlePasteImport}
+              disabled={pasteImporting || parsedPreview.length === 0}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {pasteImporting ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</>
+              ) : (
+                <><ClipboardList className="w-4 h-4" /> Import {parsedPreview.length > 0 ? `${parsedPreview.length} task${parsedPreview.length !== 1 ? "s" : ""}` : "Tasks"}</>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       {generateError && (
         <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5 mb-4">

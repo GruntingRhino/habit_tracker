@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
@@ -224,6 +225,25 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showModal, setShowModal] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function deleteProject(id: string) {
+    if (!confirm("Delete this project and all its tasks?")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        setProjects((prev) => prev.filter((p) => p.id !== id));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -350,71 +370,87 @@ export default function ProjectsPage() {
               STATUS_STYLES[project.status] ?? STATUS_STYLES.active;
 
             return (
-              <Link
-                key={project.id}
-                href={`/projects/${project.id}`}
-                className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 hover:border-[#334155] transition-colors block"
-              >
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <h3 className="font-semibold text-slate-100 text-sm line-clamp-2 flex-1">
-                    {project.title}
-                  </h3>
-                  <ChevronRight className="w-4 h-4 text-slate-600 flex-shrink-0 mt-0.5" />
-                </div>
+              <div key={project.id} className="relative group">
+                <Link
+                  href={`/projects/${project.id}`}
+                  className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 hover:border-[#334155] transition-colors block"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <h3 className="font-semibold text-slate-100 text-sm line-clamp-2 flex-1">
+                      {project.title}
+                    </h3>
+                    <ChevronRight className="w-4 h-4 text-slate-600 flex-shrink-0 mt-0.5" />
+                  </div>
 
-                {project.description && (
-                  <p className="text-slate-500 text-xs mb-3 line-clamp-2">
-                    {project.description}
-                  </p>
-                )}
-
-                <div className="flex items-center gap-2 mb-3">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium border capitalize ${priorityStyle}`}
-                  >
-                    {project.priority}
-                  </span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusStyle}`}
-                  >
-                    {project.status}
-                  </span>
-                  {overdue && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium text-red-400 bg-red-500/10">
-                      Overdue
-                    </span>
+                  {project.description && (
+                    <p className="text-slate-500 text-xs mb-3 line-clamp-2">
+                      {project.description}
+                    </p>
                   )}
-                </div>
 
-                {/* Progress bar */}
-                {project.taskCount > 0 && (
-                  <div className="mb-3">
-                    <div className="flex justify-between text-xs text-slate-500 mb-1">
-                      <span>Progress</span>
-                      <span>
-                        {project.completedTaskCount}/{project.taskCount} tasks
+                  <div className="flex items-center gap-2 mb-3">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium border capitalize ${priorityStyle}`}
+                    >
+                      {project.priority}
+                    </span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusStyle}`}
+                    >
+                      {project.status}
+                    </span>
+                    {overdue && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium text-red-400 bg-red-500/10">
+                        Overdue
                       </span>
-                    </div>
-                    <div className="w-full h-1.5 bg-[#1e293b] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded-full transition-all"
-                        style={{ width: `${project.completionPercentage}%` }}
-                      />
-                    </div>
+                    )}
                   </div>
-                )}
 
-                {deadline && (
-                  <div
-                    className={`flex items-center gap-1.5 text-xs ${
-                      overdue ? "text-red-400" : "text-slate-500"
-                    }`}
-                  >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>{deadline}</span>
-                  </div>
-                )}
-              </Link>
+                  {/* Progress bar */}
+                  {project.taskCount > 0 && (
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs text-slate-500 mb-1">
+                        <span>Progress</span>
+                        <span>
+                          {project.completedTaskCount}/{project.taskCount} tasks
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#1e293b] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all"
+                          style={{ width: `${project.completionPercentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {deadline && (
+                    <div
+                      className={`flex items-center gap-1.5 text-xs ${
+                        overdue ? "text-red-400" : "text-slate-500"
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>{deadline}</span>
+                    </div>
+                  )}
+                </Link>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteProject(project.id);
+                  }}
+                  disabled={deletingId === project.id}
+                  className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 disabled:opacity-40"
+                  title="Delete project"
+                >
+                  {deletingId === project.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
             );
           })}
         </div>

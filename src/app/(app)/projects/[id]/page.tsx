@@ -501,6 +501,21 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function deleteProject() {
+    if (!confirm("Delete this project and all its tasks?")) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        router.push("/projects");
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -574,6 +589,13 @@ export default function ProjectDetailPage() {
               <option value="completed" className="bg-[#0f172a]">Completed</option>
               <option value="archived" className="bg-[#0f172a]">Archived</option>
             </select>
+            <button
+              onClick={deleteProject}
+              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+              title="Delete project"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
 

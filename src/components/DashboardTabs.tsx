@@ -484,7 +484,10 @@ function AnalyticsTab() {
                     </div>
                   </div>
                   <p className="text-2xl font-bold mb-0.5" style={{ color: getScoreColor(score), fontFamily: "'Syne', sans-serif" }}>{score.toFixed(1)}</p>
-                  <p className="text-xs mb-1" style={{ color: "#2d4a6a" }}>{label}</p>
+                  <p className="text-xs mb-2" style={{ color: "#2d4a6a" }}>{label}</p>
+                  <div className="w-full h-1 rounded-full mb-2" style={{ background: "rgba(20,40,70,0.8)" }}>
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(score / 10) * 100}%`, background: color, opacity: 0.8 }} />
+                  </div>
                   <TrendBadge trend={trend} />
                 </div>
               );

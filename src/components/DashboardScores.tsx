@@ -134,7 +134,7 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
 
   return (
     <div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-7 gap-2">
         {scores.map(({ key, title, score, prevScore }) => {
           const Icon = SCORE_ICONS[key] ?? Star;
           const [textColor, bgColor, borderColor, glowColor] = SCORE_COLORS[key] ?? SCORE_COLORS.overall;
@@ -153,16 +153,16 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
             <button
               key={key}
               onClick={() => openInsight(key, score)}
-              className="text-left p-4 rounded-xl transition-all duration-200 relative overflow-hidden"
+              className="text-left p-2.5 rounded-xl transition-all duration-200 relative overflow-hidden"
               style={{
                 background: `linear-gradient(135deg, ${bgColor} 0%, rgba(6,13,28,0.6) 100%)`,
                 border: `1px solid ${isActive ? borderColor.replace("0.22", "0.5") : borderColor}`,
-                boxShadow: isActive ? `0 0 20px ${glowColor}, 0 0 40px ${glowColor.replace("0.18", "0.08")}` : "none",
+                boxShadow: isActive ? `0 0 16px ${glowColor}` : "none",
                 cursor: isPerfect ? "default" : "pointer",
               }}
               onMouseEnter={(e) => {
                 if (!isPerfect && !isActive) {
-                  (e.currentTarget as HTMLElement).style.boxShadow = `0 0 16px ${glowColor}`;
+                  (e.currentTarget as HTMLElement).style.boxShadow = `0 0 12px ${glowColor}`;
                   (e.currentTarget as HTMLElement).style.borderColor = borderColor.replace("0.22", "0.4");
                 }
               }}
@@ -173,49 +173,42 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
                 }
               }}
             >
-              {/* Subtle top highlight */}
+              {/* Top highlight */}
               <div
                 className="absolute inset-x-0 top-0 h-px"
                 style={{ background: `linear-gradient(90deg, transparent, ${textColor}40, transparent)` }}
               />
 
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-6 h-6 rounded-md flex items-center justify-center"
-                    style={{ background: bgColor.replace("0.08", "0.2") }}
-                  >
-                    <Icon className="w-3 h-3" style={{ color: textColor }} />
-                  </div>
-                  <span className="text-xs font-medium" style={{ color: textColor, opacity: 0.9 }}>{title}</span>
+              {/* Icon + trend row */}
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+                  style={{ background: bgColor.replace("0.08", "0.2") }}>
+                  <Icon className="w-2.5 h-2.5" style={{ color: textColor }} />
                 </div>
-                <div className="flex items-center gap-1">
-                  {!isPerfect && (
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "#fb923c" }} />
-                  )}
-                  {trend === "up"     && <TrendingUp   className="w-3 h-3" style={{ color: "#10d9a0" }} />}
-                  {trend === "down"   && <TrendingDown  className="w-3 h-3" style={{ color: "#ff4d6a" }} />}
-                  {trend === "stable" && <Minus         className="w-3 h-3" style={{ color: "#334d6e" }} />}
+                <div>
+                  {trend === "up"     && <TrendingUp   className="w-2.5 h-2.5" style={{ color: "#10d9a0" }} />}
+                  {trend === "down"   && <TrendingDown  className="w-2.5 h-2.5" style={{ color: "#ff4d6a" }} />}
+                  {trend === "stable" && <Minus         className="w-2.5 h-2.5" style={{ color: "#1e3050" }} />}
                 </div>
               </div>
 
-              <div className="mb-2.5">
-                <span className="text-2xl font-bold" style={{ color: scoreColor, fontFamily: "'Syne', sans-serif" }}>
+              {/* Score */}
+              <div className="mb-1">
+                <span className="text-lg font-bold leading-none" style={{ color: scoreColor, fontFamily: "'Syne', sans-serif" }}>
                   {score.toFixed(1)}
                 </span>
-                <span className="text-xs ml-0.5" style={{ color: "#2d4a6a" }}>/10</span>
               </div>
 
-              <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: "rgba(6,13,28,0.6)" }}>
+              {/* Title */}
+              <p className="text-xs mb-1.5 leading-none" style={{ color: textColor, opacity: 0.7 }}>{title}</p>
+
+              {/* Bar */}
+              <div className="w-full h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(6,13,28,0.6)" }}>
                 <div
                   className="h-full rounded-full transition-all duration-700"
                   style={{ width: `${(score / 10) * 100}%`, background: barGradient }}
                 />
               </div>
-
-              {!isPerfect && (
-                <p className="text-xs mt-2" style={{ color: "#1e3a5a", opacity: 0.8 }}>Click for analysis</p>
-              )}
             </button>
           );
         })}

@@ -19,6 +19,8 @@ import {
   TrendingDown,
   Minus,
   Utensils,
+  Flame,
+  ChevronRight,
 } from "lucide-react";
 import {
   LineChart,
@@ -227,6 +229,199 @@ function ProgressionTooltip({ active, payload }: ProgressionTooltipProps) {
       <p className="mb-1" style={{ color: "#6b8cb8" }}>{new Date(p.payload.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
       <p className="text-blue-400 font-semibold">{p.value} lbs</p>
       {p.payload.sets && p.payload.reps && <p style={{ color: "#2d4a6a" }}>{p.payload.sets}×{p.payload.reps}</p>}
+    </div>
+  );
+}
+
+// ── Meals preview ─────────────────────────────────────────────────────────────
+
+interface Meal {
+  id: string;
+  name: string;
+  category: string;
+  calories: number | null;
+  recipe: string | null;
+}
+
+const MEAL_CATEGORY_COLORS: Record<string, string> = {
+  breakfast: "#f59e0b",
+  lunch:     "#22d3ee",
+  dinner:    "#a78bfa",
+  snack:     "#10d9a0",
+};
+
+function MealsPreview() {
+  const [meals, setMeals] = useState<Meal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/meals", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setMeals(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div
+      className="rounded-xl flex flex-col"
+      style={{
+        background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+        border: "1px solid rgba(40,76,140,0.22)",
+        minHeight: "220px",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-3" style={{ borderBottom: "1px solid rgba(30,60,110,0.3)" }}>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "rgba(251,146,60,0.15)" }}>
+            <Utensils className="w-3 h-3" style={{ color: "#fb923c" }} />
+          </div>
+          <span className="text-sm font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Meals</span>
+          {!loading && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(40,76,140,0.3)", color: "#4a6a90" }}>{meals.length}</span>}
+        </div>
+        <Link
+          href="/meals"
+          className="flex items-center gap-1 text-xs font-medium transition-colors"
+          style={{ color: "#4f72ff" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}
+        >
+          See all <ChevronRight className="w-3 h-3" />
+        </Link>
+      </div>
+
+      {/* Scrollable list */}
+      <div className="flex-1 overflow-y-auto px-3 py-2" style={{ maxHeight: "180px" }}>
+        {loading ? (
+          <div className="flex items-center justify-center h-16">
+            <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(40,76,140,0.3)", borderTopColor: "#4f72ff" }} />
+          </div>
+        ) : meals.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-16 gap-1">
+            <p className="text-xs" style={{ color: "#2d4a6a" }}>No meals added yet</p>
+            <Link href="/meals" className="text-xs" style={{ color: "#4f72ff" }}>Add your first meal →</Link>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {meals.map((meal) => (
+              <div key={meal.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(6,13,28,0.5)" }}>
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 capitalize"
+                  style={{
+                    background: `${MEAL_CATEGORY_COLORS[meal.category] ?? "#4f72ff"}18`,
+                    color: MEAL_CATEGORY_COLORS[meal.category] ?? "#4f72ff",
+                  }}
+                >
+                  {meal.category}
+                </span>
+                <span className="text-xs flex-1 truncate" style={{ color: "#8aadcc" }}>{meal.name}</span>
+                {meal.calories && (
+                  <span className="text-xs flex-shrink-0" style={{ color: "#2d4a6a" }}>{meal.calories} cal</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Routines preview ───────────────────────────────────────────────────────────
+
+interface Routine {
+  id: string;
+  name: string;
+  description: string | null;
+  exercises: { id: string; name: string }[];
+  sessions: { date: string }[];
+  _count: { sessions: number };
+}
+
+function RoutinesPreview() {
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/weights/routines", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setRoutines(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div
+      className="rounded-xl flex flex-col"
+      style={{
+        background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+        border: "1px solid rgba(40,76,140,0.22)",
+        minHeight: "220px",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-3" style={{ borderBottom: "1px solid rgba(30,60,110,0.3)" }}>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "rgba(79,114,255,0.15)" }}>
+            <Dumbbell className="w-3 h-3" style={{ color: "#4f72ff" }} />
+          </div>
+          <span className="text-sm font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Routines</span>
+          {!loading && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(40,76,140,0.3)", color: "#4a6a90" }}>{routines.length}</span>}
+        </div>
+        <Link
+          href="/weights"
+          className="flex items-center gap-1 text-xs font-medium transition-colors"
+          style={{ color: "#4f72ff" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}
+        >
+          See all <ChevronRight className="w-3 h-3" />
+        </Link>
+      </div>
+
+      {/* Scrollable list */}
+      <div className="flex-1 overflow-y-auto px-3 py-2" style={{ maxHeight: "180px" }}>
+        {loading ? (
+          <div className="flex items-center justify-center h-16">
+            <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(40,76,140,0.3)", borderTopColor: "#4f72ff" }} />
+          </div>
+        ) : routines.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-16 gap-1">
+            <p className="text-xs" style={{ color: "#2d4a6a" }}>No routines yet</p>
+            <Link href="/weights" className="text-xs" style={{ color: "#4f72ff" }}>Create a routine →</Link>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {routines.map((routine) => {
+              const lastSession = routine.sessions[0];
+              const daysSince = lastSession
+                ? Math.floor((Date.now() - new Date(lastSession.date).getTime()) / 86400000)
+                : null;
+              return (
+                <div key={routine.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(6,13,28,0.5)" }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate" style={{ color: "#8aadcc" }}>{routine.name}</p>
+                    <p className="text-xs" style={{ color: "#2d4a6a" }}>
+                      {routine.exercises.length} exercise{routine.exercises.length !== 1 ? "s" : ""}
+                      {" · "}
+                      {routine._count.sessions} session{routine._count.sessions !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  {daysSince !== null && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Flame className="w-3 h-3" style={{ color: daysSince <= 2 ? "#fb923c" : "#1e3050" }} />
+                      <span className="text-xs" style={{ color: daysSince <= 2 ? "#fb923c" : "#1e3050" }}>
+                        {daysSince === 0 ? "today" : `${daysSince}d ago`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -618,28 +813,10 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                 )}
               </section>
 
-              {/* Quick access */}
-              <div className="flex gap-3 mb-6">
-                <Link
-                  href="/meals"
-                  className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-all duration-150"
-                  style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)", color: "#6b8cb8" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(79,114,255,0.3)"; (e.currentTarget as HTMLElement).style.color = "#c8deff"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(40,76,140,0.22)"; (e.currentTarget as HTMLElement).style.color = "#6b8cb8"; }}
-                >
-                  <Utensils className="w-4 h-4 text-orange-400" />
-                  Meals
-                </Link>
-                <Link
-                  href="/weights"
-                  className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-all duration-150"
-                  style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)", color: "#6b8cb8" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(79,114,255,0.3)"; (e.currentTarget as HTMLElement).style.color = "#c8deff"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(40,76,140,0.22)"; (e.currentTarget as HTMLElement).style.color = "#6b8cb8"; }}
-                >
-                  <Dumbbell className="w-4 h-4 text-blue-400" />
-                  Routines
-                </Link>
+              {/* Meals & Routines previews */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <MealsPreview />
+                <RoutinesPreview />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

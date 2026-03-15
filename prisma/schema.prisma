@@ -30,6 +30,9 @@ model DailyEntry {
   date                    DateTime @unique
   sleepHours              Float?
   workoutCompleted        Boolean  @default(false)
+  workoutDurationMinutes  Int?
+  workoutIntensity        String?
+  workoutDetails          String?
   sportsTrainingMinutes   Int?
   steps                   Int?
   deepWorkHours           Float?

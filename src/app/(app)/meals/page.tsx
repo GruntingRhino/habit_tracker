@@ -220,31 +220,40 @@ function MealCard({ meal, onDeleted }: { meal: Meal; onDeleted: () => void }) {
   return (
     <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl overflow-hidden hover:border-[#334155] transition-colors">
       {/* Header row — always visible */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
-      >
-        <ChevronDown
-          className={`w-3.5 h-3.5 text-slate-600 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
-        />
-        <span className="flex-1 text-slate-100 text-sm font-medium">{meal.name}</span>
-        {meal.calories && (
-          <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
-            <Flame className="w-3 h-3" />
-            {meal.calories} kcal
-            {meal.servings && meal.servings > 1 && (
-              <span className="text-orange-500/60">/{meal.servings} srv</span>
-            )}
-          </span>
-        )}
+      <div className="flex items-center gap-3 px-4 py-3">
         <button
+          onClick={() => setExpanded((value) => !value)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-slate-600 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+          />
+          <span className="flex-1 truncate text-slate-100 text-sm font-medium">
+            {meal.name}
+          </span>
+          {meal.calories && (
+            <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
+              <Flame className="w-3 h-3" />
+              {meal.calories} kcal
+              {meal.servings && meal.servings > 1 && (
+                <span className="text-orange-500/60">/{meal.servings} srv</span>
+              )}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
           onClick={handleDelete}
           disabled={deleting}
           className="ml-1 p-1 rounded text-slate-700 hover:text-red-400 transition-colors flex-shrink-0"
         >
-          {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          {deleting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="w-3.5 h-3.5" />
+          )}
         </button>
-      </button>
+      </div>
 
       {/* Expanded body */}
       {expanded && (

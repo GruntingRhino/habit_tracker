@@ -133,23 +133,52 @@ export default async function DashboardPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <p className="text-slate-400 text-sm">{dateLabel}</p>
-          <h1 className="text-2xl font-bold text-slate-100 mt-0.5">
+          <p className="text-xs font-medium tracking-widest uppercase mb-1.5" style={{ color: "#334d6e" }}>
+            {dateLabel}
+          </p>
+          <h1
+            className="text-2xl font-bold"
+            style={{
+              fontFamily: "'Syne', sans-serif",
+              background: "linear-gradient(135deg, #c8deff 0%, #93b8ff 60%, #7eb3ff 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}
+          >
             Dashboard
           </h1>
         </div>
         <div className="flex items-center gap-3">
           {streak > 0 && (
-            <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-1.5">
-              <Flame className="w-4 h-4 text-orange-400" />
-              <span className="text-orange-400 text-sm font-semibold">
+            <div
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+              style={{
+                background: "rgba(251, 146, 60, 0.08)",
+                border: "1px solid rgba(251, 146, 60, 0.2)",
+              }}
+            >
+              <Flame className="w-4 h-4" style={{ color: "#fb923c" }} />
+              <span className="text-sm font-semibold" style={{ color: "#fb923c" }}>
                 {streak} day streak
               </span>
             </div>
           )}
           <Link
             href="/entry"
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all duration-150"
+            style={{
+              background: "linear-gradient(135deg, #4f72ff 0%, #3d5ee6 100%)",
+              boxShadow: "0 0 16px rgba(79, 114, 255, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = "0 0 24px rgba(79, 114, 255, 0.45), 0 2px 8px rgba(0,0,0,0.3)";
+              (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = "0 0 16px rgba(79, 114, 255, 0.3), 0 2px 8px rgba(0,0,0,0.3)";
+              (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+            }}
           >
             <PlusCircle className="w-4 h-4" />
             {todayEntry ? "Update Entry" : "Log Today"}

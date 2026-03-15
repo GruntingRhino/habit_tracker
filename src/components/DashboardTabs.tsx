@@ -170,7 +170,7 @@ function TrendBadge({ trend }: { trend: string }) {
     return <span className="flex items-center gap-1 text-green-400 text-xs"><TrendingUp className="w-3.5 h-3.5" />Improving</span>;
   if (trend === "declining")
     return <span className="flex items-center gap-1 text-red-400 text-xs"><TrendingDown className="w-3.5 h-3.5" />Declining</span>;
-  return <span className="flex items-center gap-1 text-slate-400 text-xs"><Minus className="w-3.5 h-3.5" />Stable</span>;
+  return <span className="flex items-center gap-1 text-xs" style={{ color: "#334d6e" }}><Minus className="w-3.5 h-3.5" />Stable</span>;
 }
 
 function getScoreColor(score: number) {
@@ -187,13 +187,13 @@ interface CustomLineTooltipProps {
 function CustomLineTooltip({ active, payload, label }: CustomLineTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg px-3 py-2 text-xs shadow-xl">
-      <p className="text-slate-400 mb-2 font-medium">{label}</p>
+    <div className="rounded-lg px-3 py-2 text-xs shadow-xl" style={{ background: "#0c1830", border: "1px solid rgba(40,76,140,0.3)" }}>
+      <p className="mb-2 font-medium" style={{ color: "#6b8cb8" }}>{label}</p>
       {payload.map((p) => (
         <div key={p.name} className="flex items-center gap-2 mb-0.5">
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-slate-400 capitalize">{p.name}:</span>
-          <span className="text-slate-100 font-semibold">{p.value.toFixed(1)}</span>
+          <span className="capitalize" style={{ color: "#4a6a90" }}>{p.name}:</span>
+          <span className="font-semibold" style={{ color: "#c8deff" }}>{p.value.toFixed(1)}</span>
         </div>
       ))}
     </div>
@@ -208,8 +208,8 @@ interface CustomBarTooltipProps {
 function CustomBarTooltip({ active, payload, label }: CustomBarTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg px-3 py-2 text-xs">
-      <p className="text-slate-400 mb-1">{label}</p>
+    <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#0c1830", border: "1px solid rgba(40,76,140,0.3)" }}>
+      <p className="mb-1" style={{ color: "#6b8cb8" }}>{label}</p>
       <p className="text-blue-400 font-semibold">{Math.round(payload[0].value * 100)}% completion</p>
     </div>
   );
@@ -223,10 +223,10 @@ function ProgressionTooltip({ active, payload }: ProgressionTooltipProps) {
   if (!active || !payload?.length) return null;
   const p = payload[0];
   return (
-    <div className="bg-[#0f172a] border border-[#1e293b] rounded-lg px-3 py-2 text-xs shadow-xl">
-      <p className="text-slate-400 mb-1">{new Date(p.payload.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+    <div className="rounded-lg px-3 py-2 text-xs shadow-xl" style={{ background: "#0c1830", border: "1px solid rgba(40,76,140,0.3)" }}>
+      <p className="mb-1" style={{ color: "#6b8cb8" }}>{new Date(p.payload.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
       <p className="text-blue-400 font-semibold">{p.value} lbs</p>
-      {p.payload.sets && p.payload.reps && <p className="text-slate-500">{p.payload.sets}×{p.payload.reps}</p>}
+      {p.payload.sets && p.payload.reps && <p style={{ color: "#2d4a6a" }}>{p.payload.sets}×{p.payload.reps}</p>}
     </div>
   );
 }
@@ -276,20 +276,20 @@ function AnalyticsTab() {
       {/* Score cards */}
       {latest && (
         <section className="mb-8">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">Current Scores</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "#3d5a7a", fontFamily: "'Syne', sans-serif" }}>Current Scores</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {SCORE_META.map(({ key, label, color, icon: Icon }) => {
               const score = latest[key];
               const trend = trends[key as keyof Trends];
               return (
-                <div key={key} className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-4 text-center">
+                <div key={key} className="rounded-xl p-4 text-center" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-center mb-2">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: color + "20" }}>
                       <Icon className="w-3.5 h-3.5" style={{ color }} />
                     </div>
                   </div>
-                  <p className={`text-2xl font-bold mb-0.5 ${getScoreColor(score)}`}>{score.toFixed(1)}</p>
-                  <p className="text-slate-500 text-xs mb-1">{label}</p>
+                  <p className="text-2xl font-bold mb-0.5" style={{ color: getScoreColor(score), fontFamily: "'Syne', sans-serif" }}>{score.toFixed(1)}</p>
+                  <p className="text-xs mb-1" style={{ color: "#2d4a6a" }}>{label}</p>
                   <TrendBadge trend={trend} />
                 </div>
               );
@@ -301,15 +301,15 @@ function AnalyticsTab() {
       {/* Line chart */}
       {lineData.length > 1 && (
         <section className="mb-6">
-          <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-            <h2 className="font-semibold text-slate-100 mb-4">Score Trends (Last 30 Days)</h2>
+          <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+            <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Score Trends (Last 30 Days)</h2>
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={lineData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="date" tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis domain={[0, 10]} tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,60,110,0.4)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: "#2d4a6a", fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis domain={[0, 10]} tick={{ fill: "#2d4a6a", fontSize: 10 }} tickLine={false} axisLine={false} />
                 <Tooltip content={<CustomLineTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "11px", color: "#94a3b8" }} />
+                <Legend wrapperStyle={{ fontSize: "11px", color: "#4a6a90" }} />
                 {SCORE_META.map(({ key, color }) => (
                   <Line key={key} type="monotone" dataKey={key} stroke={color} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                 ))}
@@ -321,29 +321,29 @@ function AnalyticsTab() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Radar */}
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-          <h2 className="font-semibold text-slate-100 mb-4">This Week&apos;s Radar</h2>
+        <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>This Week&apos;s Radar</h2>
           <ResponsiveContainer width="100%" height={260}>
             <RadarChart data={radarData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-              <PolarGrid stroke="#1e293b" />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+              <PolarGrid stroke="rgba(30,60,110,0.5)" />
+              <PolarAngleAxis dataKey="subject" tick={{ fill: "#4a6a90", fontSize: 11 }} />
               <Radar name="Score" dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} strokeWidth={2} />
-              <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px", fontSize: "12px", color: "#f1f5f9" }} />
+              <Tooltip contentStyle={{ backgroundColor: "#0c1830", border: "1px solid rgba(40,76,140,0.3)", borderRadius: "8px", fontSize: "12px", color: "#c8deff" }} />
             </RadarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Habit bar */}
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-          <h2 className="font-semibold text-slate-100 mb-4">Habit Completion Rates</h2>
+        <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Habit Completion Rates</h2>
           {habitBarData.length === 0 ? (
-            <div className="flex items-center justify-center h-48"><p className="text-slate-500 text-sm">No habits yet</p></div>
+            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No habits yet</p></div>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={habitBarData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                <XAxis type="number" domain={[0, 1]} tickFormatter={(v: number) => `${Math.round(v * 100)}%`} tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} tickLine={false} axisLine={false} width={80} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,60,110,0.4)" horizontal={false} />
+                <XAxis type="number" domain={[0, 1]} tickFormatter={(v: number) => `${Math.round(v * 100)}%`} tick={{ fill: "#2d4a6a", fontSize: 10 }} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "#4a6a90", fontSize: 11 }} tickLine={false} axisLine={false} width={80} />
                 <Tooltip content={<CustomBarTooltip />} />
                 <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
                   {habitBarData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
@@ -356,10 +356,10 @@ function AnalyticsTab() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Project pie */}
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-          <h2 className="font-semibold text-slate-100 mb-4">Project Status</h2>
+        <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Project Status</h2>
           {pieData.length === 0 ? (
-            <div className="flex items-center justify-center h-48"><p className="text-slate-500 text-sm">No projects yet</p></div>
+            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No projects yet</p></div>
           ) : (
             <div className="flex items-center gap-6">
               <ResponsiveContainer width="50%" height={200}>
@@ -367,19 +367,19 @@ function AnalyticsTab() {
                   <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" strokeWidth={0}>
                     {pieData.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px", fontSize: "12px", color: "#f1f5f9" }} />
+                  <Tooltip contentStyle={{ backgroundColor: "#0c1830", border: "1px solid rgba(40,76,140,0.3)", borderRadius: "8px", fontSize: "12px", color: "#c8deff" }} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-3">
                 {pieData.map((entry, index) => (
                   <div key={entry.name} className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
-                    <span className="text-slate-400 text-sm">{entry.name}</span>
-                    <span className="text-slate-100 font-semibold text-sm ml-auto">{entry.value}</span>
+                    <span className="text-sm" style={{ color: "#4a6a90" }}>{entry.name}</span>
+                    <span className="font-semibold text-sm ml-auto" style={{ color: "#c8deff" }}>{entry.value}</span>
                   </div>
                 ))}
-                <div className="pt-2 border-t border-[#1e293b]">
-                  <p className="text-slate-500 text-xs">{projectStats.taskCompletionRate}% task completion rate</p>
+                <div className="pt-2" style={{ borderTop: "1px solid rgba(30,60,110,0.4)" }}>
+                  <p className="text-xs" style={{ color: "#2d4a6a" }}>{projectStats.taskCompletionRate}% task completion rate</p>
                 </div>
               </div>
             </div>
@@ -387,34 +387,34 @@ function AnalyticsTab() {
         </div>
 
         {/* Insights */}
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-          <h2 className="font-semibold text-slate-100 mb-4">Insights</h2>
+        <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Insights</h2>
           <div className="space-y-3">
             {habitStats.length > 0 && (() => {
               const top = [...habitStats].sort((a, b) => b.completionRate - a.completionRate)[0];
               return (
-                <div className="flex gap-3 p-3 bg-green-500/5 border border-green-500/10 rounded-lg">
-                  <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0"><span className="text-base">🏆</span></div>
+                <div className="flex gap-3 p-3 rounded-lg" style={{ background: "rgba(16,217,160,0.05)", border: "1px solid rgba(16,217,160,0.12)" }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(16,217,160,0.1)" }}><span className="text-base">🏆</span></div>
                   <div>
-                    <p className="text-slate-300 text-sm font-medium">Best Habit</p>
-                    <p className="text-slate-400 text-xs"><span className="text-slate-200">{top.name}</span> — {Math.round(top.completionRate * 100)}% completion</p>
+                    <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Best Habit</p>
+                    <p className="text-xs" style={{ color: "#4a6a90" }}><span style={{ color: "#c8deff" }}>{top.name}</span> — {Math.round(top.completionRate * 100)}% completion</p>
                   </div>
                 </div>
               );
             })()}
-            <div className="flex gap-3 p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0"><span className="text-base">📊</span></div>
+            <div className="flex gap-3 p-3 rounded-lg" style={{ background: "rgba(79,114,255,0.05)", border: "1px solid rgba(79,114,255,0.12)" }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(79,114,255,0.1)" }}><span className="text-base">📊</span></div>
               <div>
-                <p className="text-slate-300 text-sm font-medium">Project Tasks</p>
-                <p className="text-slate-400 text-xs">{projectStats.completedTasks} of {projectStats.totalTasks} tasks completed ({projectStats.taskCompletionRate}%)</p>
+                <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Project Tasks</p>
+                <p className="text-xs" style={{ color: "#4a6a90" }}>{projectStats.completedTasks} of {projectStats.totalTasks} tasks completed ({projectStats.taskCompletionRate}%)</p>
               </div>
             </div>
             {latest && (
-              <div className="flex gap-3 p-3 bg-purple-500/5 border border-purple-500/10 rounded-lg">
-                <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0"><span className="text-base">📈</span></div>
+              <div className="flex gap-3 p-3 rounded-lg" style={{ background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.12)" }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(167,139,250,0.1)" }}><span className="text-base">📈</span></div>
                 <div>
-                  <p className="text-slate-300 text-sm font-medium">Overall Score</p>
-                  <p className="text-slate-400 text-xs">Current: <span className={`font-semibold ${getScoreColor(latest.overall)}`}>{latest.overall.toFixed(1)}/10</span> — {trends.overall}</p>
+                  <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Overall Score</p>
+                  <p className="text-xs" style={{ color: "#4a6a90" }}>Current: <span className="font-semibold" style={{ color: getScoreColor(latest.overall) }}>{latest.overall.toFixed(1)}/10</span> — {trends.overall}</p>
                 </div>
               </div>
             )}
@@ -460,13 +460,18 @@ function ProgressionTab() {
   return (
     <div className="flex gap-6">
       <div className="w-52 flex-shrink-0">
-        <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-3">Exercises</p>
+        <p className="text-xs uppercase tracking-widest font-medium mb-3" style={{ color: "#2d4a6a", fontFamily: "'Syne', sans-serif" }}>Exercises</p>
         <div className="space-y-1">
           {progressions.map((p) => (
             <button key={p.exerciseName} onClick={() => setSelectedExercise(p.exerciseName)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${selectedExercise === p.exerciseName ? "bg-blue-600/15 text-blue-300 border border-blue-500/20" : "text-slate-400 hover:text-slate-100 hover:bg-[#1e293b]"}`}>
+              className="w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150"
+              style={selectedExercise === p.exerciseName
+                ? { background: "linear-gradient(135deg, rgba(79,114,255,0.18) 0%, rgba(79,114,255,0.06) 100%)", border: "1px solid rgba(79,114,255,0.28)", color: "#a8c4ff" }
+                : { border: "1px solid transparent", color: "#4a6a90" }}
+              onMouseEnter={(e) => { if (selectedExercise !== p.exerciseName) { (e.currentTarget as HTMLElement).style.background = "rgba(18,36,66,0.7)"; (e.currentTarget as HTMLElement).style.color = "#c8deff"; } }}
+              onMouseLeave={(e) => { if (selectedExercise !== p.exerciseName) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#4a6a90"; } }}>
               <p className="font-medium truncate">{p.exerciseName}</p>
-              <p className="text-xs text-slate-600 mt-0.5">{p.entries.filter((e) => e.weight).length} sessions</p>
+              <p className="text-xs mt-0.5" style={{ color: "#1e3050" }}>{p.entries.filter((e) => e.weight).length} sessions</p>
             </button>
           ))}
         </div>
@@ -475,44 +480,44 @@ function ProgressionTab() {
         {current && chartData.length > 0 ? (
           <>
             <div className="grid grid-cols-3 gap-3 mb-5">
-              <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-slate-100">{lastWeight}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Latest (lbs)</p>
+              <div className="rounded-xl p-3 text-center" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+                <p className="text-xl font-bold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>{lastWeight}</p>
+                <p className="text-xs mt-0.5" style={{ color: "#2d4a6a" }}>Latest (lbs)</p>
               </div>
-              <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-slate-100">{maxWeight}</p>
-                <p className="text-xs text-slate-500 mt-0.5">All-time Max</p>
+              <div className="rounded-xl p-3 text-center" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+                <p className="text-xl font-bold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>{maxWeight}</p>
+                <p className="text-xs mt-0.5" style={{ color: "#2d4a6a" }}>All-time Max</p>
               </div>
-              <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-center">
-                <p className={`text-xl font-bold ${change > 0 ? "text-green-400" : change < 0 ? "text-red-400" : "text-slate-400"}`}>{change > 0 ? "+" : ""}{change}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Total Change</p>
+              <div className="rounded-xl p-3 text-center" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+                <p className="text-xl font-bold" style={{ color: change > 0 ? "#10d9a0" : change < 0 ? "#ff4d6a" : "#4a6a90", fontFamily: "'Syne', sans-serif" }}>{change > 0 ? "+" : ""}{change}</p>
+                <p className="text-xs mt-0.5" style={{ color: "#2d4a6a" }}>Total Change</p>
               </div>
             </div>
-            <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-slate-100 mb-4">{current.exerciseName} — Weight Progression</h3>
+            <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+              <h3 className="text-sm font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>{current.exerciseName} — Weight Progression</h3>
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="dateLabel" tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <YAxis domain={[Math.max(0, minWeight - 10), maxWeight + 10]} tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,60,110,0.4)" vertical={false} />
+                  <XAxis dataKey="dateLabel" tick={{ fill: "#2d4a6a", fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <YAxis domain={[Math.max(0, minWeight - 10), maxWeight + 10]} tick={{ fill: "#2d4a6a", fontSize: 10 }} tickLine={false} axisLine={false} />
                   <Tooltip content={<ProgressionTooltip />} />
-                  <Line type="monotone" dataKey="weight" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: "#3b82f6", r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="weight" stroke="#4f72ff" strokeWidth={2.5} dot={{ fill: "#4f72ff", r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-4 bg-[#0f172a] border border-[#1e293b] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-4 px-4 py-2 border-b border-[#1e293b] text-xs text-slate-500 uppercase tracking-wide font-medium">
+            <div className="mt-4 rounded-xl overflow-hidden" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+              <div className="grid grid-cols-4 px-4 py-2 text-xs uppercase tracking-widest font-medium" style={{ borderBottom: "1px solid rgba(30,60,110,0.4)", color: "#2d4a6a" }}>
                 <span>Date</span><span>Weight</span><span>Sets × Reps</span><span>Routine</span>
               </div>
-              <div className="divide-y divide-[#1e293b] max-h-48 overflow-y-auto">
+              <div className="max-h-48 overflow-y-auto" style={{ borderColor: "rgba(30,60,110,0.3)" }}>
                 {[...chartData].reverse().map((d, i) => {
                   const entry = current.entries.find((e) => e.date === d.date);
                   return (
-                    <div key={i} className="grid grid-cols-4 px-4 py-2.5 text-xs">
-                      <span className="text-slate-400">{new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                      <span className="text-blue-400 font-semibold">{d.weight} lbs</span>
-                      <span className="text-slate-500">{d.sets && d.reps ? `${d.sets}×${d.reps}` : "—"}</span>
-                      <span className="text-slate-600 truncate">{entry?.routineName ?? "—"}</span>
+                    <div key={i} className="grid grid-cols-4 px-4 py-2.5 text-xs" style={{ borderBottom: "1px solid rgba(20,40,75,0.5)" }}>
+                      <span style={{ color: "#4a6a90" }}>{new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                      <span className="font-semibold" style={{ color: "#4f72ff" }}>{d.weight} lbs</span>
+                      <span style={{ color: "#2d4a6a" }}>{d.sets && d.reps ? `${d.sets}×${d.reps}` : "—"}</span>
+                      <span className="truncate" style={{ color: "#1e3050" }}>{entry?.routineName ?? "—"}</span>
                     </div>
                   );
                 })}
@@ -521,8 +526,8 @@ function ProgressionTab() {
           </>
         ) : (
           <div className="flex flex-col items-center justify-center h-48 text-center">
-            <p className="text-slate-400 text-sm">No weight data for this exercise</p>
-            <p className="text-slate-600 text-xs mt-1">Log workouts with weight to see progression</p>
+            <p className="text-sm" style={{ color: "#4a6a90" }}>No weight data for this exercise</p>
+            <p className="text-xs mt-1" style={{ color: "#1e3050" }}>Log workouts with weight to see progression</p>
           </div>
         )}
       </div>
@@ -545,9 +550,26 @@ export default function DashboardTabs(props: DashboardTabsProps) {
   const tabBtn = useCallback((id: Tab, label: string, Icon: LucideIcon) => (
     <button
       onClick={() => setTab(id)}
-      className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-        tab === id ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-100"
-      }`}
+      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150"
+      style={
+        tab === id
+          ? {
+              background: "linear-gradient(135deg, rgba(79,114,255,0.22) 0%, rgba(79,114,255,0.1) 100%)",
+              border: "1px solid rgba(79,114,255,0.35)",
+              color: "#a8c4ff",
+              boxShadow: "0 0 12px rgba(79,114,255,0.15)",
+            }
+          : {
+              border: "1px solid transparent",
+              color: "#3d5a7a",
+            }
+      }
+      onMouseEnter={(e) => {
+        if (tab !== id) (e.currentTarget as HTMLElement).style.color = "#6b8cb8";
+      }}
+      onMouseLeave={(e) => {
+        if (tab !== id) (e.currentTarget as HTMLElement).style.color = "#3d5a7a";
+      }}
     >
       <Icon className="w-3.5 h-3.5" />
       {label}
@@ -557,7 +579,13 @@ export default function DashboardTabs(props: DashboardTabsProps) {
   return (
     <>
       {/* Tab nav */}
-      <div className="flex gap-1 bg-[#0f172a] border border-[#1e293b] rounded-xl p-1 mb-6 w-fit">
+      <div
+        className="flex gap-1 rounded-xl p-1 mb-6 w-fit"
+        style={{
+          background: "linear-gradient(135deg, rgba(9,18,34,0.95) 0%, rgba(6,13,28,0.9) 100%)",
+          border: "1px solid rgba(40,76,140,0.25)",
+        }}
+      >
         {tabBtn("dashboard", "Dashboard", LayoutDashboard)}
         {tabBtn("analytics", "Analytics", BarChart3)}
         {tabBtn("progression", "Progression", Dumbbell)}
@@ -578,13 +606,13 @@ export default function DashboardTabs(props: DashboardTabsProps) {
             <>
               {/* Score Cards */}
               <section className="mb-8">
-                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">
+                <h2 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "#3d5a7a", fontFamily: "'Syne', sans-serif" }}>
                   Performance Scores
-                  <span className="text-slate-600 font-normal ml-2 normal-case">— click any score to see analysis</span>
+                  <span className="font-normal ml-2 normal-case" style={{ color: "#27415e" }}>— click any score to see analysis</span>
                 </h2>
                 <DashboardScores scores={scores as ScoreData[]} />
                 {latestScoreDate && (
-                  <p className="text-slate-500 text-xs mt-2">
+                  <p className="text-xs mt-2" style={{ color: "#2d4a6a" }}>
                     Last entry: {new Date(latestScoreDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 )}
@@ -594,14 +622,20 @@ export default function DashboardTabs(props: DashboardTabsProps) {
               <div className="flex gap-3 mb-6">
                 <Link
                   href="/meals"
-                  className="flex items-center gap-2 bg-[#0f172a] border border-[#1e293b] hover:border-[#334155] rounded-xl px-5 py-3 text-sm font-medium text-slate-300 hover:text-slate-100 transition-colors"
+                  className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-all duration-150"
+                  style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)", color: "#6b8cb8" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(79,114,255,0.3)"; (e.currentTarget as HTMLElement).style.color = "#c8deff"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(40,76,140,0.22)"; (e.currentTarget as HTMLElement).style.color = "#6b8cb8"; }}
                 >
                   <Utensils className="w-4 h-4 text-orange-400" />
                   Meals
                 </Link>
                 <Link
                   href="/weights"
-                  className="flex items-center gap-2 bg-[#0f172a] border border-[#1e293b] hover:border-[#334155] rounded-xl px-5 py-3 text-sm font-medium text-slate-300 hover:text-slate-100 transition-colors"
+                  className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-all duration-150"
+                  style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)", color: "#6b8cb8" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(79,114,255,0.3)"; (e.currentTarget as HTMLElement).style.color = "#c8deff"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(40,76,140,0.22)"; (e.currentTarget as HTMLElement).style.color = "#6b8cb8"; }}
                 >
                   <Dumbbell className="w-4 h-4 text-blue-400" />
                   Routines
@@ -610,31 +644,33 @@ export default function DashboardTabs(props: DashboardTabsProps) {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Habits */}
-                <section className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
+                <section className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-semibold text-slate-100">
+                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
                       Habits
-                      {entryDate && <span className="text-slate-500 text-xs font-normal ml-2">({new Date(entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</span>}
+                      {entryDate && <span className="text-xs font-normal ml-2" style={{ color: "#2d4a6a" }}>({new Date(entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</span>}
                     </h2>
-                    <Link href="/habits" className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1">
+                    <Link href="/habits" className="text-xs flex items-center gap-1 transition-colors" style={{ color: "#4f72ff" }}
+                      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+                      onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}>
                       View all <ArrowRight className="w-3 h-3" />
                     </Link>
                   </div>
                   {habits.length === 0 ? (
                     <div className="py-6 text-center">
-                      <p className="text-slate-500 text-sm">No habits yet</p>
-                      <Link href="/habits" className="text-blue-400 text-sm hover:text-blue-300 mt-1 inline-block">Add your first habit</Link>
+                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No habits yet</p>
+                      <Link href="/habits" className="text-sm mt-1 inline-block transition-colors" style={{ color: "#4f72ff" }}>Add your first habit</Link>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {habits.map((habit) => (
-                        <div key={habit.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[#0a0f1e]/50">
+                        <div key={habit.id} className="flex items-center gap-3 p-2.5 rounded-lg" style={{ background: "rgba(6,13,28,0.6)" }}>
                           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: habit.color }} />
                           {habit.completed
                             ? <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-                            : <Circle className="w-4 h-4 text-slate-600 flex-shrink-0" />}
-                          <span className={`text-sm flex-1 ${habit.completed ? "text-slate-400 line-through" : "text-slate-200"}`}>{habit.name}</span>
-                          <span className="text-slate-600 text-xs capitalize">{habit.category}</span>
+                            : <Circle className="w-4 h-4 flex-shrink-0" style={{ color: "#1e3050" }} />}
+                          <span className={`text-sm flex-1 ${habit.completed ? "line-through" : ""}`} style={{ color: habit.completed ? "#334d6e" : "#c8deff" }}>{habit.name}</span>
+                          <span className="text-xs capitalize" style={{ color: "#2d4a6a" }}>{habit.category}</span>
                         </div>
                       ))}
                     </div>
@@ -642,17 +678,19 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                 </section>
 
                 {/* Projects */}
-                <section className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
+                <section className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-semibold text-slate-100">Active Projects</h2>
-                    <Link href="/projects" className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1">
+                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Active Projects</h2>
+                    <Link href="/projects" className="text-xs flex items-center gap-1 transition-colors" style={{ color: "#4f72ff" }}
+                      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+                      onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}>
                       View all <ArrowRight className="w-3 h-3" />
                     </Link>
                   </div>
                   {projects.length === 0 ? (
                     <div className="py-6 text-center">
-                      <p className="text-slate-500 text-sm">No active projects</p>
-                      <Link href="/projects" className="text-blue-400 text-sm hover:text-blue-300 mt-1 inline-block">Create a project</Link>
+                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No active projects</p>
+                      <Link href="/projects" className="text-sm mt-1 inline-block transition-colors" style={{ color: "#4f72ff" }}>Create a project</Link>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -664,16 +702,18 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                           low: "text-green-400 bg-green-500/10",
                         };
                         return (
-                          <Link key={project.id} href={`/projects/${project.id}`} className="block p-3 rounded-lg bg-[#0a0f1e]/50 hover:bg-[#0a0f1e] transition-colors">
+                          <Link key={project.id} href={`/projects/${project.id}`} className="block p-3 rounded-lg transition-all duration-150" style={{ background: "rgba(6,13,28,0.6)" }}
+                            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(6,13,28,0.9)")}
+                            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(6,13,28,0.6)")}>
                             <div className="flex items-start justify-between gap-2 mb-2">
-                              <span className="text-slate-100 text-sm font-medium line-clamp-1">{project.title}</span>
+                              <span className="text-sm font-medium line-clamp-1" style={{ color: "#c8deff" }}>{project.title}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 capitalize ${priorityColors[project.priority] ?? "text-slate-400 bg-slate-500/10"}`}>{project.priority}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <div className="flex-1 h-1.5 bg-[#1e293b] rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(20,40,70,0.8)" }}>
+                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: "linear-gradient(90deg, #4f72ff, #22d3ee)" }} />
                               </div>
-                              <span className="text-slate-500 text-xs flex-shrink-0">{project.doneTasks}/{project.totalTasks} tasks</span>
+                              <span className="text-xs flex-shrink-0" style={{ color: "#2d4a6a" }}>{project.doneTasks}/{project.totalTasks} tasks</span>
                             </div>
                           </Link>
                         );
@@ -684,12 +724,12 @@ export default function DashboardTabs(props: DashboardTabsProps) {
               </div>
 
               {entryNotes && (
-                <section className="mt-6 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-                  <h2 className="font-semibold text-slate-100 mb-3">
+                <section className="mt-6 rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+                  <h2 className="font-semibold mb-3" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
                     Last Entry Notes
-                    {entryDate && <span className="text-slate-500 text-xs font-normal ml-2">({new Date(entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</span>}
+                    {entryDate && <span className="text-xs font-normal ml-2" style={{ color: "#2d4a6a" }}>({new Date(entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</span>}
                   </h2>
-                  <p className="text-slate-400 text-sm leading-relaxed">{entryNotes}</p>
+                  <p className="text-sm leading-relaxed" style={{ color: "#6b8cb8" }}>{entryNotes}</p>
                 </section>
               )}
             </>

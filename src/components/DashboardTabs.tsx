@@ -157,10 +157,10 @@ const SCORE_META: {
   { key: "physical",   label: "Physical",   color: "#22c55e", icon: Activity },
   { key: "financial",  label: "Financial",  color: "#8b5cf6", icon: DollarSign },
   { key: "discipline", label: "Discipline", color: "#f59e0b", icon: RefreshCw },
+  { key: "overall",    label: "Overall",    color: "#14b8a6", icon: BarChart3 },
   { key: "focus",      label: "Focus",      color: "#3b82f6", icon: Brain },
   { key: "mental",     label: "Mental",     color: "#a78bfa", icon: ClipboardCheck },
   { key: "appearance", label: "Appearance", color: "#ec4899", icon: Star },
-  { key: "overall",    label: "Overall",    color: "#14b8a6", icon: BarChart3 },
 ];
 
 const PIE_COLORS = ["#3b82f6", "#1e293b", "#ef4444"];
@@ -800,20 +800,6 @@ export default function DashboardTabs(props: DashboardTabsProps) {
             />
           ) : (
             <>
-              {/* Score Cards */}
-              <section className="mb-8">
-                <h2 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "#3d5a7a", fontFamily: "'Syne', sans-serif" }}>
-                  Performance Scores
-                  <span className="font-normal ml-2 normal-case" style={{ color: "#27415e" }}>— click any score to see analysis</span>
-                </h2>
-                <DashboardScores scores={scores as ScoreData[]} />
-                {latestScoreDate && (
-                  <p className="text-xs mt-2" style={{ color: "#2d4a6a" }}>
-                    Last entry: {new Date(latestScoreDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  </p>
-                )}
-              </section>
-
               {/* Meals & Routines previews */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <MealsPreview />

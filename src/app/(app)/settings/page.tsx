@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import {
   User,
   Lock,
@@ -11,6 +12,7 @@ import {
   AlertCircle,
   Loader2,
   TestTube,
+  ArrowLeft,
 } from "lucide-react";
 
 interface SectionProps {
@@ -485,6 +487,11 @@ function DangerZone() {
 export default function SettingsPage() {
   return (
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-2xl mx-auto pb-20 lg:pb-6">
+      <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
+        <ArrowLeft className="w-4 h-4" /> Dashboard
+      </Link>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-100">Settings</h1>
         <p className="text-slate-400 text-sm mt-0.5">

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Utensils, Plus, X, Loader2, AlertCircle, ChevronDown, Trash2,
-  Flame, BookOpen, Coffee, Sun, Moon, Cookie,
+  Flame, BookOpen, Coffee, Sun, Moon, Cookie, ArrowLeft,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
@@ -373,6 +374,11 @@ export default function MealsPage() {
 
   return (
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-4xl mx-auto pb-20 lg:pb-6">
+      <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
+        <ArrowLeft className="w-4 h-4" /> Dashboard
+      </Link>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

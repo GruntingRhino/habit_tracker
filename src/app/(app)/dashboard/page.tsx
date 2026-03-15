@@ -133,9 +133,6 @@ export default async function DashboardPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <p className="text-xs font-medium tracking-widest uppercase mb-1.5" style={{ color: "#334d6e" }}>
-            {dateLabel}
-          </p>
           <h1
             className="text-2xl font-bold"
             style={{
@@ -146,8 +143,11 @@ export default async function DashboardPage() {
               backgroundClip: "text",
             }}
           >
-            Dashboard
+            GoodHabits
           </h1>
+          <p className="text-xs font-medium tracking-widest uppercase mt-1" style={{ color: "#334d6e" }}>
+            {dateLabel}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {streak > 0 && (

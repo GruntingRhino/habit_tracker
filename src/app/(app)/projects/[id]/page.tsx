@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   Sparkles,
@@ -291,7 +292,7 @@ function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: Task
         {/* AI effort estimate */}
         {effortHours !== undefined && effortLabel && (
           <span className={`text-xs px-1.5 py-0.5 rounded ${EFFORT_STYLES[effortLabel] ?? ""}`}>
-            ~{effortHours}h
+            {effortHours !== undefined && effortHours < 1 ? `~${Math.round(effortHours * 60)}m` : `~${effortHours}h`}
           </span>
         )}
 
@@ -618,13 +619,16 @@ export default function ProjectDetailPage() {
   return (
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto pb-20 lg:pb-6">
       {/* Back */}
-      <button
-        onClick={() => router.back()}
-        className="flex items-center gap-1.5 text-slate-400 hover:text-slate-100 text-sm mb-5 transition-colors"
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors"
+        style={{ color: "#3d5a7a" }}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}
       >
         <ArrowLeft className="w-4 h-4" />
-        Back to Projects
-      </button>
+        Dashboard
+      </Link>
 
       {/* Project header */}
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 mb-6">

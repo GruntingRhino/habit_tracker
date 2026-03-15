@@ -42,6 +42,7 @@ interface DailyEntryForm {
   moneySaved: number;
   incomeActivity: boolean;
   caloriesEaten: number;
+  rightWithGod: boolean;
   wakeTime: string;
   bedtime: string;
   notes: string;
@@ -195,6 +196,7 @@ const defaultForm: DailyEntryForm = {
   moneySaved: 0,
   incomeActivity: false,
   caloriesEaten: 0,
+  rightWithGod: false,
   wakeTime: "",
   bedtime: "",
   notes: "",
@@ -247,6 +249,7 @@ export default function EntryPage() {
             moneySaved: todayEntry.moneySaved ?? 0,
             incomeActivity: todayEntry.incomeActivity ?? false,
             caloriesEaten: todayEntry.caloriesEaten ?? 0,
+            rightWithGod: todayEntry.rightWithGod ?? false,
             wakeTime: todayEntry.wakeTime ?? "",
             bedtime: todayEntry.bedtime ?? "",
             notes: todayEntry.notes ?? "",
@@ -307,6 +310,7 @@ export default function EntryPage() {
         moneySaved: form.moneySaved || null,
         incomeActivity: form.incomeActivity,
         caloriesEaten: form.caloriesEaten || null,
+        rightWithGod: form.rightWithGod,
         wakeTime: form.wakeTime || null,
         bedtime: form.bedtime || null,
         notes: form.notes || null,
@@ -654,6 +658,29 @@ export default function EntryPage() {
                   Be honest. 9–10 requires an exceptional day.
                 </p>
               </FormField>
+
+              {/* Spiritual check */}
+              <div
+                onClick={() => setField("rightWithGod", !form.rightWithGod)}
+                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  form.rightWithGod
+                    ? "bg-amber-500/10 border-amber-500/30"
+                    : "bg-[#0a0f1e] border-[#334155] hover:border-[#475569]"
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                    form.rightWithGod ? "bg-amber-500" : "bg-[#1e293b]"
+                  }`}
+                >
+                  {form.rightWithGod && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                  )}
+                </div>
+                <p className={`text-sm font-medium ${form.rightWithGod ? "text-amber-400" : "text-slate-300"}`}>
+                  Are you right with God?
+                </p>
+              </div>
             </div>
           </FormSection>
         </div>

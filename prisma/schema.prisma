@@ -46,6 +46,7 @@ model DailyEntry {
   incomeActivity          Boolean  @default(false)
   workoutRoutineName      String?
   caloriesEaten           Int?
+  rightWithGod            Boolean  @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 

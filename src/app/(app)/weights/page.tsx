@@ -290,7 +290,7 @@ function LogWorkoutModal({
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-2">
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Weight (lbs)</label>
                       <input
@@ -739,10 +739,10 @@ export default function RoutinesPage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col md:flex-row h-full">
       {/* ── Left sidebar: routine list ── */}
-      <div className="w-60 flex-shrink-0 border-r border-[#1e293b] flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 py-4 border-b border-[#1e293b]">
+      <div className="w-full md:w-60 flex-shrink-0 border-b md:border-b-0 md:border-r border-[#1e293b] flex flex-col md:h-full">
+        <div className="flex items-center justify-between px-4 py-3 md:py-4 border-b border-[#1e293b]">
           <div className="flex items-center gap-2">
             <Dumbbell className="w-4 h-4 text-blue-400" />
             <h1 className="text-sm font-semibold text-slate-100">Routines</h1>
@@ -756,7 +756,7 @@ export default function RoutinesPage() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex md:flex-col flex-row overflow-x-auto md:overflow-x-hidden overflow-y-auto py-2 gap-1 px-2 md:px-0">
           {routines.length === 0 ? (
             <div className="px-4 py-6 text-center">
               <p className="text-slate-500 text-xs">No routines yet</p>
@@ -772,14 +772,14 @@ export default function RoutinesPage() {
               <button
                 key={r.id}
                 onClick={() => setSelectedId(r.id)}
-                className={`w-full text-left px-4 py-3 transition-colors ${
+                className={`flex-shrink-0 md:flex-shrink md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg md:rounded-none transition-colors ${
                   selectedId === r.id
-                    ? "bg-blue-600/10 border-r-2 border-blue-500 text-slate-100"
-                    : "text-slate-400 hover:text-slate-100 hover:bg-[#1e293b]"
+                    ? "bg-blue-600/10 md:border-r-2 border border-blue-500/40 md:border-blue-500 text-slate-100"
+                    : "text-slate-400 hover:text-slate-100 hover:bg-[#1e293b] border border-transparent"
                 }`}
               >
-                <p className="text-sm font-medium truncate">{r.name}</p>
-                <p className="text-xs text-slate-600 mt-0.5">
+                <p className="text-sm font-medium truncate whitespace-nowrap md:whitespace-normal">{r.name}</p>
+                <p className="text-xs text-slate-600 mt-0.5 hidden md:block">
                   {r.exercises.length} exercise{r.exercises.length !== 1 ? "s" : ""} ·{" "}
                   {r._count.sessions} logged
                 </p>
@@ -790,7 +790,7 @@ export default function RoutinesPage() {
       </div>
 
       {/* ── Right: detail panel ── */}
-      <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 lg:pb-6 flex flex-col">
         {selectedRoutine ? (
           <RoutineDetail
             key={selectedRoutine.id}

@@ -456,7 +456,7 @@ function DangerZone() {
 
 export default function SettingsPage() {
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="px-4 py-5 md:px-6 md:py-6 max-w-2xl mx-auto pb-20 lg:pb-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-100">Settings</h1>
         <p className="text-slate-400 text-sm mt-0.5">

@@ -19,7 +19,11 @@ const navLinks = [
   { href: "/projects",  label: "Projects",    icon: FolderKanban },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
 
@@ -61,7 +65,7 @@ export default function Sidebar() {
             backgroundClip: "text",
           }}
         >
-          Habit Intelligence
+          GoodHabits
         </span>
       </div>
 
@@ -74,7 +78,8 @@ export default function Sidebar() {
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 relative group"
+              onClick={onClose}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 relative"
               style={
                 isActive
                   ? {
@@ -144,6 +149,7 @@ export default function Sidebar() {
           </div>
           <Link
             href="/settings"
+            onClick={onClose}
             className="transition-colors"
             style={{ color: "#334d6e" }}
             title="Settings"

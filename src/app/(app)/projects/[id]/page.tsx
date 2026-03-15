@@ -616,7 +616,7 @@ export default function ProjectDetailPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto pb-20 lg:pb-6">
       {/* Back */}
       <button
         onClick={() => router.back()}

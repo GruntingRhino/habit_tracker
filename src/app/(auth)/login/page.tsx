@@ -108,7 +108,7 @@ export default function LoginPage() {
       />
 
       {/* ── Form content ──────────────────────────────────────────── */}
-      <div className="w-full max-w-md relative z-10">
+      <div className="w-full max-w-md relative z-10 px-4 sm:px-0">
         {/* Brand */}
         <div className="text-center mb-8">
           <div

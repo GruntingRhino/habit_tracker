@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import Sidebar from "@/components/Sidebar";
+import AppShell from "@/components/AppShell";
 
 export default async function AppLayout({
   children,
@@ -14,12 +14,5 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--background)" }}>
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto relative">
-        {children}
-      </main>
-    </div>
-  );
+  return <AppShell>{children}</AppShell>;
 }

@@ -282,7 +282,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="px-4 py-5 md:px-6 md:py-6 max-w-5xl mx-auto pb-20 lg:pb-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -301,7 +301,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-4 flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
             <Clock className="w-4 h-4 text-blue-400" />

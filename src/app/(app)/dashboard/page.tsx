@@ -1,20 +1,12 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import {
-  Star,
-  ArrowRight,
-  Flame,
-  CheckCircle2,
-  Circle,
-  PlusCircle,
-} from "lucide-react";
+import { Flame, PlusCircle } from "lucide-react";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import EmptyState from "@/components/EmptyState";
-import DashboardScores from "@/components/DashboardScores";
 import { format } from "date-fns";
-import type { ScoreData } from "@/components/DashboardScores";
+import DashboardTabs from "@/components/DashboardTabs";
+import type { DashboardTabsProps } from "@/components/DashboardTabs";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -36,20 +28,27 @@ export default async function DashboardPage() {
   const latestScore = recentScores[0] ?? null;
   const previousScore = recentScores[1] ?? null;
 
-  // Fetch today's entry
-  const todayEntry = await prisma.dailyEntry.findFirst({
-    where: {
-      userId,
-      date: today,
-    },
+  // Fetch latest entry (not necessarily today's)
+  const latestEntry = await prisma.dailyEntry.findFirst({
+    where: { userId },
+    orderBy: { date: "desc" },
   });
 
-  // Fetch active habits with today's logs
+  // Check if today's entry exists (for button label)
+  const todayEntry = await prisma.dailyEntry.findFirst({
+    where: { userId, date: today },
+  });
+
+  // Determine the date to use for habit logs (latest entry date or today)
+  const habitLogDate = latestEntry ? new Date(latestEntry.date) : today;
+  habitLogDate.setHours(0, 0, 0, 0);
+
+  // Fetch active habits with logs from the latest entry date
   const habits = await prisma.habit.findMany({
     where: { userId, isActive: true },
     include: {
       logs: {
-        where: { date: today },
+        where: { date: habitLogDate },
       },
     },
     orderBy: { createdAt: "asc" },
@@ -92,8 +91,42 @@ export default async function DashboardPage() {
   }
 
   const hasData = latestScore !== null;
-
   const dateLabel = format(new Date(), "EEEE, MMMM d, yyyy");
+
+  const tabsProps: DashboardTabsProps = {
+    dateLabel,
+    streak,
+    hasTodayEntry: !!todayEntry,
+    hasData,
+    scores: hasData
+      ? [
+          { key: "physical",   title: "Physical",   score: latestScore.physical   ?? 0, prevScore: previousScore?.physical   ?? undefined },
+          { key: "financial",  title: "Financial",  score: latestScore.financial  ?? 0, prevScore: previousScore?.financial  ?? undefined },
+          { key: "discipline", title: "Discipline", score: latestScore.discipline ?? 0, prevScore: previousScore?.discipline ?? undefined },
+          { key: "focus",      title: "Focus",      score: latestScore.focus      ?? 0, prevScore: previousScore?.focus      ?? undefined },
+          { key: "mental",     title: "Mental",     score: latestScore.mental     ?? 0, prevScore: previousScore?.mental     ?? undefined },
+          { key: "appearance", title: "Appearance", score: latestScore.appearance ?? 0, prevScore: previousScore?.appearance ?? undefined },
+          { key: "overall",    title: "Overall",    score: latestScore.overall    ?? 0, prevScore: previousScore?.overall    ?? undefined },
+        ]
+      : [],
+    latestScoreDate: latestScore ? latestScore.date.toISOString() : null,
+    habits: habits.map((h) => ({
+      id: h.id,
+      name: h.name,
+      category: h.category,
+      color: h.color,
+      completed: h.logs[0]?.completed === true,
+    })),
+    projects: projects.map((p) => ({
+      id: p.id,
+      title: p.title,
+      priority: p.priority,
+      totalTasks: p.tasks.length,
+      doneTasks: p.tasks.filter((t) => t.status === "completed").length,
+    })),
+    entryNotes: latestEntry?.notes ?? null,
+    entryDate: latestEntry ? latestEntry.date.toISOString() : null,
+  };
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -124,191 +157,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {!hasData ? (
-        <EmptyState
-          icon={Star}
-          title="No data yet"
-          description="Start tracking your habits and daily entries to see your performance scores here."
-          ctaLabel="Log your first entry"
-          ctaHref="/entry"
-        />
-      ) : (
-        <>
-          {/* Score Cards */}
-          <section className="mb-8">
-            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">
-              Performance Scores
-              <span className="text-slate-600 font-normal ml-2 normal-case">— click any score to see analysis</span>
-            </h2>
-            <DashboardScores
-              scores={[
-                { key: "physical",   title: "Physical",   score: latestScore.physical,   prevScore: previousScore?.physical },
-                { key: "financial",  title: "Financial",  score: latestScore.financial,  prevScore: previousScore?.financial },
-                { key: "discipline", title: "Discipline", score: latestScore.discipline, prevScore: previousScore?.discipline },
-                { key: "focus",      title: "Focus",      score: latestScore.focus,      prevScore: previousScore?.focus },
-                { key: "mental",     title: "Mental",     score: latestScore.mental,     prevScore: previousScore?.mental },
-                { key: "appearance", title: "Appearance", score: latestScore.appearance, prevScore: previousScore?.appearance },
-                { key: "overall",    title: "Overall",    score: latestScore.overall,    prevScore: previousScore?.overall },
-              ] satisfies ScoreData[]}
-            />
-            <p className="text-slate-500 text-xs mt-2">
-              Last updated:{" "}
-              {format(new Date(latestScore.date), "MMM d, yyyy")}
-            </p>
-          </section>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Today's Habits */}
-            <section className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-slate-100">
-                  Today&apos;s Habits
-                </h2>
-                <Link
-                  href="/habits"
-                  className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1"
-                >
-                  View all <ArrowRight className="w-3 h-3" />
-                </Link>
-              </div>
-
-              {habits.length === 0 ? (
-                <div className="py-6 text-center">
-                  <p className="text-slate-500 text-sm">No habits yet</p>
-                  <Link
-                    href="/habits"
-                    className="text-blue-400 text-sm hover:text-blue-300 mt-1 inline-block"
-                  >
-                    Add your first habit
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {habits.map((habit) => {
-                    const completed = habit.logs[0]?.completed === true;
-                    return (
-                      <div
-                        key={habit.id}
-                        className="flex items-center gap-3 p-2.5 rounded-lg bg-[#0a0f1e]/50"
-                      >
-                        <div
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: habit.color }}
-                        />
-                        {completed ? (
-                          <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-slate-600 flex-shrink-0" />
-                        )}
-                        <span
-                          className={`text-sm flex-1 ${
-                            completed
-                              ? "text-slate-400 line-through"
-                              : "text-slate-200"
-                          }`}
-                        >
-                          {habit.name}
-                        </span>
-                        <span className="text-slate-600 text-xs capitalize">
-                          {habit.category}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            {/* Active Projects */}
-            <section className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-slate-100">
-                  Active Projects
-                </h2>
-                <Link
-                  href="/projects"
-                  className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1"
-                >
-                  View all <ArrowRight className="w-3 h-3" />
-                </Link>
-              </div>
-
-              {projects.length === 0 ? (
-                <div className="py-6 text-center">
-                  <p className="text-slate-500 text-sm">No active projects</p>
-                  <Link
-                    href="/projects"
-                    className="text-blue-400 text-sm hover:text-blue-300 mt-1 inline-block"
-                  >
-                    Create a project
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {projects.map((project) => {
-                    const total = project.tasks.length;
-                    const done = project.tasks.filter(
-                      (t) => t.status === "completed"
-                    ).length;
-                    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-
-                    const priorityColors: Record<string, string> = {
-                      high: "text-red-400 bg-red-500/10",
-                      medium: "text-yellow-400 bg-yellow-500/10",
-                      low: "text-green-400 bg-green-500/10",
-                    };
-                    const priorityClass =
-                      priorityColors[project.priority] ??
-                      "text-slate-400 bg-slate-500/10";
-
-                    return (
-                      <Link
-                        key={project.id}
-                        href={`/projects/${project.id}`}
-                        className="block p-3 rounded-lg bg-[#0a0f1e]/50 hover:bg-[#0a0f1e] transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <span className="text-slate-100 text-sm font-medium line-clamp-1">
-                            {project.title}
-                          </span>
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 capitalize ${priorityClass}`}
-                          >
-                            {project.priority}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-[#1e293b] rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-500 rounded-full transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="text-slate-500 text-xs flex-shrink-0">
-                            {done}/{total} tasks
-                          </span>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </div>
-
-          {/* Quick insight from last entry */}
-          {todayEntry?.notes && (
-            <section className="mt-6 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
-              <h2 className="font-semibold text-slate-100 mb-3">
-                Today&apos;s Notes
-              </h2>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                {todayEntry.notes}
-              </p>
-            </section>
-          )}
-        </>
-      )}
+      <DashboardTabs {...tabsProps} />
     </div>
   );
 }

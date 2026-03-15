@@ -41,24 +41,8 @@ function formatMoney(value: number): string {
   }).format(value);
 }
 
-function buildFallbackProblem(score: number): string {
-  if (score <= 2) {
-    return `Score is ${score}/10 — this category collapsed today.`;
-  }
-  if (score <= 4) {
-    return `Score is ${score}/10 — this category is actively dragging your day down.`;
-  }
-  return `Score is ${score}/10 — better than failing, still far from tight execution.`;
-}
-
-function buildFallbackAction(score: number): string {
-  if (score <= 2) {
-    return "Treat this as a same-day correction. Fix the biggest miss in this category before tomorrow starts.";
-  }
-  if (score <= 4) {
-    return "Pick the single highest-leverage fix in this category and make it non-negotiable tomorrow.";
-  }
-  return "Review the scoring thresholds in this category and tighten the weakest 1–2 inputs first.";
+function fmtSteps(n: number) {
+  return n.toLocaleString("en-US");
 }
 
 export async function POST(req: NextRequest) {
@@ -71,7 +55,6 @@ export async function POST(req: NextRequest) {
   const userId = session.user.id;
   const since = subDays(new Date(), 30);
 
-  // Fetch 30 days of data
   const [entries, scores, habits] = await Promise.all([
     prisma.dailyEntry.findMany({
       where: { userId, date: { gte: since } },
@@ -83,11 +66,7 @@ export async function POST(req: NextRequest) {
     }),
     prisma.habit.findMany({
       where: { userId, isActive: true },
-      include: {
-        logs: {
-          where: { date: { gte: since } },
-        },
-      },
+      include: { logs: { where: { date: { gte: since } } } },
     }),
   ]);
 
@@ -112,6 +91,7 @@ export async function POST(req: NextRequest) {
           );
           return log?.completed === true;
         }).length / habits.length;
+
   const thirtyDayAvg =
     scores.length > 0
       ? Math.round(
@@ -127,15 +107,12 @@ export async function POST(req: NextRequest) {
   const problems: InsightProblem[] = [];
   const actions: InsightAction[] = [];
 
-  // Helper: count days meeting a condition
   function countDays(fn: (e: (typeof entries)[0]) => boolean) {
     return entries.filter(fn).length;
   }
 
+  // ── Physical ────────────────────────────────────────────────────────────────
   if (category === "physical") {
-    const badSleepDays = countDays(
-      (e) => (e.sleepHours ?? 0) < 7 || (e.sleepHours ?? 0) > 9
-    );
     const workoutAssessments = entries.map((entry) => ({
       entry,
       workout: assessWorkout({
@@ -146,432 +123,400 @@ export async function POST(req: NextRequest) {
         workoutDetails: entry.workoutDetails,
       }),
     }));
-    const noWorkoutDays = workoutAssessments.filter(
-      ({ workout }) => !workout.countsAsWorkout
-    ).length;
+
+    const noWorkoutDays = workoutAssessments.filter(({ workout }) => !workout.countsAsWorkout).length;
     const lowTrainingDays = workoutAssessments.filter(
-      ({ entry, workout }) =>
-        workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0) < 30
+      ({ entry, workout }) => workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0) < 30
     ).length;
     const weakWorkoutDays = workoutAssessments.filter(
       ({ workout }) => workout.performed && workout.qualityPoints < 2
     ).length;
-    const avgSleep =
-      n > 0
-        ? entries.reduce((s, e) => s + (e.sleepHours ?? 0), 0) / n
-        : 0;
+
+    const avgSleep = n > 0 ? entries.reduce((s, e) => s + (e.sleepHours ?? 0), 0) / n : 0;
     const avgEffectiveTraining =
       n > 0
         ? workoutAssessments.reduce(
             (sum, { entry, workout }) =>
-              sum +
-              workout.effectiveTrainingMinutes +
-              (entry.sportsTrainingMinutes ?? 0),
+              sum + workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0),
             0
           ) / n
         : 0;
+    const performedWorkouts = workoutAssessments.filter((w) => w.workout.performed);
+    const avgQualityPoints =
+      performedWorkouts.length > 0
+        ? performedWorkouts.reduce((s, w) => s + w.workout.qualityPoints, 0) / performedWorkouts.length
+        : 0;
     const latestTrainingLoad =
-      (latestWorkout?.effectiveTrainingMinutes ?? 0) +
-      (latestEntry?.sportsTrainingMinutes ?? 0);
+      (latestWorkout?.effectiveTrainingMinutes ?? 0) + (latestEntry?.sportsTrainingMinutes ?? 0);
+    const badSleepDays = countDays((e) => (e.sleepHours ?? 0) < 7 || (e.sleepHours ?? 0) > 9);
 
-    if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5) {
-      problems.push({
-        text: `Today: only ${(latestEntry.sleepHours ?? 0).toFixed(1)}h sleep. That nearly zeros out the sleep portion of physical scoring.`,
-      });
-    }
-    if (latestWorkout && latestWorkout.performed && latestWorkout.qualityPoints < 2) {
-      problems.push({
-        text: `Today: your workout only earned ${latestWorkout.qualityPoints.toFixed(1)}/3 credit — not enough duration or effort for real training points.`,
-      });
-    }
-    if (latestEntry && latestTrainingLoad < 30) {
-      problems.push({
-        text: `Today: total training load was only ${latestTrainingLoad} effective minutes. That is below the threshold for meaningful physical momentum.`,
-      });
-    }
-
-    if (badSleepDays > 10)
-      problems.push({
-        text: `Sleep out of optimal range (7.5–8.5h) on ${badSleepDays}/30 days — currently averaging ${avgSleep.toFixed(1)}h`,
-      });
-    if (noWorkoutDays > 15)
-      problems.push({
-        text: `No meaningful workout credit on ${noWorkoutDays}/30 days — less than 50% real training consistency`,
-      });
-    if (lowTrainingDays > 20)
-      problems.push({
-        text: `Total training load under 30 effective minutes on ${lowTrainingDays}/30 days — averaging ${avgEffectiveTraining.toFixed(0)} effective minutes`,
-      });
-    if (weakWorkoutDays > 8)
-      problems.push({
-        text: `Logged ${weakWorkoutDays}/30 workouts with weak structure or insufficient detail — vague sessions are capped hard`,
-      });
-
-    if (avgSleep < 7)
-      actions.push({
-        type: "advice",
-        text: "Set a consistent bedtime alarm — aim for 7.5–8.5h sleep. Use your bedtime field to track it.",
-      });
-    if (noWorkoutDays > 10)
-      actions.push({
-        type: "add_habit",
-        text: "Add a daily workout habit to enforce consistency",
-        habitName: "Daily Workout",
-        habitCategory: "physical",
-      });
-    if (lowTrainingDays > 15)
-      actions.push({
-        type: "add_habit",
-        text: "Add a 60-min training session habit (sport, run, or drill)",
-        habitName: "60-Min Training Session",
-        habitCategory: "physical",
-      });
-    if (weakWorkoutDays > 5)
-      actions.push({
-        type: "advice",
-        text: "When you choose a custom workout, log what you actually did. Sets, distance, rounds, or drills matter because vague entries are intentionally capped.",
-      });
+    // Hard problems (today)
     if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5)
-      actions.push({
-        type: "advice",
-        text: "Tonight's fix is simple: get to bed on time and stop trying to outscore bad sleep with effort tomorrow.",
-      });
+      problems.push({ text: `Today: only ${(latestEntry.sleepHours ?? 0).toFixed(1)}h sleep — this nearly zeros the sleep portion of physical scoring.` });
+    if (latestWorkout && latestWorkout.performed && latestWorkout.qualityPoints < 2)
+      problems.push({ text: `Today: workout earned ${latestWorkout.qualityPoints.toFixed(1)}/3 quality credit — not enough duration or effort for full training points.` });
+    if (latestEntry && latestTrainingLoad < 30)
+      problems.push({ text: `Today: only ${latestTrainingLoad} effective training minutes — below the 30-min threshold for meaningful physical credit.` });
+
+    // Hard 30-day problems
+    if (badSleepDays > 10)
+      problems.push({ text: `Sleep out of optimal range on ${badSleepDays}/30 days — averaging ${avgSleep.toFixed(1)}h (target: 7.5–8.5h).` });
+    if (noWorkoutDays > 15)
+      problems.push({ text: `No meaningful workout credit on ${noWorkoutDays}/30 days — under 50% real training consistency.` });
+    if (lowTrainingDays > 20)
+      problems.push({ text: `Training load under 30 min on ${lowTrainingDays}/30 days — averaging ${avgEffectiveTraining.toFixed(0)} effective minutes.` });
+    if (weakWorkoutDays > 8)
+      problems.push({ text: `${weakWorkoutDays}/30 workouts logged with weak structure or no detail — vague sessions are capped hard.` });
+
+    // Soft diagnostics (specific when score is 5–9 and hard checks didn't fire)
+    if (problems.length === 0 && currentScore < 10) {
+      if (avgSleep < 7.5)
+        problems.push({ text: `Averaging ${avgSleep.toFixed(1)}h sleep — the scoring target is 7.5–8.5h. You're ${(7.5 - avgSleep).toFixed(1)}h short per night, which compounds across 30 days.` });
+      if (avgEffectiveTraining < 45)
+        problems.push({ text: `Averaging ${avgEffectiveTraining.toFixed(0)} effective training minutes/day — 45–60+ min of quality work is where physical points peak.` });
+      if (avgQualityPoints > 0 && avgQualityPoints < 2.5)
+        problems.push({ text: `Workout quality averaging ${avgQualityPoints.toFixed(1)}/3 — you're showing up but not logging enough structure for full credit.` });
+      if (noWorkoutDays > 8)
+        problems.push({ text: `Skipped training on ${noWorkoutDays}/30 days (${Math.round((noWorkoutDays / Math.max(n, 1)) * 100)}% skip rate) — consistency is the first lever.` });
+    }
+
+    // Actions
+    if (avgSleep < 7)
+      actions.push({ type: "advice", text: "Set a fixed bedtime alarm. Aim for 7.5–8.5h. Use the bedtime field in your daily entry to track it." });
+    if (avgSleep >= 7 && avgSleep < 7.5)
+      actions.push({ type: "advice", text: `Move your bedtime ${Math.ceil((7.5 - avgSleep) * 60)} minutes earlier. That single change closes most of your sleep gap.` });
+    if (noWorkoutDays > 10)
+      actions.push({ type: "add_habit", text: "Add a daily workout habit to enforce training consistency", habitName: "Daily Workout", habitCategory: "physical" });
+    if (avgEffectiveTraining < 45)
+      actions.push({ type: "advice", text: "Add 15 minutes to each session. Push toward 45–60 min of actual work-dense training, not just time in the gym." });
+    if (avgQualityPoints > 0 && avgQualityPoints < 2.5)
+      actions.push({ type: "advice", text: "Log your actual sets, reps, weight, or rounds. Specific detail pushes quality past 2.5/3 — vague entries are intentionally capped." });
+    if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5)
+      actions.push({ type: "advice", text: "Tonight: get to bed on time. You cannot outscore bad sleep with effort the next day." });
   }
 
+  // ── Financial ───────────────────────────────────────────────────────────────
   if (category === "financial") {
     const noIncomeDays = countDays((e) => !e.incomeActivity);
     const highSpendDays = countDays((e) => (e.moneySpent ?? 0) > 100);
-    const noSavingsDays = countDays(
-      (e) => (e.moneySaved ?? 0) === 0 && (e.moneySpent ?? 0) > 0
-    );
+    const noSavingsDays = countDays((e) => (e.moneySaved ?? 0) === 0 && (e.moneySpent ?? 0) > 0);
     const latestSpent = latestEntry?.moneySpent ?? 0;
     const latestSaved = latestEntry?.moneySaved ?? 0;
+    const avgSpent = n > 0 ? entries.reduce((s, e) => s + (e.moneySpent ?? 0), 0) / n : 0;
+    const avgSaved = n > 0 ? entries.reduce((s, e) => s + (e.moneySaved ?? 0), 0) / n : 0;
+    const incomeDays = n - noIncomeDays;
 
-    if (latestEntry && !latestEntry.incomeActivity) {
-      problems.push({
-        text: "Today: no income-generating activity was logged, which hard-capped the financial score before spending was even considered.",
-      });
-    }
-    if (latestEntry && latestSpent > 0 && latestSaved === 0) {
-      problems.push({
-        text: `Today: you spent ${formatMoney(latestSpent)} and saved ${formatMoney(latestSaved)}. That is pure financial leakage.`,
-      });
-    }
-
-    if (noIncomeDays > 20)
-      problems.push({
-        text: `Did not log income-generating activity on ${noIncomeDays}/30 days — this alone caps your financial score`,
-      });
-    if (highSpendDays > 10)
-      problems.push({
-        text: `Spent over $100 on ${highSpendDays}/30 days — high discretionary spending`,
-      });
-    if (noSavingsDays > 15)
-      problems.push({
-        text: `Logged $0 saved on ${noSavingsDays}/30 days where money was spent`,
-      });
-
-    if (noIncomeDays > 10)
-      actions.push({
-        type: "add_habit",
-        text: "Add a daily income-activity habit (work on business, freelance, invest)",
-        habitName: "Income-Generating Activity",
-        habitCategory: "financial",
-      });
-    if (highSpendDays > 10)
-      actions.push({
-        type: "advice",
-        text: "Track every purchase. Aim to log something saved every day, even $5.",
-      });
-    if (noSavingsDays > 15)
-      actions.push({
-        type: "add_habit",
-        text: "Add a daily savings habit — even small amounts build the discipline score",
-        habitName: "Save Money Daily",
-        habitCategory: "financial",
-      });
+    // Hard problems (today)
     if (latestEntry && !latestEntry.incomeActivity)
-      actions.push({
-        type: "advice",
-        text: "Tomorrow needs one concrete money move before noon: outreach, sales, client work, shipping, or anything tied directly to revenue.",
-      });
+      problems.push({ text: "Today: no income-generating activity logged — this hard-caps financial score before spending is even considered." });
+    if (latestEntry && latestSpent > 0 && latestSaved === 0)
+      problems.push({ text: `Today: spent ${formatMoney(latestSpent)} and saved ${formatMoney(0)} — pure financial leakage.` });
+
+    // Hard 30-day problems
+    if (noIncomeDays > 20)
+      problems.push({ text: `No income activity on ${noIncomeDays}/30 days — missing it caps your financial ceiling entirely.` });
+    if (highSpendDays > 10)
+      problems.push({ text: `Spent over $100 on ${highSpendDays}/30 days — high discretionary spending.` });
+    if (noSavingsDays > 15)
+      problems.push({ text: `$0 saved on ${noSavingsDays} days where money was spent.` });
+
+    // Soft diagnostics
+    if (problems.length === 0 && currentScore < 10) {
+      if (noIncomeDays > 3)
+        problems.push({ text: `Income activity skipped on ${noIncomeDays}/30 days — you had ${incomeDays} active days. Each missed day caps your score ceiling.` });
+      if (avgSaved < avgSpent * 0.25 && avgSpent > 0)
+        problems.push({ text: `Saving ${formatMoney(avgSaved)}/day against ${formatMoney(avgSpent)}/day spend — your savings rate is ${Math.round((avgSaved / avgSpent) * 100)}% of daily spend. Target is 25%+.` });
+      if (noSavingsDays > 5)
+        problems.push({ text: `$0 saved on ${noSavingsDays} days where money was spent — consistent daily savings is what separates a 7 from a 9 here.` });
+      if (highSpendDays > 5)
+        problems.push({ text: `Spent $100+ on ${highSpendDays} days this month — that spending pattern is leaking financial score points.` });
+    }
+
+    // Actions
+    if (noIncomeDays > 5)
+      actions.push({ type: "add_habit", text: "Add a daily income-activity habit (business work, freelance, investing)", habitName: "Income-Generating Activity", habitCategory: "financial" });
+    if (avgSaved < avgSpent * 0.25 && avgSpent > 0)
+      actions.push({ type: "advice", text: `Log at least ${formatMoney(Math.ceil(avgSpent * 0.25))} saved every day you spend money. Even $10 logged changes the scoring calculus.` });
+    if (noSavingsDays > 5)
+      actions.push({ type: "add_habit", text: "Add a daily savings habit — even small amounts build the scoring pattern", habitName: "Save Money Daily", habitCategory: "financial" });
+    if (latestEntry && !latestEntry.incomeActivity)
+      actions.push({ type: "advice", text: "Tomorrow: one revenue-generating action before noon — outreach, client work, sales, shipping, or investing. Anything tied directly to money in." });
   }
 
+  // ── Discipline ──────────────────────────────────────────────────────────────
   if (category === "discipline") {
-    // Analyze habit completion rates
     const habitStats = habits.map((h) => {
       const completed = h.logs.filter((l) => l.completed).length;
       const total = h.logs.length;
-      return { name: h.id, habitName: h.name, rate: total > 0 ? completed / total : 0, priority: h.category };
+      return { name: h.id, habitName: h.name, rate: total > 0 ? completed / total : 0 };
     });
-
     const lowHabits = habitStats.filter((h) => h.rate < 0.5);
+    const mediumHabits = habitStats.filter((h) => h.rate >= 0.5 && h.rate < 0.8);
     const avgHabitRate =
       habitStats.length > 0
         ? habitStats.reduce((s, h) => s + h.rate, 0) / habitStats.length
         : 0;
-
+    const taskEntries = entries.filter((e) => (e.tasksPlanned ?? 0) > 0);
+    const avgTaskCompletion =
+      taskEntries.length > 0
+        ? taskEntries.reduce((s, e) => s + (e.tasksCompleted ?? 0) / Math.max(1, e.tasksPlanned ?? 1), 0) / taskEntries.length
+        : 0;
     const lowTaskDays = countDays(
-      (e) =>
-        (e.tasksPlanned ?? 0) > 0 &&
-        (e.tasksCompleted ?? 0) / (e.tasksPlanned ?? 1) < 0.5
+      (e) => (e.tasksPlanned ?? 0) > 0 && (e.tasksCompleted ?? 0) / (e.tasksPlanned ?? 1) < 0.5
     );
 
-    if (
-      latestEntry &&
-      (latestEntry.tasksPlanned ?? 0) > 0 &&
-      (latestEntry.tasksCompleted ?? 0) / Math.max(1, latestEntry.tasksPlanned ?? 0) < 0.5
-    ) {
-      problems.push({
-        text: `Today: you only completed ${latestEntry.tasksCompleted ?? 0}/${latestEntry.tasksPlanned ?? 0} planned tasks. That is not disciplined execution.`,
-      });
-    }
-    if (latestHabitCompletionRate < 0.5) {
-      problems.push({
-        text: `Today: only ${Math.round(latestHabitCompletionRate * 100)}% of active habits were completed. Discipline scoring gives nothing below 50%.`,
-      });
-    }
-
-    if (avgHabitRate < 0.7)
-      problems.push({
-        text: `Average habit completion rate is ${Math.round(avgHabitRate * 100)}% — you need 75%+ for meaningful discipline points`,
-      });
-    for (const h of lowHabits) {
-      problems.push({
-        text: `"${h.habitName}" only completed ${Math.round(h.rate * 100)}% of the time — below the 50% threshold`,
-      });
-    }
-    if (lowTaskDays > 10)
-      problems.push({
-        text: `Completed fewer than half your planned tasks on ${lowTaskDays}/30 days`,
-      });
-
-    for (const h of lowHabits) {
-      actions.push({
-        type: "adjust_habit",
-        text: `Upgrade "${h.habitName}" to high priority — you're not taking it seriously enough`,
-        habitId: h.name,
-        priority: "high",
-      });
-    }
-    if (lowTaskDays > 10)
-      actions.push({
-        type: "advice",
-        text: "Plan fewer tasks per day — 3 focused tasks completed beats 8 abandoned ones.",
-      });
+    // Hard problems (today)
+    if (latestEntry && (latestEntry.tasksPlanned ?? 0) > 0 &&
+        (latestEntry.tasksCompleted ?? 0) / Math.max(1, latestEntry.tasksPlanned ?? 0) < 0.5)
+      problems.push({ text: `Today: completed ${latestEntry.tasksCompleted ?? 0}/${latestEntry.tasksPlanned ?? 0} planned tasks — under 50% task completion tanks discipline directly.` });
     if (latestHabitCompletionRate < 0.5)
-      actions.push({
-        type: "advice",
-        text: "Stop carrying too many standards loosely. Lock in the 2–3 habits that must happen every day and hit those first.",
-      });
+      problems.push({ text: `Today: only ${Math.round(latestHabitCompletionRate * 100)}% of habits completed — discipline scoring gives no credit below 50%.` });
+
+    // Hard 30-day problems
+    if (avgHabitRate < 0.7)
+      problems.push({ text: `Average habit completion is ${Math.round(avgHabitRate * 100)}% — you need 75%+ for meaningful discipline points.` });
+    for (const h of lowHabits)
+      problems.push({ text: `"${h.habitName}" completed ${Math.round(h.rate * 100)}% of the time — below the 50% floor.` });
+    if (lowTaskDays > 10)
+      problems.push({ text: `Completed fewer than half your planned tasks on ${lowTaskDays}/30 days.` });
+
+    // Soft diagnostics
+    if (problems.length === 0 && currentScore < 10) {
+      if (avgHabitRate < 0.85)
+        problems.push({ text: `Habit completion averaging ${Math.round(avgHabitRate * 100)}% — you need 85%+ consistently to score in the 8–9 range. You're ${Math.round((0.85 - avgHabitRate) * 100)}% short.` });
+      for (const h of mediumHabits)
+        problems.push({ text: `"${h.habitName}" completed only ${Math.round(h.rate * 100)}% of the time — this inconsistency is quietly capping your score.` });
+      if (avgTaskCompletion > 0 && avgTaskCompletion < 0.8)
+        problems.push({ text: `Completing ${Math.round(avgTaskCompletion * 100)}% of planned tasks on average — plan fewer and hit them all rather than carrying unfinished work.` });
+    }
+
+    // Actions
+    for (const h of lowHabits)
+      actions.push({ type: "adjust_habit", text: `Set "${h.habitName}" as high priority — you're not treating it seriously enough`, habitId: h.name, priority: "high" });
+    for (const h of mediumHabits)
+      actions.push({ type: "advice", text: `Give "${h.habitName}" a fixed daily time slot. Attach it to a trigger you already do (morning alarm, meals, etc.) so it stops getting skipped.` });
+    if (avgTaskCompletion > 0 && avgTaskCompletion < 0.8)
+      actions.push({ type: "advice", text: "Cap your task list at 3 per day. Completing 3/3 beats completing 5/8 in both score and momentum." });
+    if (latestHabitCompletionRate < 0.5)
+      actions.push({ type: "advice", text: "Identify the 2–3 habits that must happen every day and hit those first before anything else." });
   }
 
+  // ── Focus ───────────────────────────────────────────────────────────────────
   if (category === "focus") {
     const lowDeepWorkDays = countDays((e) => (e.deepWorkHours ?? 0) < 2);
     const highScreenDays = countDays((e) => (e.screenTimeHours ?? 0) > 5);
-    const avgDeepWork =
-      n > 0
-        ? entries.reduce((s, e) => s + (e.deepWorkHours ?? 0), 0) / n
-        : 0;
-    const avgScreen =
-      n > 0
-        ? entries.reduce((s, e) => s + (e.screenTimeHours ?? 0), 0) / n
-        : 0;
+    const avgDeepWork = n > 0 ? entries.reduce((s, e) => s + (e.deepWorkHours ?? 0), 0) / n : 0;
+    const avgScreen = n > 0 ? entries.reduce((s, e) => s + (e.screenTimeHours ?? 0), 0) / n : 0;
+    const under3DeepWorkDays = countDays((e) => (e.deepWorkHours ?? 0) < 3);
 
-    if (latestEntry && (latestEntry.deepWorkHours ?? 0) < 2) {
-      problems.push({
-        text: `Today: only ${latestEntry.deepWorkHours ?? 0}h of deep work logged. Focus scoring stays weak without a real block of uninterrupted work.`,
-      });
-    }
-    if (latestEntry && (latestEntry.screenTimeHours ?? 0) > 5) {
-      problems.push({
-        text: `Today: ${latestEntry.screenTimeHours ?? 0}h of screen time triggered the focus penalty directly.`,
-      });
-    }
-
-    if (lowDeepWorkDays > 15)
-      problems.push({
-        text: `Deep work under 2h on ${lowDeepWorkDays}/30 days — averaging ${avgDeepWork.toFixed(1)}h/day`,
-      });
-    if (highScreenDays > 15)
-      problems.push({
-        text: `Screen time over 5h on ${highScreenDays}/30 days — averaging ${avgScreen.toFixed(1)}h/day. This actively penalizes your score.`,
-      });
-
-    if (lowDeepWorkDays > 10)
-      actions.push({
-        type: "add_habit",
-        text: "Add a 2-hour deep work block habit (no interruptions, phone off)",
-        habitName: "2-Hour Deep Work Block",
-        habitCategory: "focus",
-      });
-    if (highScreenDays > 10)
-      actions.push({
-        type: "add_habit",
-        text: "Add a screen-time limit habit — set your phone's daily limit to 3h",
-        habitName: "Screen Time Under 3h",
-        habitCategory: "focus",
-      });
-    if (avgDeepWork < 3)
-      actions.push({
-        type: "advice",
-        text: "Start your day with 2–3h of focused work before checking email or social media.",
-      });
+    // Hard problems (today)
+    if (latestEntry && (latestEntry.deepWorkHours ?? 0) < 2)
+      problems.push({ text: `Today: only ${latestEntry.deepWorkHours ?? 0}h deep work — focus scoring stays weak without a real block of uninterrupted output.` });
     if (latestEntry && (latestEntry.screenTimeHours ?? 0) > 5)
-      actions.push({
-        type: "advice",
-        text: "Tomorrow: no reactive scrolling before your first deep-work block is complete.",
-      });
+      problems.push({ text: `Today: ${latestEntry.screenTimeHours ?? 0}h screen time triggered the focus penalty directly.` });
+
+    // Hard 30-day problems
+    if (lowDeepWorkDays > 15)
+      problems.push({ text: `Deep work under 2h on ${lowDeepWorkDays}/30 days — averaging ${avgDeepWork.toFixed(1)}h/day.` });
+    if (highScreenDays > 15)
+      problems.push({ text: `Screen time over 5h on ${highScreenDays}/30 days — averaging ${avgScreen.toFixed(1)}h/day. This actively penalizes your score.` });
+
+    // Soft diagnostics
+    if (problems.length === 0 && currentScore < 10) {
+      if (avgDeepWork < 3)
+        problems.push({ text: `Averaging ${avgDeepWork.toFixed(1)}h deep work/day — 3h+ is where focus scoring peaks. You're ${(3 - avgDeepWork).toFixed(1)}h short per day.` });
+      if (under3DeepWorkDays > 10)
+        problems.push({ text: `Under 3h deep work on ${under3DeepWorkDays}/30 days — you're hitting 2h+ but not consistently clearing the 3h threshold that drives the top tier.` });
+      if (avgScreen > 3)
+        problems.push({ text: `Averaging ${avgScreen.toFixed(1)}h screen time — even at 3–5h it's quietly eating into your focus ceiling. Target is under 3h.` });
+    }
+
+    // Actions
+    if (avgDeepWork < 3)
+      actions.push({ type: "add_habit", text: "Add a 3-hour morning deep work block (phone off, one task, before 10am)", habitName: "3-Hour Morning Deep Work", habitCategory: "focus" });
+    if (avgScreen > 3)
+      actions.push({ type: "advice", text: `Cut ${(avgScreen - 3).toFixed(0)}h of daily screen time with app limits. The source doesn't matter — total does.` });
+    if (lowDeepWorkDays > 10)
+      actions.push({ type: "add_habit", text: "Add a 2-hour deep work block habit (no interruptions, phone off)", habitName: "2-Hour Deep Work Block", habitCategory: "focus" });
+    if (latestEntry && (latestEntry.screenTimeHours ?? 0) > 5)
+      actions.push({ type: "advice", text: "Tomorrow: no reactive scrolling before your first deep-work block is complete." });
+    if (avgDeepWork >= 2 && avgDeepWork < 3)
+      actions.push({ type: "advice", text: `You're hitting 2h — add one more hour by starting 60 minutes earlier and protecting that window before your first meeting or task switch.` });
   }
 
+  // ── Mental ──────────────────────────────────────────────────────────────────
   if (category === "mental") {
-    const lowRatingDays = countDays(
-      (e) => (e.overallDayRating ?? 0) > 0 && (e.overallDayRating ?? 0) < 6
-    );
-    const badSleepDays = countDays(
-      (e) => (e.sleepHours ?? 0) > 0 && (e.sleepHours ?? 0) < 6.5
-    );
+    const lowRatingDays = countDays((e) => (e.overallDayRating ?? 0) > 0 && (e.overallDayRating ?? 0) < 6);
+    const badSleepDays = countDays((e) => (e.sleepHours ?? 0) > 0 && (e.sleepHours ?? 0) < 6.5);
     const highScreenDays = countDays((e) => (e.screenTimeHours ?? 0) > 4);
+    const ratedEntries = entries.filter((e) => (e.overallDayRating ?? 0) > 0);
     const avgRating =
-      n > 0
-        ? entries
-            .filter((e) => (e.overallDayRating ?? 0) > 0)
-            .reduce((s, e) => s + (e.overallDayRating ?? 0), 0) /
-          Math.max(1, entries.filter((e) => (e.overallDayRating ?? 0) > 0).length)
+      ratedEntries.length > 0
+        ? ratedEntries.reduce((s, e) => s + (e.overallDayRating ?? 0), 0) / ratedEntries.length
         : 0;
+    const avgSleep = n > 0 ? entries.reduce((s, e) => s + (e.sleepHours ?? 0), 0) / n : 0;
+    const avgScreen = n > 0 ? entries.reduce((s, e) => s + (e.screenTimeHours ?? 0), 0) / n : 0;
+    const rightWithGodDays = entries.filter((e) => e.rightWithGod).length;
 
-    if (latestEntry && (latestEntry.overallDayRating ?? 0) > 0 && (latestEntry.overallDayRating ?? 0) < 5) {
-      problems.push({
-        text: `Today: you rated the day ${latestEntry.overallDayRating}/10. Your own self-assessment says the day was not mentally solid.`,
-      });
-    }
-    if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5) {
-      problems.push({
-        text: `Today: sleep was only ${(latestEntry.sleepHours ?? 0).toFixed(1)}h. That undercuts mood, resilience, and clarity immediately.`,
-      });
-    }
+    // Hard problems (today)
+    if (latestEntry && (latestEntry.overallDayRating ?? 0) > 0 && (latestEntry.overallDayRating ?? 0) < 5)
+      problems.push({ text: `Today: you rated the day ${latestEntry.overallDayRating}/10 — your own self-assessment says it wasn't mentally solid.` });
+    if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5)
+      problems.push({ text: `Today: only ${(latestEntry.sleepHours ?? 0).toFixed(1)}h sleep — undercuts mood, resilience, and clarity immediately.` });
 
+    // Hard 30-day problems
     if (lowRatingDays > 10)
-      problems.push({
-        text: `Rated ${lowRatingDays} days below 6/10 — average day rating is ${avgRating.toFixed(1)}/10`,
-      });
+      problems.push({ text: `Rated ${lowRatingDays} days below 6/10 — 30-day average is ${avgRating.toFixed(1)}/10.` });
     if (badSleepDays > 10)
-      problems.push({
-        text: `Slept under 6.5h on ${badSleepDays}/30 days — chronic sleep deficit damages mental scores`,
-      });
+      problems.push({ text: `Slept under 6.5h on ${badSleepDays}/30 days — chronic sleep deficit damages mental scores.` });
     if (highScreenDays > 15)
-      problems.push({
-        text: `4h+ screen time on ${highScreenDays}/30 days — directly lowers mental wellbeing score`,
-      });
+      problems.push({ text: `4h+ screen time on ${highScreenDays}/30 days — directly lowers mental wellbeing score.` });
 
-    if (avgRating < 6)
-      actions.push({
-        type: "add_habit",
-        text: "Add a daily meditation or journaling habit to improve mental baseline",
-        habitName: "Morning Meditation/Journal",
-        habitCategory: "mental",
-      });
-    if (badSleepDays > 10)
-      actions.push({
-        type: "advice",
-        text: "Sleep is your #1 mental health lever. Protect 7.5–8.5h like a non-negotiable appointment.",
-      });
-    if (highScreenDays > 15)
-      actions.push({
-        type: "add_habit",
-        text: "Add a phone-free morning habit (no screens first 60 min)",
-        habitName: "Phone-Free Morning (60 min)",
-        habitCategory: "mental",
-      });
-    if (latestEntry && (latestEntry.overallDayRating ?? 0) < 5)
-      actions.push({
-        type: "advice",
-        text: "Do a short shutdown review tonight and write the single behavior that made the day feel bad. Fix that first tomorrow.",
-      });
+    // Soft diagnostics
+    if (problems.length === 0 && currentScore < 10) {
+      if (avgRating > 0 && avgRating < 7.5)
+        problems.push({ text: `Average self-rated day is ${avgRating.toFixed(1)}/10 — your own assessment is anchoring the mental score. Days rated 5–7 create a ceiling.` });
+      if (avgSleep < 7.5)
+        problems.push({ text: `Averaging ${avgSleep.toFixed(1)}h sleep — mental clarity and mood both take a direct hit under 7.5h. This is the #1 lever.` });
+      if (avgScreen > 2.5)
+        problems.push({ text: `Averaging ${avgScreen.toFixed(1)}h screen time — passive consumption quietly degrades mental sharpness and self-rated wellbeing.` });
+      if (n > 7 && rightWithGodDays < n * 0.5)
+        problems.push({ text: `"Right with God" checked only ${rightWithGodDays}/${n} days — this spiritual/reflective field contributes to mental scoring when consistent.` });
+    }
+
+    // Actions
+    if (avgRating > 0 && avgRating < 7)
+      actions.push({ type: "add_habit", text: "Add a daily meditation or journaling habit to improve your mental baseline", habitName: "Morning Meditation/Journal", habitCategory: "mental" });
+    if (avgSleep < 7.5)
+      actions.push({ type: "advice", text: `You need ${(7.5 - avgSleep).toFixed(1)}h more sleep/night. Back-calculate your bedtime from your wake time and set a phone alarm.` });
+    if (avgScreen > 2.5)
+      actions.push({ type: "add_habit", text: "Add a phone-free morning habit (no screens first 60 min)", habitName: "Phone-Free Morning (60 min)", habitCategory: "mental" });
+    if (avgRating > 0 && avgRating < 7.5)
+      actions.push({ type: "advice", text: "Write down what made your last 3 low-rated days bad. If the same answer appears twice, that's your fix — it's almost always sleep, output, or avoidance." });
+    if (n > 7 && rightWithGodDays < n * 0.5)
+      actions.push({ type: "advice", text: "Log the 'right with God' field daily — even 5 seconds. Consistent spiritual reflection tracks directly into mental scoring." });
   }
 
+  // ── Appearance ──────────────────────────────────────────────────────────────
   if (category === "appearance") {
-    const noWorkoutDays = countDays((e) => !e.workoutCompleted && !e.workoutRoutineName);
-    const lowStepDays = countDays(
-      (e) => (e.steps ?? 0) > 0 && (e.steps ?? 0) < 7000
-    );
+    const workoutAssessments = entries.map((entry) => ({
+      entry,
+      workout: assessWorkout({
+        workoutCompleted: entry.workoutCompleted,
+        workoutRoutineName: entry.workoutRoutineName,
+        workoutDurationMinutes: entry.workoutDurationMinutes,
+        workoutIntensity: entry.workoutIntensity,
+        workoutDetails: entry.workoutDetails,
+      }),
+    }));
+    const noWorkoutDays = workoutAssessments.filter(({ workout }) => !workout.countsAsWorkout).length;
+    const workoutDays = n - noWorkoutDays;
+    const lowStepDays = countDays((e) => (e.steps ?? 0) > 0 && (e.steps ?? 0) < 7000);
     const noStepsDays = countDays((e) => (e.steps ?? 0) === 0);
-    const badSleepDays = countDays(
-      (e) => (e.sleepHours ?? 0) > 0 && (e.sleepHours ?? 0) < 7
-    );
+    const badSleepDays = countDays((e) => (e.sleepHours ?? 0) > 0 && (e.sleepHours ?? 0) < 7);
+    const avgSteps = n > 0 ? entries.reduce((s, e) => s + (e.steps ?? 0), 0) / n : 0;
+    const avgSleep = n > 0 ? entries.reduce((s, e) => s + (e.sleepHours ?? 0), 0) / n : 0;
 
-    if (latestWorkout && !latestWorkout.countsAsWorkout) {
-      problems.push({
-        text: "Today: there was no meaningful workout credit, which drags appearance scoring immediately.",
-      });
-    }
-    if (latestEntry && (latestEntry.steps ?? 0) > 0 && (latestEntry.steps ?? 0) < 7000) {
-      problems.push({
-        text: `Today: only ${(latestEntry.steps ?? 0).toLocaleString()} steps logged. That is low daily movement.`,
-      });
-    }
-
-    if (noWorkoutDays > 15)
-      problems.push({
-        text: `No workout logged on ${noWorkoutDays}/30 days — skipping the gym shows`,
-      });
-    if (lowStepDays > 10)
-      problems.push({
-        text: `Under 7,000 steps on ${lowStepDays}/30 tracked days — sedentary lifestyle affects appearance`,
-      });
-    if (noStepsDays > 20)
-      problems.push({
-        text: `Steps not logged on ${noStepsDays}/30 days — start tracking your movement`,
-      });
-    if (badSleepDays > 10)
-      problems.push({
-        text: `Under 7h sleep on ${badSleepDays}/30 days — poor sleep affects skin, energy, and physique`,
-      });
-
-    if (noWorkoutDays > 10)
-      actions.push({
-        type: "add_habit",
-        text: "Commit to 5x/week gym or training sessions",
-        habitName: "5x Weekly Training",
-        habitCategory: "physical",
-      });
-    if (noStepsDays > 15)
-      actions.push({
-        type: "add_habit",
-        text: "Add a 10,000 steps per day habit — get a cheap pedometer or use your phone",
-        habitName: "10,000 Steps Daily",
-        habitCategory: "physical",
-      });
-    if (badSleepDays > 10)
-      actions.push({
-        type: "advice",
-        text: "Sleep affects your skin, posture, and energy more than any supplement. Fix this first.",
-      });
+    // Hard problems (today)
+    if (latestWorkout && !latestWorkout.countsAsWorkout)
+      problems.push({ text: "Today: no meaningful workout credit — appearance scoring drops immediately without training." });
     if (latestEntry && (latestEntry.steps ?? 0) > 0 && (latestEntry.steps ?? 0) < 7000)
+      problems.push({ text: `Today: only ${fmtSteps(latestEntry.steps ?? 0)} steps — low daily movement.` });
+
+    // Hard 30-day problems
+    if (noWorkoutDays > 15)
+      problems.push({ text: `No workout on ${noWorkoutDays}/30 days — under 50% training consistency.` });
+    if (lowStepDays > 10)
+      problems.push({ text: `Under 7,000 steps on ${lowStepDays}/30 tracked days — sedentary patterns affect appearance scoring.` });
+    if (noStepsDays > 20)
+      problems.push({ text: `Steps not tracked on ${noStepsDays}/30 days — start logging daily movement.` });
+    if (badSleepDays > 10)
+      problems.push({ text: `Under 7h sleep on ${badSleepDays}/30 days — sleep affects skin, body composition, and energy.` });
+
+    // Soft diagnostics
+    if (problems.length === 0 && currentScore < 10) {
+      if (avgSteps > 0 && avgSteps < 10000)
+        problems.push({ text: `Averaging ${fmtSteps(Math.round(avgSteps))} steps/day — 10,000+ is the appearance benchmark. You're ${fmtSteps(Math.round(10000 - avgSteps))} steps short per day.` });
+      if (workoutDays < n * 0.7 && n > 5)
+        problems.push({ text: `Training ${workoutDays}/${n} days (${Math.round((workoutDays / Math.max(n, 1)) * 100)}% frequency) — appearance scoring rewards 5–6x/week consistency.` });
+      if (avgSleep < 7.5)
+        problems.push({ text: `Averaging ${avgSleep.toFixed(1)}h sleep — this directly affects skin quality, body composition, and energy levels.` });
+      if (noStepsDays > 10)
+        problems.push({ text: `Steps not logged on ${noStepsDays}/30 days — you may be moving but if it's not tracked it doesn't score.` });
+    }
+
+    // Actions
+    if (avgSteps > 0 && avgSteps < 10000)
+      actions.push({ type: "advice", text: `Add a 20-minute walk after dinner — that alone adds ~2,000 steps and closes ${Math.round(((avgSteps + 2000) / 10000) * 100)}% of your daily gap.` });
+    if (workoutDays < n * 0.7)
+      actions.push({ type: "add_habit", text: "Commit to 5x weekly training sessions — frequency is the top appearance lever", habitName: "5x Weekly Training", habitCategory: "physical" });
+    if (avgSleep < 7.5)
+      actions.push({ type: "advice", text: "Push bedtime 30 minutes earlier this week. Sleep is cheaper than any supplement and scores better too." });
+    if (noStepsDays > 10)
+      actions.push({ type: "add_habit", text: "Add a 10,000 steps daily habit — track via phone or cheap pedometer", habitName: "10,000 Steps Daily", habitCategory: "physical" });
+  }
+
+  // ── Overall ─────────────────────────────────────────────────────────────────
+  if (category === "overall") {
+    if (scores.length > 0) {
+      const latest = scores[0];
+      const categoryKeys = ["physical", "financial", "discipline", "focus", "mental", "appearance"] as const;
+      const ranked = categoryKeys
+        .map((k) => ({ key: k, score: latest[k] ?? 0 }))
+        .sort((a, b) => a.score - b.score);
+
+      const weakest = ranked[0];
+      const secondWeakest = ranked[1];
+      const avgScores = Object.fromEntries(
+        categoryKeys.map((k) => [
+          k,
+          scores.length > 0
+            ? Math.round((scores.reduce((s, sc) => s + (sc[k] ?? 0), 0) / scores.length) * 10) / 10
+            : 0,
+        ])
+      );
+
+      problems.push({
+        text: `Your lowest score is ${weakest.key} at ${weakest.score.toFixed(1)}/10 — this single category is pulling your overall score down the most.`,
+      });
+      if (secondWeakest.score < 7) {
+        problems.push({
+          text: `${secondWeakest.key} is also lagging at ${secondWeakest.score.toFixed(1)}/10 — fixing both would lift your overall by ~${((10 - weakest.score + 10 - secondWeakest.score) / 6 * 0.6).toFixed(1)} points.`,
+        });
+      }
+
+      const trendingDown = categoryKeys.filter((k) => {
+        const vals = scores.slice(0, 7).map((s) => s[k] ?? 0);
+        if (vals.length < 3) return false;
+        const recent = vals.slice(0, 3).reduce((s, v) => s + v, 0) / 3;
+        const older = vals.slice(-3).reduce((s, v) => s + v, 0) / 3;
+        return recent - older < -0.5;
+      });
+      if (trendingDown.length > 0)
+        problems.push({ text: `${trendingDown.join(", ")} ${trendingDown.length === 1 ? "has" : "have"} trended down over the last 7 days — declining momentum is compounding.` });
+
       actions.push({
         type: "advice",
-        text: "Take the easy win tomorrow: a long walk gets you part of the way back without needing motivation gymnastics.",
+        text: `Click the ${weakest.key} score card for a specific breakdown of exactly what is holding it at ${weakest.score.toFixed(1)}/10 and what to fix first.`,
       });
+      if (currentScore < 8) {
+        const lowestAvg = [...ranked].sort((a, b) => (avgScores[a.key] ?? 0) - (avgScores[b.key] ?? 0))[0];
+        actions.push({
+          type: "advice",
+          text: `Over 30 days your weakest average is ${lowestAvg.key} at ${avgScores[lowestAvg.key]}/10. Fix the pattern there — today's score is a symptom, not the problem.`,
+        });
+      }
+    } else {
+      problems.push({ text: "Not enough data yet. Log daily entries to unlock specific score analysis." });
+      actions.push({ type: "advice", text: "Log your first daily entry to start seeing category-specific breakdowns." });
+    }
   }
 
-  // If no issues found for a sub-10 score, add generic advice
+  // Final safety net — should rarely fire now
   if (problems.length === 0 && currentScore < 10) {
-    problems.push({
-      text: buildFallbackProblem(currentScore),
-    });
-    actions.push({
-      type: "advice",
-      text: buildFallbackAction(currentScore),
-    });
+    problems.push({ text: `Score is ${currentScore.toFixed(1)}/10. No single threshold was breached but performance isn't at ceiling.` });
+    actions.push({ type: "advice", text: "Every input in this category is passing — push each one 10% further. Marginal improvements across all inputs add up to a full point." });
   }
 
-  const result: InsightResult = {
-    category,
-    currentScore,
-    thirtyDayAvg,
-    problems,
-    actions,
-  };
-
-  return NextResponse.json(result);
+  return NextResponse.json({ category, currentScore, thirtyDayAvg, problems, actions } satisfies InsightResult);
 }

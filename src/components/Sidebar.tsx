@@ -8,7 +8,6 @@ import {
   BookOpen,
   CheckSquare,
   FolderKanban,
-  BarChart3,
   Settings,
   Brain,
   LogOut,
@@ -24,7 +23,6 @@ const navLinks = [
   { href: "/weights", label: "Routines", icon: Dumbbell },
   { href: "/meals", label: "Meals", icon: Utensils },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

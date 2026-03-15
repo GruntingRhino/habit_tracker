@@ -166,6 +166,100 @@ async function insightsWithOllama(scores: CategoryScores, entrySummary: string):
   return (data.response as string) ?? "Unable to generate insights.";
 }
 
+// ── Daily coach chat ─────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface CoachContext {
+  entry?: Record<string, unknown>;
+  scores?: Record<string, number>;
+  recentAvg?: number;
+}
+
+function buildCoachSystemPrompt(context: CoachContext): string {
+  const parts: string[] = [
+    "You are a strict personal performance coach inside a habit tracking app called Habit Intelligence. You give direct, honest, actionable feedback — no fluff, no sugarcoating. Keep responses to 2-4 sentences max.",
+  ];
+  if (context.entry) {
+    parts.push(`\nToday's logged data:\n${JSON.stringify(context.entry, null, 2)}`);
+  } else {
+    parts.push("\nNo entry logged for today yet.");
+  }
+  if (context.scores) {
+    parts.push(
+      `\nToday's scores (0-10): ${Object.entries(context.scores)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ")}`
+    );
+  }
+  if (context.recentAvg !== undefined) {
+    parts.push(`30-day overall average: ${context.recentAvg}/10`);
+  }
+  parts.push(
+    "\nBe concise. Reference the user's actual numbers. Acknowledge wins, but focus on the biggest opportunity."
+  );
+  return parts.join("\n");
+}
+
+async function chatWithGroq(
+  messages: ChatMessage[],
+  context: CoachContext
+): Promise<string> {
+  const groq = new Groq({ apiKey: GROQ_API_KEY });
+  const completion = await groq.chat.completions.create({
+    model: GROQ_MODEL,
+    messages: [
+      { role: "system", content: buildCoachSystemPrompt(context) },
+      ...messages,
+    ],
+    temperature: 0.6,
+    max_tokens: 512,
+  });
+  return completion.choices[0]?.message?.content ?? "Unable to generate response.";
+}
+
+async function chatWithOllama(
+  messages: ChatMessage[],
+  context: CoachContext
+): Promise<string> {
+  const conversationText = messages
+    .map((m) => `${m.role === "user" ? "User" : "Coach"}: ${m.content}`)
+    .join("\n");
+  const fullPrompt = `${buildCoachSystemPrompt(context)}\n\nConversation:\n${conversationText}\n\nCoach:`;
+  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt: fullPrompt,
+      stream: false,
+    }),
+  });
+  if (!res.ok) throw new Error(`Ollama responded with status ${res.status}`);
+  const data = await res.json();
+  return (data.response as string) ?? "Unable to generate response.";
+}
+
+export async function chatWithCoach(
+  messages: ChatMessage[],
+  context: CoachContext
+): Promise<string> {
+  try {
+    if (isGroqAvailable()) return chatWithGroq(messages, context);
+    const ollamaUp = await isOllamaAvailable();
+    if (ollamaUp) return chatWithOllama(messages, context);
+    return "No AI backend configured. Add a GROQ_API_KEY to enable the daily coach.";
+  } catch (err) {
+    console.error("[ai] chatWithCoach error:", err);
+    return "Unable to connect to the AI coach at this time.";
+  }
+}
+
+// ── Insights generation ──────────────────────────────────────────────────────
+
 export async function generateInsights(
   scores: CategoryScores,
   recentEntries: Record<string, unknown>[]

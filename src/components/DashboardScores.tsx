@@ -49,37 +49,38 @@ interface InsightResult {
 }
 
 const SCORE_ICONS: Record<string, LucideIcon> = {
-  physical: Activity,
-  financial: DollarSign,
+  physical:   Activity,
+  financial:  DollarSign,
   discipline: RefreshCw,
-  focus: Brain,
-  mental: Sparkles,
+  focus:      Brain,
+  mental:     Sparkles,
   appearance: Star,
-  overall: Star,
+  overall:    Star,
 };
 
-const SCORE_COLORS: Record<string, string> = {
-  physical: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  financial: "text-green-400 bg-green-500/10 border-green-500/20",
-  discipline: "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  focus: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
-  mental: "text-pink-400 bg-pink-500/10 border-pink-500/20",
-  appearance: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  overall: "text-slate-300 bg-slate-500/10 border-slate-500/20",
+// Each category: [text color, bg color (rgba), border color (rgba), glow color (rgba)]
+const SCORE_COLORS: Record<string, [string, string, string, string]> = {
+  physical:   ["#60a5fa", "rgba(59,130,246,0.08)",  "rgba(59,130,246,0.22)",  "rgba(59,130,246,0.18)"],
+  financial:  ["#34d399", "rgba(52,211,153,0.08)",  "rgba(52,211,153,0.22)",  "rgba(52,211,153,0.18)"],
+  discipline: ["#a78bfa", "rgba(167,139,250,0.08)", "rgba(167,139,250,0.22)", "rgba(167,139,250,0.18)"],
+  focus:      ["#22d3ee", "rgba(34,211,238,0.08)",  "rgba(34,211,238,0.22)",  "rgba(34,211,238,0.18)"],
+  mental:     ["#f472b6", "rgba(244,114,182,0.08)", "rgba(244,114,182,0.22)", "rgba(244,114,182,0.18)"],
+  appearance: ["#fbbf24", "rgba(251,191,36,0.08)",  "rgba(251,191,36,0.22)",  "rgba(251,191,36,0.18)"],
+  overall:    ["#94a3b8", "rgba(148,163,184,0.08)", "rgba(148,163,184,0.2)",  "rgba(148,163,184,0.15)"],
 };
 
 function getScoreColor(score: number) {
-  if (score >= 8) return "text-green-400";
-  if (score >= 6) return "text-yellow-400";
-  if (score >= 4) return "text-orange-400";
-  return "text-red-400";
+  if (score >= 8) return "#10d9a0";
+  if (score >= 6) return "#f59e0b";
+  if (score >= 4) return "#fb923c";
+  return "#ff4d6a";
 }
 
-function getBarColor(score: number) {
-  if (score >= 8) return "bg-green-500";
-  if (score >= 6) return "bg-yellow-500";
-  if (score >= 4) return "bg-orange-500";
-  return "bg-red-500";
+function getBarGradient(score: number) {
+  if (score >= 8) return "linear-gradient(90deg, #10d9a0, #22d3ee)";
+  if (score >= 6) return "linear-gradient(90deg, #f59e0b, #fbbf24)";
+  if (score >= 4) return "linear-gradient(90deg, #fb923c, #f97316)";
+  return "linear-gradient(90deg, #ff4d6a, #ef4444)";
 }
 
 export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
@@ -104,9 +105,7 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
         credentials: "include",
         body: JSON.stringify({ category: key, currentScore: score }),
       });
-      if (res.ok) {
-        setInsight(await res.json());
-      }
+      if (res.ok) setInsight(await res.json());
     } catch {
       // ignore
     } finally {
@@ -127,9 +126,7 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
           priority: "high",
         }),
       });
-      if (res.ok) {
-        setAddedHabits((prev) => new Set(prev).add(key));
-      }
+      if (res.ok) setAddedHabits((prev) => new Set(prev).add(key));
     } catch {
       // ignore
     }
@@ -140,9 +137,9 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {scores.map(({ key, title, score, prevScore }) => {
           const Icon = SCORE_ICONS[key] ?? Star;
-          const colorClasses = SCORE_COLORS[key] ?? SCORE_COLORS.overall;
+          const [textColor, bgColor, borderColor, glowColor] = SCORE_COLORS[key] ?? SCORE_COLORS.overall;
           const scoreColor = getScoreColor(score);
-          const barColor = getBarColor(score);
+          const barGradient = getBarGradient(score);
           const isActive = activeCategory === key;
           const isPerfect = score >= 10;
 
@@ -156,36 +153,68 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
             <button
               key={key}
               onClick={() => openInsight(key, score)}
-              className={`text-left p-4 rounded-xl border transition-all ${colorClasses} ${
-                isActive ? "ring-2 ring-blue-500/40" : "hover:opacity-90"
-              } ${isPerfect ? "cursor-default" : "cursor-pointer"}`}
+              className="text-left p-4 rounded-xl transition-all duration-200 relative overflow-hidden"
+              style={{
+                background: `linear-gradient(135deg, ${bgColor} 0%, rgba(6,13,28,0.6) 100%)`,
+                border: `1px solid ${isActive ? borderColor.replace("0.22", "0.5") : borderColor}`,
+                boxShadow: isActive ? `0 0 20px ${glowColor}, 0 0 40px ${glowColor.replace("0.18", "0.08")}` : "none",
+                cursor: isPerfect ? "default" : "pointer",
+              }}
+              onMouseEnter={(e) => {
+                if (!isPerfect && !isActive) {
+                  (e.currentTarget as HTMLElement).style.boxShadow = `0 0 16px ${glowColor}`;
+                  (e.currentTarget as HTMLElement).style.borderColor = borderColor.replace("0.22", "0.4");
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.boxShadow = "none";
+                  (e.currentTarget as HTMLElement).style.borderColor = borderColor;
+                }
+              }}
             >
+              {/* Subtle top highlight */}
+              <div
+                className="absolute inset-x-0 top-0 h-px"
+                style={{ background: `linear-gradient(90deg, transparent, ${textColor}40, transparent)` }}
+              />
+
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <Icon className="w-4 h-4 opacity-80" />
-                  <span className="text-xs font-medium opacity-80">{title}</span>
+                  <div
+                    className="w-6 h-6 rounded-md flex items-center justify-center"
+                    style={{ background: bgColor.replace("0.08", "0.2") }}
+                  >
+                    <Icon className="w-3 h-3" style={{ color: textColor }} />
+                  </div>
+                  <span className="text-xs font-medium" style={{ color: textColor, opacity: 0.9 }}>{title}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   {!isPerfect && (
-                    <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "#fb923c" }} />
                   )}
-                  {trend === "up" && <TrendingUp className="w-3 h-3 text-green-400" />}
-                  {trend === "down" && <TrendingDown className="w-3 h-3 text-red-400" />}
-                  {trend === "stable" && <Minus className="w-3 h-3 text-slate-500" />}
+                  {trend === "up"     && <TrendingUp   className="w-3 h-3" style={{ color: "#10d9a0" }} />}
+                  {trend === "down"   && <TrendingDown  className="w-3 h-3" style={{ color: "#ff4d6a" }} />}
+                  {trend === "stable" && <Minus         className="w-3 h-3" style={{ color: "#334d6e" }} />}
                 </div>
               </div>
-              <div className={`text-2xl font-bold ${scoreColor} mb-2`}>
-                {score.toFixed(1)}
-                <span className="text-sm font-normal text-slate-500">/10</span>
+
+              <div className="mb-2.5">
+                <span className="text-2xl font-bold" style={{ color: scoreColor, fontFamily: "'Syne', sans-serif" }}>
+                  {score.toFixed(1)}
+                </span>
+                <span className="text-xs ml-0.5" style={{ color: "#2d4a6a" }}>/10</span>
               </div>
-              <div className="w-full h-1.5 bg-black/20 rounded-full overflow-hidden">
+
+              <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: "rgba(6,13,28,0.6)" }}>
                 <div
-                  className={`h-full ${barColor} rounded-full transition-all duration-700`}
-                  style={{ width: `${(score / 10) * 100}%` }}
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${(score / 10) * 100}%`, background: barGradient }}
                 />
               </div>
+
               {!isPerfect && (
-                <p className="text-xs opacity-50 mt-2">Click for analysis</p>
+                <p className="text-xs mt-2" style={{ color: "#1e3a5a", opacity: 0.8 }}>Click for analysis</p>
               )}
             </button>
           );
@@ -194,44 +223,47 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
 
       {/* Analysis panel */}
       {activeCategory && (
-        <div className="mt-5 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 animate-in fade-in duration-200">
+        <div
+          className="mt-5 rounded-xl p-5"
+          style={{
+            background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+            border: "1px solid rgba(79,114,255,0.2)",
+            boxShadow: "0 0 24px rgba(79,114,255,0.08)",
+          }}
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-orange-400" />
-              <h3 className="font-semibold text-slate-100 text-sm capitalize">
+              <AlertTriangle className="w-4 h-4" style={{ color: "#fb923c" }} />
+              <h3 className="font-semibold text-sm capitalize" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
                 {activeCategory} Analysis
               </h3>
               {insight && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="flex items-center gap-2 text-xs" style={{ color: "#334d6e" }}>
                   <span>
                     Current:{" "}
-                    <span className={getScoreColor(insight.currentScore)}>
-                      {insight.currentScore.toFixed(1)}
-                    </span>
+                    <span style={{ color: getScoreColor(insight.currentScore) }}>{insight.currentScore.toFixed(1)}</span>
                   </span>
-                  <span className="text-slate-700">·</span>
+                  <span style={{ color: "#1e3050" }}>·</span>
                   <span>
                     30-day avg:{" "}
-                    <span className={getScoreColor(insight.thirtyDayAvg)}>
-                      {insight.thirtyDayAvg.toFixed(1)}
-                    </span>
+                    <span style={{ color: getScoreColor(insight.thirtyDayAvg) }}>{insight.thirtyDayAvg.toFixed(1)}</span>
                   </span>
                 </div>
               )}
             </div>
             <button
-              onClick={() => {
-                setActiveCategory(null);
-                setInsight(null);
-              }}
-              className="text-slate-500 hover:text-slate-300 transition-colors"
+              onClick={() => { setActiveCategory(null); setInsight(null); }}
+              className="transition-colors"
+              style={{ color: "#2d4a6a" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#6b8cb8")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#2d4a6a")}
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {loading && (
-            <div className="flex items-center gap-2 text-slate-400 text-sm py-4">
+            <div className="flex items-center gap-2 text-sm py-4" style={{ color: "#4a6a90" }}>
               <Loader2 className="w-4 h-4 animate-spin" />
               Analyzing your 30-day data...
             </div>
@@ -239,69 +271,53 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
 
           {insight && !loading && (
             <div className="space-y-5">
-              {/* Problems */}
               {insight.problems.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-red-400 uppercase tracking-wide mb-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#ff4d6a" }}>
                     What you&apos;re doing wrong
                   </h4>
                   <div className="space-y-2">
                     {insight.problems.map((p, i) => (
                       <div key={i} className="flex items-start gap-2">
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-slate-300 text-sm">{p.text}</p>
+                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: "#ff4d6a" }} />
+                        <p className="text-sm" style={{ color: "#8aadcc" }}>{p.text}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Actions */}
               {insight.actions.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#4f72ff" }}>
                     What to do about it
                   </h4>
                   <div className="space-y-2">
                     {insight.actions.map((action, i) => {
                       const actionKey = action.habitName ?? action.text;
                       const alreadyAdded = addedHabits.has(actionKey);
-
                       return (
                         <div
                           key={i}
-                          className="flex items-start gap-3 bg-[#0a0f1e]/60 rounded-lg p-3"
+                          className="flex items-start gap-3 rounded-lg p-3"
+                          style={{ background: "rgba(6,13,28,0.6)" }}
                         >
-                          {action.type === "advice" && (
-                            <Lightbulb className="w-3.5 h-3.5 text-yellow-400 mt-0.5 flex-shrink-0" />
-                          )}
-                          {action.type === "add_habit" && (
-                            <PlusCircle className="w-3.5 h-3.5 text-green-400 mt-0.5 flex-shrink-0" />
-                          )}
-                          {action.type === "adjust_habit" && (
-                            <ArrowUp className="w-3.5 h-3.5 text-orange-400 mt-0.5 flex-shrink-0" />
-                          )}
-                          <p className="text-slate-300 text-sm flex-1">
-                            {action.text}
-                          </p>
+                          {action.type === "advice"      && <Lightbulb  className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: "#f59e0b" }} />}
+                          {action.type === "add_habit"   && <PlusCircle  className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: "#10d9a0" }} />}
+                          {action.type === "adjust_habit"&& <ArrowUp     className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: "#fb923c" }} />}
+                          <p className="text-sm flex-1" style={{ color: "#8aadcc" }}>{action.text}</p>
                           {action.type === "add_habit" && (
                             <button
                               onClick={() => addHabit(action)}
                               disabled={alreadyAdded}
-                              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg flex-shrink-0 transition-colors ${
+                              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg flex-shrink-0 transition-all duration-150"
+                              style={
                                 alreadyAdded
-                                  ? "bg-green-500/10 text-green-400 cursor-default"
-                                  : "bg-blue-600 hover:bg-blue-700 text-white"
-                              }`}
+                                  ? { background: "rgba(16,217,160,0.1)", color: "#10d9a0" }
+                                  : { background: "linear-gradient(135deg, #4f72ff, #3d5ee6)", color: "white", boxShadow: "0 0 12px rgba(79,114,255,0.3)" }
+                              }
                             >
-                              {alreadyAdded ? (
-                                <>✓ Added</>
-                              ) : (
-                                <>
-                                  <PlusCircle className="w-3 h-3" />
-                                  Add Habit
-                                </>
-                              )}
+                              {alreadyAdded ? <>✓ Added</> : <><PlusCircle className="w-3 h-3" /> Add Habit</>}
                             </button>
                           )}
                         </div>

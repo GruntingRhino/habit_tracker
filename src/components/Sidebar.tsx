@@ -6,24 +6,17 @@ import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard,
   BookOpen,
-  CheckSquare,
   FolderKanban,
   Settings,
   Brain,
   LogOut,
   User,
-  Dumbbell,
-  Utensils,
 } from "lucide-react";
 
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/entry", label: "Daily Entry", icon: BookOpen },
-  { href: "/habits", label: "Habits", icon: CheckSquare },
-  { href: "/weights", label: "Routines", icon: Dumbbell },
-  { href: "/meals", label: "Meals", icon: Utensils },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -81,6 +74,9 @@ export default function Sidebar() {
               {session?.user?.email ?? ""}
             </p>
           </div>
+          <Link href="/settings" className="text-slate-500 hover:text-slate-300 transition-colors" title="Settings">
+            <Settings className="w-4 h-4" />
+          </Link>
         </div>
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}

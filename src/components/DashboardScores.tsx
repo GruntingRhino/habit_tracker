@@ -202,12 +202,21 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
                 {activeCategory} Analysis
               </h3>
               {insight && (
-                <span className="text-xs text-slate-500">
-                  30-day avg:{" "}
-                  <span className={getScoreColor(insight.thirtyDayAvg)}>
-                    {insight.thirtyDayAvg.toFixed(1)}
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span>
+                    Current:{" "}
+                    <span className={getScoreColor(insight.currentScore)}>
+                      {insight.currentScore.toFixed(1)}
+                    </span>
                   </span>
-                </span>
+                  <span className="text-slate-700">·</span>
+                  <span>
+                    30-day avg:{" "}
+                    <span className={getScoreColor(insight.thirtyDayAvg)}>
+                      {insight.thirtyDayAvg.toFixed(1)}
+                    </span>
+                  </span>
+                </div>
               )}
             </div>
             <button

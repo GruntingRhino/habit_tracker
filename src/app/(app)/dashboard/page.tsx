@@ -166,19 +166,7 @@ export default async function DashboardPage() {
           )}
           <Link
             href="/entry"
-            className="flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all duration-150"
-            style={{
-              background: "linear-gradient(135deg, #4f72ff 0%, #3d5ee6 100%)",
-              boxShadow: "0 0 16px rgba(79, 114, 255, 0.3), 0 2px 8px rgba(0,0,0,0.3)",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.boxShadow = "0 0 24px rgba(79, 114, 255, 0.45), 0 2px 8px rgba(0,0,0,0.3)";
-              (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.boxShadow = "0 0 16px rgba(79, 114, 255, 0.3), 0 2px 8px rgba(0,0,0,0.3)";
-              (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-            }}
+            className="btn-primary-glow flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-lg"
           >
             <PlusCircle className="w-4 h-4" />
             {todayEntry ? "Update Entry" : "Log Today"}

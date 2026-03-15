@@ -164,6 +164,179 @@ function DailyCoachChat() {
   );
 }
 
+function SleepTimeSlider({
+  bedtime,
+  wakeTime,
+  onChange,
+}: {
+  bedtime: string;
+  wakeTime: string;
+  onChange: (bedtime: string, wakeTime: string, sleepHours: number) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef<"bed" | "wake" | null>(null);
+
+  const STEP_MIN = 5;
+  const TOTAL_MIN = 1440;
+
+  function timeToMin(t: string): number {
+    if (!t) return 0;
+    const [h, m] = t.split(":").map(Number);
+    return (h * 60 + (m || 0)) % TOTAL_MIN;
+  }
+
+  function minToTime(m: number): string {
+    m = ((m % TOTAL_MIN) + TOTAL_MIN) % TOTAL_MIN;
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return `${h.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`;
+  }
+
+  function minToFrac(m: number): number {
+    return ((m % TOTAL_MIN) + TOTAL_MIN) % TOTAL_MIN / TOTAL_MIN;
+  }
+
+  function fracToMin(frac: number): number {
+    const raw = Math.round((frac * TOTAL_MIN) / STEP_MIN) * STEP_MIN;
+    return ((raw % TOTAL_MIN) + TOTAL_MIN) % TOTAL_MIN;
+  }
+
+  function formatDisplay(t: string): string {
+    if (!t) return "--:--";
+    const m = timeToMin(t);
+    const h = Math.floor((m % TOTAL_MIN) / 60);
+    const min = m % 60;
+    const ap = h >= 12 ? "PM" : "AM";
+    return `${h % 12 || 12}:${min.toString().padStart(2, "0")} ${ap}`;
+  }
+
+  function computeSleep(bed: string, wake: string): number {
+    if (!bed || !wake) return 0;
+    const b = timeToMin(bed);
+    const w = timeToMin(wake);
+    const mins = w > b ? w - b : TOTAL_MIN - b + w;
+    return Math.round((mins / 60) * 10) / 10;
+  }
+
+  const bedMin = timeToMin(bedtime || "22:00");
+  const wakeMin = timeToMin(wakeTime || "06:30");
+  const bedFrac = minToFrac(bedMin);
+  const wakeFrac = minToFrac(wakeMin);
+  const sleepHours = computeSleep(bedtime || "22:00", wakeTime || "06:30");
+
+  // Optimal zone: 22:00 (10pm) → 06:30 (6:30am)
+  const optBedFrac = 22 * 60 / TOTAL_MIN;      // 0.9167
+  const optWakeFrac = (6 * 60 + 30) / TOTAL_MIN; // 0.2708
+
+  function dispatchChange(newBedMin: number, newWakeMin: number) {
+    const bed = minToTime(newBedMin);
+    const wake = minToTime(newWakeMin);
+    onChange(bed, wake, computeSleep(bed, wake));
+  }
+
+  function handlePointerMove(e: React.PointerEvent) {
+    if (!draggingRef.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const newMin = fracToMin(frac);
+    if (draggingRef.current === "bed") {
+      dispatchChange(newMin, wakeMin);
+    } else {
+      dispatchChange(bedMin, newMin);
+    }
+  }
+
+  const scoreColor =
+    sleepHours >= 7 && sleepHours <= 9 ? "text-green-400" :
+    sleepHours >= 6 ? "text-yellow-400" : "text-red-400";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Bedtime</p>
+          <p className="text-lg font-bold text-indigo-300">{formatDisplay(bedtime || "22:00")}</p>
+        </div>
+        <div className="text-center">
+          <p className={`text-3xl font-bold ${scoreColor}`}>{sleepHours}h</p>
+          <p className="text-xs text-slate-500 mt-0.5">sleep</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Wake up</p>
+          <p className="text-lg font-bold text-amber-300">{formatDisplay(wakeTime || "06:30")}</p>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="relative h-10 select-none touch-none"
+        onPointerMove={handlePointerMove}
+        onPointerUp={() => { draggingRef.current = null; }}
+        onPointerLeave={() => { draggingRef.current = null; }}
+      >
+        {/* Base track */}
+        <div className="absolute top-[18px] left-0 right-0 h-2.5 rounded-full bg-[#1e293b]" />
+
+        {/* Optimal zone: 10pm→midnight */}
+        <div
+          className="absolute top-[18px] h-2.5 rounded-l-full bg-green-500/20 pointer-events-none"
+          style={{ left: `${optBedFrac * 100}%`, right: 0 }}
+        />
+        {/* Optimal zone: midnight→6:30am */}
+        <div
+          className="absolute top-[18px] h-2.5 rounded-r-full bg-green-500/20 pointer-events-none"
+          style={{ left: 0, width: `${optWakeFrac * 100}%` }}
+        />
+
+        {/* Sleep window (wraps midnight) */}
+        {bedFrac > wakeFrac ? (
+          <>
+            <div className="absolute top-[18px] h-2.5 bg-blue-500/50 pointer-events-none"
+              style={{ left: `${bedFrac * 100}%`, right: 0 }} />
+            <div className="absolute top-[18px] h-2.5 bg-blue-500/50 pointer-events-none"
+              style={{ left: 0, width: `${wakeFrac * 100}%` }} />
+          </>
+        ) : (
+          <div className="absolute top-[18px] h-2.5 bg-blue-500/50 pointer-events-none"
+            style={{ left: `${bedFrac * 100}%`, width: `${(wakeFrac - bedFrac) * 100}%` }} />
+        )}
+
+        {/* Bedtime handle (indigo) */}
+        <div
+          className="absolute top-[11px] w-6 h-6 -translate-x-3 rounded-full bg-indigo-500 border-2 border-indigo-200 shadow-lg cursor-grab active:cursor-grabbing z-10 touch-none"
+          style={{ left: `${bedFrac * 100}%` }}
+          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); draggingRef.current = "bed"; }}
+        />
+
+        {/* Wake handle (amber) */}
+        <div
+          className="absolute top-[11px] w-6 h-6 -translate-x-3 rounded-full bg-amber-500 border-2 border-amber-200 shadow-lg cursor-grab active:cursor-grabbing z-10 touch-none"
+          style={{ left: `${wakeFrac * 100}%` }}
+          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); draggingRef.current = "wake"; }}
+        />
+      </div>
+
+      {/* Time axis */}
+      <div className="flex justify-between text-xs text-slate-600 px-1">
+        {["12A","3A","6A","9A","12P","3P","6P","9P","12A"].map((l, i) => (
+          <span key={i}>{l}</span>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-slate-600">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-2 rounded bg-blue-500/50" />
+          <span>Sleep window</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-2 rounded bg-green-500/30" />
+          <span>Optimal (10PM–6:30AM)</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface DailyEntryForm {
   date: string;
   sleepHours: number;
@@ -202,6 +375,7 @@ interface CategoryScores {
 
 type StepId =
   | "date"
+  | "habits"
   | "sleep"
   | "workout"
   | "conditioning"
@@ -213,6 +387,7 @@ type StepId =
 
 const STEP_ORDER: StepId[] = [
   "date",
+  "habits",
   "sleep",
   "workout",
   "conditioning",
@@ -254,6 +429,12 @@ const STEP_META: Record<
     prompt: "Which day are we scoring?",
     hint: "Entries are stored per day. Change the date only if you are backfilling.",
     icon: CalendarDays,
+  },
+  habits: {
+    title: "Habit Check-In",
+    prompt: "Let's check off your habits for today.",
+    hint: "Mark each habit you completed. These sync directly to your habit tracker.",
+    icon: CheckCircle2,
   },
   sleep: {
     title: "Sleep",
@@ -517,10 +698,12 @@ const defaultForm: DailyEntryForm = {
   overallDayRating: 0,
 };
 
-function buildStepDraft(stepId: StepId, form: DailyEntryForm): Record<string, unknown> {
+function buildStepDraft(stepId: StepId, form: DailyEntryForm, habitChecks: Record<string, boolean> = {}): Record<string, unknown> {
   switch (stepId) {
     case "date":
       return { date: form.date };
+    case "habits":
+      return { habitChecks };
     case "sleep":
       return {
         sleepHours: form.sleepHours,
@@ -577,11 +760,22 @@ function buildStepDraft(stepId: StepId, form: DailyEntryForm): Record<string, un
 
 function summarizeAnswer(
   stepId: StepId,
-  form: DailyEntryForm
+  form: DailyEntryForm,
+  activeHabits: {id: string; name: string; category: string; color: string}[] = [],
+  habitChecks: Record<string, boolean> = {}
 ): string[] {
   switch (stepId) {
     case "date":
       return [`Scoring date: ${form.date}`];
+    case "habits": {
+      const completed = activeHabits.filter((h) => habitChecks[h.id]);
+      const total = activeHabits.length;
+      if (total === 0) return ["No habits tracked."];
+      return [
+        `${completed.length}/${total} habits completed`,
+        ...completed.map((h) => `✓ ${h.name}`),
+      ];
+    }
     case "sleep":
       return [
         `${form.sleepHours}h sleep`,
@@ -654,6 +848,8 @@ export default function EntryPage() {
   const [existingId, setExistingId] = useState<string | null>(null);
   const [routines, setRoutines] = useState<WeightRoutine[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [activeHabits, setActiveHabits] = useState<{id: string; name: string; category: string; color: string}[]>([]);
+  const [habitChecks, setHabitChecks] = useState<Record<string, boolean>>({});
 
   const currentStepId = STEP_ORDER[currentStepIndex] ?? null;
   const progress = Math.round(
@@ -664,14 +860,33 @@ export default function EntryPage() {
   const fetchTodayEntry = useCallback(async () => {
     setLoading(true);
     try {
-      const [entriesRes, routinesRes] = await Promise.all([
+      const [entriesRes, routinesRes, habitsRes] = await Promise.all([
         fetch("/api/daily-entries", { credentials: "include" }),
         fetch("/api/weights/routines", { credentials: "include" }),
+        fetch("/api/habits", { credentials: "include" }),
       ]);
 
       if (routinesRes.ok) {
         const data = await routinesRes.json();
         setRoutines(data);
+      }
+
+      if (habitsRes.ok) {
+        const habitsData = await habitsRes.json();
+        setActiveHabits(habitsData.map((h: {id: string; name: string; category: string; color: string}) => ({
+          id: h.id, name: h.name, category: h.category, color: h.color,
+        })));
+        // Load today's logs if they exist
+        const todayStr = getToday();
+        const checks: Record<string, boolean> = {};
+        for (const h of habitsData) {
+          const todayLog = (h.logs ?? []).find((l: {date: string; completed: boolean}) => {
+            const d = new Date(l.date);
+            return d.toISOString().slice(0, 10) === todayStr;
+          });
+          checks[h.id] = todayLog?.completed ?? false;
+        }
+        setHabitChecks(checks);
       }
 
       if (entriesRes.ok) {
@@ -738,7 +953,7 @@ export default function EntryPage() {
 
   useEffect(() => {
     if (!currentStepId) return;
-    setDraft(buildStepDraft(currentStepId, form));
+    setDraft(buildStepDraft(currentStepId, form, habitChecks));
     setStepError("");
   }, [currentStepId, form]);
 
@@ -825,6 +1040,7 @@ export default function EntryPage() {
         }
         return null;
       }
+      case "habits":
       case "conditioning":
       case "movement":
       case "focus":
@@ -848,6 +1064,8 @@ export default function EntryPage() {
             ...current,
             date: getString("date"),
           };
+        case "habits":
+          return current;
         case "sleep":
           return {
             ...current,
@@ -1020,6 +1238,20 @@ export default function EntryPage() {
       }
       setSaved(true);
       setChatReady(true);
+      // Save habit logs
+      if (activeHabits.length > 0) {
+        const today = form.date;
+        await Promise.allSettled(
+          activeHabits.map((habit) =>
+            fetch(`/api/habits/${habit.id}/log`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ completed: habitChecks[habit.id] ?? false, date: today }),
+            })
+          )
+        );
+      }
       setTimeout(() => setSaved(false), 3000);
     } catch (saveError) {
       setError(
@@ -1182,52 +1414,53 @@ export default function EntryPage() {
             </div>
           </div>
         );
+      case "habits":
+        return (
+          <div className="space-y-3 rounded-3xl border border-[#1f2937] bg-[#020617] px-5 py-5">
+            {activeHabits.length === 0 ? (
+              <p className="text-sm text-slate-500 py-4 text-center">No active habits. Add habits in the Habits tab.</p>
+            ) : (
+              activeHabits.map((habit) => (
+                <button
+                  key={habit.id}
+                  type="button"
+                  onClick={() => setHabitChecks((prev) => ({ ...prev, [habit.id]: !prev[habit.id] }))}
+                  className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border text-left transition-all ${
+                    habitChecks[habit.id]
+                      ? "border-emerald-500/40 bg-emerald-500/10"
+                      : "border-[#1f2937] bg-[#0f172a] hover:border-[#334155]"
+                  }`}
+                >
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: habit.color }}
+                  />
+                  <span className={`flex-1 text-sm font-medium ${habitChecks[habit.id] ? "text-emerald-200" : "text-slate-200"}`}>
+                    {habit.name}
+                  </span>
+                  <span className="text-xs text-slate-600 capitalize">{habit.category}</span>
+                  {habitChecks[habit.id] ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 border-slate-600 flex-shrink-0" />
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        );
       case "sleep":
         return (
           <div className="space-y-4 rounded-3xl border border-[#1f2937] bg-[#020617] px-5 py-5">
-            <div className="space-y-2">
-              <FieldLabel>Sleep hours: {getNumber("sleepHours")}h</FieldLabel>
-              <input
-                type="range"
-                min={0}
-                max={12}
-                step={0.5}
-                value={getNumber("sleepHours")}
-                onChange={(event) =>
-                  setDraftField("sleepHours", parseFloat(event.target.value))
-                }
-                className="w-full accent-blue-500"
-              />
-              <div className="flex justify-between text-xs text-slate-600">
-                <span>0h</span>
-                <span className="text-green-500/70">7.5-8.5h is optimal</span>
-                <span>12h</span>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <FieldLabel>Wake time</FieldLabel>
-                <input
-                  type="time"
-                  value={getString("wakeTime")}
-                  onChange={(event) =>
-                    setDraftField("wakeTime", event.target.value)
-                  }
-                  className="w-full rounded-xl border border-[#334155] bg-[#111827] px-3 py-2.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Bedtime</FieldLabel>
-                <input
-                  type="time"
-                  value={getString("bedtime")}
-                  onChange={(event) =>
-                    setDraftField("bedtime", event.target.value)
-                  }
-                  className="w-full rounded-xl border border-[#334155] bg-[#111827] px-3 py-2.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
-                />
-              </div>
-            </div>
+            <SleepTimeSlider
+              bedtime={getString("bedtime") || "22:00"}
+              wakeTime={getString("wakeTime") || "06:30"}
+              onChange={(bed, wake, hours) => {
+                setDraftField("bedtime", bed);
+                setDraftField("wakeTime", wake);
+                setDraftField("sleepHours", hours);
+              }}
+            />
           </div>
         );
       case "conditioning":
@@ -1520,7 +1753,7 @@ export default function EntryPage() {
                   </>
                 ) : (
                   <UserAnswer
-                    lines={summarizeAnswer(stepId, form)}
+                    lines={summarizeAnswer(stepId, form, activeHabits, habitChecks)}
                     onEdit={() => handleEdit(index)}
                   />
                 )}

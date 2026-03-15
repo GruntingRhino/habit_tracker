@@ -371,7 +371,7 @@ function DangerZone() {
     message: string;
   } | null>(null);
 
-  async function handleClearData() {
+  async function handleReset() {
     if (!confirming) {
       setConfirming(true);
       return;
@@ -379,36 +379,62 @@ function DangerZone() {
     setLoading(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/daily-entries", {
+      const res = await fetch("/api/reset", {
         method: "DELETE",
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to clear data");
-      setStatus({ type: "success", message: "All data cleared successfully" });
+      if (!res.ok) throw new Error("Failed to reset data");
+      setStatus({ type: "success", message: "Tracking data cleared. Your habits, projects, meals, and routines are untouched." });
       setConfirming(false);
     } catch {
-      setStatus({ type: "error", message: "Failed to clear data" });
+      setStatus({ type: "error", message: "Failed to reset data. Please try again." });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="bg-[#0f172a] border border-red-500/20 rounded-xl p-6">
+    <div
+      className="rounded-xl p-6"
+      style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(255,77,106,0.2)" }}
+    >
       <div className="flex items-center gap-2 mb-5">
-        <AlertTriangle className="w-4 h-4 text-red-400" />
-        <h2 className="font-semibold text-red-400">Danger Zone</h2>
+        <AlertTriangle className="w-4 h-4" style={{ color: "#ff4d6a" }} />
+        <h2 className="font-semibold" style={{ color: "#ff4d6a", fontFamily: "'Syne', sans-serif" }}>Danger Zone</h2>
       </div>
 
       <div className="space-y-4">
         <div>
-          <p className="text-slate-300 text-sm font-medium mb-1">
-            Clear All Data
+          <p className="text-sm font-medium mb-1" style={{ color: "#c8deff" }}>
+            Reset Tracking Data
           </p>
-          <p className="text-slate-500 text-sm">
-            Permanently delete all daily entries, habit logs, and category
-            scores for your account. This action cannot be undone.
+          <p className="text-sm mb-4" style={{ color: "#4a6a90" }}>
+            Clears all your logged history. Cannot be undone.
           </p>
+
+          {/* What gets deleted */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
+            <div className="rounded-lg p-3" style={{ background: "rgba(255,77,106,0.06)", border: "1px solid rgba(255,77,106,0.15)" }}>
+              <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#ff4d6a" }}>Deleted</p>
+              <ul className="space-y-1">
+                {["Daily entries", "Category scores", "Habit logs", "Workout sessions", "Exercise logs"].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-xs" style={{ color: "#7a5a5a" }}>
+                    <span style={{ color: "#ff4d6a" }}>✕</span> {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-lg p-3" style={{ background: "rgba(16,217,160,0.06)", border: "1px solid rgba(16,217,160,0.15)" }}>
+              <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#10d9a0" }}>Kept</p>
+              <ul className="space-y-1">
+                {["Your account", "Habits", "Projects & tasks", "Meals", "Routines & exercises"].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-xs" style={{ color: "#4a7a6a" }}>
+                    <span style={{ color: "#10d9a0" }}>✓</span> {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
 
         {status && (
@@ -416,34 +442,36 @@ function DangerZone() {
         )}
 
         {confirming && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-            <p className="text-red-400 text-sm font-medium">
-              Are you sure? This will permanently delete all your data.
+          <div className="rounded-lg p-3" style={{ background: "rgba(255,77,106,0.08)", border: "1px solid rgba(255,77,106,0.2)" }}>
+            <p className="text-sm font-medium" style={{ color: "#ff4d6a" }}>
+              Are you sure? All tracked history will be permanently deleted.
             </p>
           </div>
         )}
 
         <div className="flex gap-3">
           <button
-            onClick={handleClearData}
+            onClick={handleReset}
             disabled={loading}
-            className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/20 text-red-400 font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 font-medium px-4 py-2 rounded-lg text-sm transition-all disabled:opacity-60"
+            style={{ background: "rgba(255,77,106,0.15)", border: "1px solid rgba(255,77,106,0.25)", color: "#ff4d6a" }}
           >
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Clearing...
+                Resetting...
               </>
             ) : confirming ? (
-              "Yes, Delete Everything"
+              "Yes, Reset My Data"
             ) : (
-              "Clear All Data"
+              "Reset Tracking Data"
             )}
           </button>
           {confirming && (
             <button
               onClick={() => setConfirming(false)}
-              className="px-4 py-2 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-sm font-medium transition-colors"
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{ background: "rgba(20,40,70,0.8)", color: "#6b8cb8" }}
             >
               Cancel
             </button>

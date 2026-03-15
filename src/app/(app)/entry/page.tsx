@@ -1663,7 +1663,7 @@ export default function EntryPage() {
     : STEP_ORDER.slice(0, currentStepIndex + 1);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-5xl px-4 py-5 md:px-6 md:py-6 pb-20 lg:pb-6">
       <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.2em] text-slate-500">

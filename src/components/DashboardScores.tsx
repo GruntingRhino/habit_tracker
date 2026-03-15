@@ -134,7 +134,9 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
 
   return (
     <div>
-      <div className="grid grid-cols-7 gap-2">
+      {/* Scrollable on mobile, grid on desktop */}
+      <div className="overflow-x-auto -mx-1 px-1 pb-1">
+      <div className="grid grid-cols-7 gap-2" style={{ minWidth: "420px" }}>
         {scores.map(({ key, title, score, prevScore }) => {
           const Icon = SCORE_ICONS[key] ?? Star;
           const [textColor, bgColor, borderColor, glowColor] = SCORE_COLORS[key] ?? SCORE_COLORS.overall;
@@ -212,6 +214,7 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
             </button>
           );
         })}
+      </div>
       </div>
 
       {/* Analysis panel */}

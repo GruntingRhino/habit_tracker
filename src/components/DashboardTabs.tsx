@@ -472,7 +472,7 @@ function AnalyticsTab() {
       {latest && (
         <section className="mb-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "#3d5a7a", fontFamily: "'Syne', sans-serif" }}>Current Scores</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             {SCORE_META.map(({ key, label, color, icon: Icon }) => {
               const score = latest[key];
               const trend = trends[key as keyof Trends];
@@ -514,7 +514,7 @@ function AnalyticsTab() {
         </section>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Radar */}
         <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
           <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>This Week&apos;s Radar</h2>
@@ -549,7 +549,7 @@ function AnalyticsTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Project pie */}
         <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
           <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Project Status</h2>
@@ -653,13 +653,13 @@ function ProgressionTab() {
   const change = lastWeight - firstWeight;
 
   return (
-    <div className="flex gap-6">
-      <div className="w-52 flex-shrink-0">
+    <div className="flex flex-col md:flex-row gap-6">
+      <div className="md:w-52 flex-shrink-0">
         <p className="text-xs uppercase tracking-widest font-medium mb-3" style={{ color: "#2d4a6a", fontFamily: "'Syne', sans-serif" }}>Exercises</p>
-        <div className="space-y-1">
+        <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0">
           {progressions.map((p) => (
             <button key={p.exerciseName} onClick={() => setSelectedExercise(p.exerciseName)}
-              className="w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150"
+              className="flex-shrink-0 md:w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 whitespace-nowrap md:whitespace-normal"
               style={selectedExercise === p.exerciseName
                 ? { background: "linear-gradient(135deg, rgba(79,114,255,0.18) 0%, rgba(79,114,255,0.06) 100%)", border: "1px solid rgba(79,114,255,0.28)", color: "#a8c4ff" }
                 : { border: "1px solid transparent", color: "#4a6a90" }}
@@ -775,10 +775,11 @@ export default function DashboardTabs(props: DashboardTabsProps) {
     <>
       {/* Tab nav */}
       <div
-        className="flex gap-1 rounded-xl p-1 mb-6 w-fit"
+        className="flex gap-1 rounded-xl p-1 mb-6 w-fit overflow-x-auto"
         style={{
           background: "linear-gradient(135deg, rgba(9,18,34,0.95) 0%, rgba(6,13,28,0.9) 100%)",
           border: "1px solid rgba(40,76,140,0.25)",
+          maxWidth: "100%",
         }}
       >
         {tabBtn("dashboard", "Dashboard", LayoutDashboard)}
@@ -814,12 +815,12 @@ export default function DashboardTabs(props: DashboardTabsProps) {
               </section>
 
               {/* Meals & Routines previews */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <MealsPreview />
                 <RoutinesPreview />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Habits */}
                 <section className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-between mb-4">

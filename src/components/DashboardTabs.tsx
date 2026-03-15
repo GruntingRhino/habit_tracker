@@ -18,6 +18,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Utensils,
 } from "lucide-react";
 import {
   LineChart,
@@ -588,6 +589,24 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                   </p>
                 )}
               </section>
+
+              {/* Quick access */}
+              <div className="flex gap-3 mb-6">
+                <Link
+                  href="/meals"
+                  className="flex items-center gap-2 bg-[#0f172a] border border-[#1e293b] hover:border-[#334155] rounded-xl px-5 py-3 text-sm font-medium text-slate-300 hover:text-slate-100 transition-colors"
+                >
+                  <Utensils className="w-4 h-4 text-orange-400" />
+                  Meals
+                </Link>
+                <Link
+                  href="/weights"
+                  className="flex items-center gap-2 bg-[#0f172a] border border-[#1e293b] hover:border-[#334155] rounded-xl px-5 py-3 text-sm font-medium text-slate-300 hover:text-slate-100 transition-colors"
+                >
+                  <Dumbbell className="w-4 h-4 text-blue-400" />
+                  Routines
+                </Link>
+              </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Habits */}

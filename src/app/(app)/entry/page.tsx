@@ -647,6 +647,7 @@ export default function EntryPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [chatReady, setChatReady] = useState(false);
   const [error, setError] = useState("");
   const [stepError, setStepError] = useState("");
   const [scores, setScores] = useState<CategoryScores | null>(null);
@@ -682,6 +683,7 @@ export default function EntryPage() {
 
         if (todayEntry) {
           setExistingId(todayEntry.id);
+          setChatReady(true);
           setForm({
             date: today,
             sleepHours: todayEntry.sleepHours ?? 0,
@@ -1017,6 +1019,7 @@ export default function EntryPage() {
         });
       }
       setSaved(true);
+      setChatReady(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (saveError) {
       setError(
@@ -1656,7 +1659,7 @@ export default function EntryPage() {
         </section>
       )}
 
-      {saved && <DailyCoachChat />}
+      {chatReady && <DailyCoachChat />}
     </div>
   );
 }

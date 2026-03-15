@@ -1,7 +1,12 @@
+import { assessWorkout, calcTrainingLoadPoints } from "@/lib/workout";
+
 export interface DailyEntryInput {
   sleepHours?: number | null;
   workoutCompleted?: boolean | null;
   workoutRoutineName?: string | null;
+  workoutDurationMinutes?: number | null;
+  workoutIntensity?: string | null;
+  workoutDetails?: string | null;
   sportsTrainingMinutes?: number | null;
   steps?: number | null;
   deepWorkHours?: number | null;
@@ -47,6 +52,7 @@ function clamp(value: number, min = 0, max = 10): number {
 function calcPhysical(entry: DailyEntryInput): number {
   let score = 0;
   const sleep = entry.sleepHours ?? 0;
+  const workout = assessWorkout(entry);
 
   // Sleep scoring — strict window, <6h = 0
   if (sleep >= 7.5 && sleep <= 8.5) score += 4;
@@ -56,16 +62,13 @@ function calcPhysical(entry: DailyEntryInput): number {
   else if (sleep > 9.5) score += 1;
   // sleep < 6 = 0 pts (no sleep, no score)
 
-  // Workout — must have done a named routine for full points
-  const didWorkout = entry.workoutRoutineName
-    ? true
-    : (entry.workoutCompleted ?? false);
-  if (didWorkout) score += 3;
+  // Workout quality is earned from structured, sufficient training.
+  score += workout.qualityPoints;
 
-  // Training — 90min = full 3pts, below that proportional
-  const training = entry.sportsTrainingMinutes ?? 0;
-  if (training >= 90) score += 3;
-  else score += clamp((training / 90) * 3, 0, 3);
+  // Total training load still matters for full physical points.
+  const trainingLoadMinutes =
+    workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0);
+  score += calcTrainingLoadPoints(trainingLoadMinutes);
 
   return clamp(score);
 }
@@ -190,15 +193,14 @@ function calcMental(entry: DailyEntryInput): number {
 // Appearance: requires workout + training + movement + sleep all good for 10/10
 function calcAppearance(entry: DailyEntryInput): number {
   let score = 0;
+  const workout = assessWorkout(entry);
+  const trainingLoadMinutes =
+    workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0);
 
-  const didWorkout = entry.workoutRoutineName
-    ? true
-    : (entry.workoutCompleted ?? false);
-  if (didWorkout) score += 3;
+  score += workout.qualityPoints;
 
-  const training = entry.sportsTrainingMinutes ?? 0;
-  if (training >= 60) score += 2;
-  else if (training >= 30) score += 1;
+  if (trainingLoadMinutes >= 60) score += 2;
+  else if (trainingLoadMinutes >= 30) score += 1;
 
   const steps = entry.steps ?? 0;
   if (steps >= 10000) score += 2;

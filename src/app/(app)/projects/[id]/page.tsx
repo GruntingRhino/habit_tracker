@@ -408,17 +408,34 @@ export default function ProjectDetailPage() {
     }
   }, [projectId, router]);
 
+  const fetchAnalysis = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/analyze`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setAnalysis(null);
+        return;
+      }
+      const data = await res.json();
+      setAnalysis(data);
+    } catch {
+      setAnalysis(null);
+    }
+  }, [projectId]);
+
+  const refreshProjectState = useCallback(async () => {
+    await Promise.all([fetchProject(), fetchAnalysis()]);
+  }, [fetchAnalysis, fetchProject]);
+
   useEffect(() => {
-    fetchProject();
+    void fetchProject();
   }, [fetchProject]);
 
   useEffect(() => {
-    if (!projectId) return;
-    fetch(`/api/projects/${projectId}/analyze`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setAnalysis(data); })
-      .catch(() => {});
-  }, [projectId]);
+    void fetchAnalysis();
+  }, [fetchAnalysis]);
 
   async function handleGenerate() {
     setGenerating(true);
@@ -439,7 +456,7 @@ export default function ProjectDetailPage() {
           ? `Generated ${data.tasks.length} tasks using AI`
           : `Added ${data.tasks.length} default tasks (AI unavailable)`
       );
-      fetchProject();
+      await refreshProjectState();
     } catch (err) {
       setGenerateError(
         err instanceof Error ? err.message : "Failed to generate tasks"
@@ -518,7 +535,7 @@ export default function ProjectDetailPage() {
       const data = await res.json();
       setPasteSuccess(`Created ${data.count} task${data.count !== 1 ? "s" : ""}`);
       setPasteText("");
-      fetchProject();
+      await refreshProjectState();
       setTimeout(() => {
         setShowPastePanel(false);
         setPasteSuccess("");
@@ -541,7 +558,7 @@ export default function ProjectDetailPage() {
         credentials: "include",
         body: JSON.stringify({ status }),
       });
-      fetchProject();
+      await refreshProjectState();
     } catch {
       // ignore
     }
@@ -878,7 +895,7 @@ export default function ProjectDetailPage() {
             projectId={projectId}
             onSaved={() => {
               setShowAddTask(false);
-              fetchProject();
+              void refreshProjectState();
             }}
             onCancel={() => setShowAddTask(false)}
           />
@@ -908,7 +925,9 @@ export default function ProjectDetailPage() {
                       key={task.id}
                       task={task}
                       projectId={projectId}
-                      onUpdated={fetchProject}
+                      onUpdated={() => {
+                        void refreshProjectState();
+                      }}
                       effortHours={ta?.estimatedHours}
                       effortLabel={ta?.effortLabel}
                     />

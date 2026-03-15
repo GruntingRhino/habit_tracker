@@ -3,8 +3,16 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { calculateScores } from "@/lib/scoring";
+import {
+  dailyEntryPayloadSchema,
+  normalizeDailyEntryPayload,
+} from "@/lib/daily-entry";
 import { getStartOfDay } from "@/lib/utils";
 import { subDays } from "date-fns";
+
+function asUpdateValue<T>(value: T | null | undefined): T | null | undefined {
+  return value === null ? null : value ?? undefined;
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -43,7 +51,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
+    const rawBody = await req.json();
+    const parsedBody = dailyEntryPayloadSchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        {
+          error: parsedBody.error.issues[0]?.message ?? "Invalid daily entry",
+          issues: parsedBody.error.flatten(),
+        },
+        { status: 400 }
+      );
+    }
+
+    const body = normalizeDailyEntryPayload(parsedBody.data);
     const userId = session.user.id;
 
     const entryDate = body.date
@@ -60,25 +80,28 @@ export async function POST(req: NextRequest) {
       entry = await prisma.dailyEntry.update({
         where: { id: existingEntry.id },
         data: {
-          sleepHours: body.sleepHours ?? undefined,
+          sleepHours: asUpdateValue(body.sleepHours),
           workoutCompleted: body.workoutCompleted ?? undefined,
-          workoutRoutineName: body.workoutRoutineName ?? undefined,
-          sportsTrainingMinutes: body.sportsTrainingMinutes ?? undefined,
-          steps: body.steps ?? undefined,
-          deepWorkHours: body.deepWorkHours ?? undefined,
-          screenTimeHours: body.screenTimeHours ?? undefined,
-          tasksPlanned: body.tasksPlanned ?? undefined,
-          tasksCompleted: body.tasksCompleted ?? undefined,
-          taskDifficultyRating: body.taskDifficultyRating ?? undefined,
-          moneySpent: body.moneySpent ?? undefined,
-          moneySaved: body.moneySaved ?? undefined,
+          workoutRoutineName: asUpdateValue(body.workoutRoutineName),
+          workoutDurationMinutes: asUpdateValue(body.workoutDurationMinutes),
+          workoutIntensity: asUpdateValue(body.workoutIntensity),
+          workoutDetails: asUpdateValue(body.workoutDetails),
+          sportsTrainingMinutes: asUpdateValue(body.sportsTrainingMinutes),
+          steps: asUpdateValue(body.steps),
+          deepWorkHours: asUpdateValue(body.deepWorkHours),
+          screenTimeHours: asUpdateValue(body.screenTimeHours),
+          tasksPlanned: asUpdateValue(body.tasksPlanned),
+          tasksCompleted: asUpdateValue(body.tasksCompleted),
+          taskDifficultyRating: asUpdateValue(body.taskDifficultyRating),
+          moneySpent: asUpdateValue(body.moneySpent),
+          moneySaved: asUpdateValue(body.moneySaved),
           incomeActivity: body.incomeActivity ?? undefined,
-          caloriesEaten: body.caloriesEaten ?? undefined,
+          caloriesEaten: asUpdateValue(body.caloriesEaten),
           rightWithGod: body.rightWithGod ?? undefined,
-          wakeTime: body.wakeTime ?? undefined,
-          bedtime: body.bedtime ?? undefined,
-          notes: body.notes ?? undefined,
-          overallDayRating: body.overallDayRating ?? undefined,
+          wakeTime: asUpdateValue(body.wakeTime),
+          bedtime: asUpdateValue(body.bedtime),
+          notes: asUpdateValue(body.notes),
+          overallDayRating: asUpdateValue(body.overallDayRating),
         },
       });
     } else {
@@ -89,6 +112,9 @@ export async function POST(req: NextRequest) {
           sleepHours: body.sleepHours,
           workoutCompleted: body.workoutCompleted ?? false,
           workoutRoutineName: body.workoutRoutineName,
+          workoutDurationMinutes: body.workoutDurationMinutes,
+          workoutIntensity: body.workoutIntensity,
+          workoutDetails: body.workoutDetails,
           sportsTrainingMinutes: body.sportsTrainingMinutes,
           steps: body.steps,
           deepWorkHours: body.deepWorkHours,
@@ -179,6 +205,9 @@ export async function POST(req: NextRequest) {
         sleepHours: entry.sleepHours ?? undefined,
         workoutCompleted: entry.workoutCompleted,
         workoutRoutineName: entry.workoutRoutineName ?? undefined,
+        workoutDurationMinutes: entry.workoutDurationMinutes ?? undefined,
+        workoutIntensity: entry.workoutIntensity ?? undefined,
+        workoutDetails: entry.workoutDetails ?? undefined,
         sportsTrainingMinutes: entry.sportsTrainingMinutes ?? undefined,
         steps: entry.steps ?? undefined,
         deepWorkHours: entry.deepWorkHours ?? undefined,

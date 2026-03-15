@@ -96,6 +96,9 @@ export async function POST(req: NextRequest) {
           date,
           sleepHours: sleep,
           workoutCompleted: workout,
+          workoutRoutineName: workout ? "Demo Routine" : null,
+          workoutDurationMinutes: workout ? Math.max(30, sports) : null,
+          workoutIntensity: workout && sports >= 75 ? "hard" : workout ? "moderate" : null,
           sportsTrainingMinutes: sports,
           steps,
           deepWorkHours: deepWork,
@@ -111,7 +114,11 @@ export async function POST(req: NextRequest) {
 
       const scores = calculateScores({
         entry: {
-          sleepHours: sleep, workoutCompleted: workout,
+          sleepHours: sleep,
+          workoutCompleted: workout,
+          workoutRoutineName: workout ? "Demo Routine" : null,
+          workoutDurationMinutes: workout ? Math.max(30, sports) : null,
+          workoutIntensity: workout && sports >= 75 ? "hard" : workout ? "moderate" : null,
           sportsTrainingMinutes: sports, steps,
           deepWorkHours: deepWork, screenTimeHours: screen,
           tasksPlanned: tasksP, tasksCompleted: tasksC,

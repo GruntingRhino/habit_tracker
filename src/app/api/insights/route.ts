@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { assessWorkout } from "@/lib/workout";
 import { subDays } from "date-fns";
 
 export interface InsightProblem {
@@ -23,6 +24,41 @@ export interface InsightResult {
   thirtyDayAvg: number;
   problems: InsightProblem[];
   actions: InsightAction[];
+}
+
+function startOfDayTime(value: Date): number {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function buildFallbackProblem(score: number): string {
+  if (score <= 2) {
+    return `Score is ${score}/10 — this category collapsed today.`;
+  }
+  if (score <= 4) {
+    return `Score is ${score}/10 — this category is actively dragging your day down.`;
+  }
+  return `Score is ${score}/10 — better than failing, still far from tight execution.`;
+}
+
+function buildFallbackAction(score: number): string {
+  if (score <= 2) {
+    return "Treat this as a same-day correction. Fix the biggest miss in this category before tomorrow starts.";
+  }
+  if (score <= 4) {
+    return "Pick the single highest-leverage fix in this category and make it non-negotiable tomorrow.";
+  }
+  return "Review the scoring thresholds in this category and tighten the weakest 1–2 inputs first.";
 }
 
 export async function POST(req: NextRequest) {
@@ -56,6 +92,26 @@ export async function POST(req: NextRequest) {
   ]);
 
   const n = entries.length;
+  const latestEntry = entries[0] ?? null;
+  const latestWorkout = latestEntry
+    ? assessWorkout({
+        workoutCompleted: latestEntry.workoutCompleted,
+        workoutRoutineName: latestEntry.workoutRoutineName,
+        workoutDurationMinutes: latestEntry.workoutDurationMinutes,
+        workoutIntensity: latestEntry.workoutIntensity,
+        workoutDetails: latestEntry.workoutDetails,
+      })
+    : null;
+  const latestDateKey = latestEntry ? startOfDayTime(latestEntry.date) : null;
+  const latestHabitCompletionRate =
+    latestDateKey === null || habits.length === 0
+      ? 0
+      : habits.filter((habit) => {
+          const log = habit.logs.find(
+            (entry) => startOfDayTime(entry.date) === latestDateKey
+          );
+          return log?.completed === true;
+        }).length / habits.length;
   const thirtyDayAvg =
     scores.length > 0
       ? Math.round(
@@ -80,14 +136,59 @@ export async function POST(req: NextRequest) {
     const badSleepDays = countDays(
       (e) => (e.sleepHours ?? 0) < 7 || (e.sleepHours ?? 0) > 9
     );
-    const noWorkoutDays = countDays((e) => !e.workoutCompleted && !e.workoutRoutineName);
-    const lowTrainingDays = countDays(
-      (e) => (e.sportsTrainingMinutes ?? 0) < 30
-    );
+    const workoutAssessments = entries.map((entry) => ({
+      entry,
+      workout: assessWorkout({
+        workoutCompleted: entry.workoutCompleted,
+        workoutRoutineName: entry.workoutRoutineName,
+        workoutDurationMinutes: entry.workoutDurationMinutes,
+        workoutIntensity: entry.workoutIntensity,
+        workoutDetails: entry.workoutDetails,
+      }),
+    }));
+    const noWorkoutDays = workoutAssessments.filter(
+      ({ workout }) => !workout.countsAsWorkout
+    ).length;
+    const lowTrainingDays = workoutAssessments.filter(
+      ({ entry, workout }) =>
+        workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0) < 30
+    ).length;
+    const weakWorkoutDays = workoutAssessments.filter(
+      ({ workout }) => workout.performed && workout.qualityPoints < 2
+    ).length;
     const avgSleep =
       n > 0
         ? entries.reduce((s, e) => s + (e.sleepHours ?? 0), 0) / n
         : 0;
+    const avgEffectiveTraining =
+      n > 0
+        ? workoutAssessments.reduce(
+            (sum, { entry, workout }) =>
+              sum +
+              workout.effectiveTrainingMinutes +
+              (entry.sportsTrainingMinutes ?? 0),
+            0
+          ) / n
+        : 0;
+    const latestTrainingLoad =
+      (latestWorkout?.effectiveTrainingMinutes ?? 0) +
+      (latestEntry?.sportsTrainingMinutes ?? 0);
+
+    if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5) {
+      problems.push({
+        text: `Today: only ${(latestEntry.sleepHours ?? 0).toFixed(1)}h sleep. That nearly zeros out the sleep portion of physical scoring.`,
+      });
+    }
+    if (latestWorkout && latestWorkout.performed && latestWorkout.qualityPoints < 2) {
+      problems.push({
+        text: `Today: your workout only earned ${latestWorkout.qualityPoints.toFixed(1)}/3 credit — not enough duration or effort for real training points.`,
+      });
+    }
+    if (latestEntry && latestTrainingLoad < 30) {
+      problems.push({
+        text: `Today: total training load was only ${latestTrainingLoad} effective minutes. That is below the threshold for meaningful physical momentum.`,
+      });
+    }
 
     if (badSleepDays > 10)
       problems.push({
@@ -95,11 +196,15 @@ export async function POST(req: NextRequest) {
       });
     if (noWorkoutDays > 15)
       problems.push({
-        text: `Skipped workout on ${noWorkoutDays}/30 days — less than 50% workout rate`,
+        text: `No meaningful workout credit on ${noWorkoutDays}/30 days — less than 50% real training consistency`,
       });
     if (lowTrainingDays > 20)
       problems.push({
-        text: `Sports/extra training under 30 min on ${lowTrainingDays}/30 days`,
+        text: `Total training load under 30 effective minutes on ${lowTrainingDays}/30 days — averaging ${avgEffectiveTraining.toFixed(0)} effective minutes`,
+      });
+    if (weakWorkoutDays > 8)
+      problems.push({
+        text: `Logged ${weakWorkoutDays}/30 workouts with weak structure or insufficient detail — vague sessions are capped hard`,
       });
 
     if (avgSleep < 7)
@@ -121,6 +226,16 @@ export async function POST(req: NextRequest) {
         habitName: "60-Min Training Session",
         habitCategory: "physical",
       });
+    if (weakWorkoutDays > 5)
+      actions.push({
+        type: "advice",
+        text: "When you choose a custom workout, log what you actually did. Sets, distance, rounds, or drills matter because vague entries are intentionally capped.",
+      });
+    if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5)
+      actions.push({
+        type: "advice",
+        text: "Tonight's fix is simple: get to bed on time and stop trying to outscore bad sleep with effort tomorrow.",
+      });
   }
 
   if (category === "financial") {
@@ -129,6 +244,19 @@ export async function POST(req: NextRequest) {
     const noSavingsDays = countDays(
       (e) => (e.moneySaved ?? 0) === 0 && (e.moneySpent ?? 0) > 0
     );
+    const latestSpent = latestEntry?.moneySpent ?? 0;
+    const latestSaved = latestEntry?.moneySaved ?? 0;
+
+    if (latestEntry && !latestEntry.incomeActivity) {
+      problems.push({
+        text: "Today: no income-generating activity was logged, which hard-capped the financial score before spending was even considered.",
+      });
+    }
+    if (latestEntry && latestSpent > 0 && latestSaved === 0) {
+      problems.push({
+        text: `Today: you spent ${formatMoney(latestSpent)} and saved ${formatMoney(latestSaved)}. That is pure financial leakage.`,
+      });
+    }
 
     if (noIncomeDays > 20)
       problems.push({
@@ -162,6 +290,11 @@ export async function POST(req: NextRequest) {
         habitName: "Save Money Daily",
         habitCategory: "financial",
       });
+    if (latestEntry && !latestEntry.incomeActivity)
+      actions.push({
+        type: "advice",
+        text: "Tomorrow needs one concrete money move before noon: outreach, sales, client work, shipping, or anything tied directly to revenue.",
+      });
   }
 
   if (category === "discipline") {
@@ -183,6 +316,21 @@ export async function POST(req: NextRequest) {
         (e.tasksPlanned ?? 0) > 0 &&
         (e.tasksCompleted ?? 0) / (e.tasksPlanned ?? 1) < 0.5
     );
+
+    if (
+      latestEntry &&
+      (latestEntry.tasksPlanned ?? 0) > 0 &&
+      (latestEntry.tasksCompleted ?? 0) / Math.max(1, latestEntry.tasksPlanned ?? 0) < 0.5
+    ) {
+      problems.push({
+        text: `Today: you only completed ${latestEntry.tasksCompleted ?? 0}/${latestEntry.tasksPlanned ?? 0} planned tasks. That is not disciplined execution.`,
+      });
+    }
+    if (latestHabitCompletionRate < 0.5) {
+      problems.push({
+        text: `Today: only ${Math.round(latestHabitCompletionRate * 100)}% of active habits were completed. Discipline scoring gives nothing below 50%.`,
+      });
+    }
 
     if (avgHabitRate < 0.7)
       problems.push({
@@ -211,6 +359,11 @@ export async function POST(req: NextRequest) {
         type: "advice",
         text: "Plan fewer tasks per day — 3 focused tasks completed beats 8 abandoned ones.",
       });
+    if (latestHabitCompletionRate < 0.5)
+      actions.push({
+        type: "advice",
+        text: "Stop carrying too many standards loosely. Lock in the 2–3 habits that must happen every day and hit those first.",
+      });
   }
 
   if (category === "focus") {
@@ -224,6 +377,17 @@ export async function POST(req: NextRequest) {
       n > 0
         ? entries.reduce((s, e) => s + (e.screenTimeHours ?? 0), 0) / n
         : 0;
+
+    if (latestEntry && (latestEntry.deepWorkHours ?? 0) < 2) {
+      problems.push({
+        text: `Today: only ${latestEntry.deepWorkHours ?? 0}h of deep work logged. Focus scoring stays weak without a real block of uninterrupted work.`,
+      });
+    }
+    if (latestEntry && (latestEntry.screenTimeHours ?? 0) > 5) {
+      problems.push({
+        text: `Today: ${latestEntry.screenTimeHours ?? 0}h of screen time triggered the focus penalty directly.`,
+      });
+    }
 
     if (lowDeepWorkDays > 15)
       problems.push({
@@ -253,6 +417,11 @@ export async function POST(req: NextRequest) {
         type: "advice",
         text: "Start your day with 2–3h of focused work before checking email or social media.",
       });
+    if (latestEntry && (latestEntry.screenTimeHours ?? 0) > 5)
+      actions.push({
+        type: "advice",
+        text: "Tomorrow: no reactive scrolling before your first deep-work block is complete.",
+      });
   }
 
   if (category === "mental") {
@@ -270,6 +439,17 @@ export async function POST(req: NextRequest) {
             .reduce((s, e) => s + (e.overallDayRating ?? 0), 0) /
           Math.max(1, entries.filter((e) => (e.overallDayRating ?? 0) > 0).length)
         : 0;
+
+    if (latestEntry && (latestEntry.overallDayRating ?? 0) > 0 && (latestEntry.overallDayRating ?? 0) < 5) {
+      problems.push({
+        text: `Today: you rated the day ${latestEntry.overallDayRating}/10. Your own self-assessment says the day was not mentally solid.`,
+      });
+    }
+    if (latestEntry && (latestEntry.sleepHours ?? 0) < 6.5) {
+      problems.push({
+        text: `Today: sleep was only ${(latestEntry.sleepHours ?? 0).toFixed(1)}h. That undercuts mood, resilience, and clarity immediately.`,
+      });
+    }
 
     if (lowRatingDays > 10)
       problems.push({
@@ -303,6 +483,11 @@ export async function POST(req: NextRequest) {
         habitName: "Phone-Free Morning (60 min)",
         habitCategory: "mental",
       });
+    if (latestEntry && (latestEntry.overallDayRating ?? 0) < 5)
+      actions.push({
+        type: "advice",
+        text: "Do a short shutdown review tonight and write the single behavior that made the day feel bad. Fix that first tomorrow.",
+      });
   }
 
   if (category === "appearance") {
@@ -314,6 +499,17 @@ export async function POST(req: NextRequest) {
     const badSleepDays = countDays(
       (e) => (e.sleepHours ?? 0) > 0 && (e.sleepHours ?? 0) < 7
     );
+
+    if (latestWorkout && !latestWorkout.countsAsWorkout) {
+      problems.push({
+        text: "Today: there was no meaningful workout credit, which drags appearance scoring immediately.",
+      });
+    }
+    if (latestEntry && (latestEntry.steps ?? 0) > 0 && (latestEntry.steps ?? 0) < 7000) {
+      problems.push({
+        text: `Today: only ${(latestEntry.steps ?? 0).toLocaleString()} steps logged. That is low daily movement.`,
+      });
+    }
 
     if (noWorkoutDays > 15)
       problems.push({
@@ -351,16 +547,21 @@ export async function POST(req: NextRequest) {
         type: "advice",
         text: "Sleep affects your skin, posture, and energy more than any supplement. Fix this first.",
       });
+    if (latestEntry && (latestEntry.steps ?? 0) > 0 && (latestEntry.steps ?? 0) < 7000)
+      actions.push({
+        type: "advice",
+        text: "Take the easy win tomorrow: a long walk gets you part of the way back without needing motivation gymnastics.",
+      });
   }
 
   // If no issues found for a sub-10 score, add generic advice
   if (problems.length === 0 && currentScore < 10) {
     problems.push({
-      text: `Score is ${currentScore}/10 — good but not perfect. Push to close the gap.`,
+      text: buildFallbackProblem(currentScore),
     });
     actions.push({
       type: "advice",
-      text: "Review the scoring thresholds in this category and identify the exact 1–2 things keeping you from 10/10.",
+      text: buildFallbackAction(currentScore),
     });
   }
 

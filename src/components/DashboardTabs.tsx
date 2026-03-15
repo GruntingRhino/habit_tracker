@@ -468,31 +468,22 @@ function AnalyticsTab() {
 
   return (
     <div>
-      {/* Score cards */}
+      {/* Score cards — clickable for insights */}
       {latest && (
         <section className="mb-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "#3d5a7a", fontFamily: "'Syne', sans-serif" }}>Current Scores</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-            {SCORE_META.map(({ key, label, color, icon: Icon }) => {
-              const score = latest[key];
-              const trend = trends[key as keyof Trends];
-              return (
-                <div key={key} className="rounded-xl p-4 text-center" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
-                  <div className="flex items-center justify-center mb-2">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: color + "20" }}>
-                      <Icon className="w-3.5 h-3.5" style={{ color }} />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold mb-0.5" style={{ color: getScoreColor(score), fontFamily: "'Syne', sans-serif" }}>{score.toFixed(1)}</p>
-                  <p className="text-xs mb-2" style={{ color: "#2d4a6a" }}>{label}</p>
-                  <div className="w-full h-1 rounded-full mb-2" style={{ background: "rgba(20,40,70,0.8)" }}>
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(score / 10) * 100}%`, background: color, opacity: 0.8 }} />
-                  </div>
-                  <TrendBadge trend={trend} />
-                </div>
-              );
+          <h2 className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "#3d5a7a", fontFamily: "'Syne', sans-serif" }}>Current Scores</h2>
+          <p className="text-xs mb-4" style={{ color: "#1e3050" }}>Click any score to see what you&apos;re doing wrong and what to fix</p>
+          <DashboardScores
+            scores={SCORE_META.map(({ key, label }) => {
+              const prev = categoryScores[categoryScores.length - 2];
+              return {
+                key,
+                title: label,
+                score: latest[key as keyof typeof latest] as number,
+                prevScore: prev ? (prev[key as keyof typeof prev] as number) : undefined,
+              };
             })}
-          </div>
+          />
         </section>
       )}
 

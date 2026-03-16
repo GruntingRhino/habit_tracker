@@ -441,7 +441,7 @@ function AnalyticsTab() {
   }, []);
 
   if (loading) return <div className="flex items-center justify-center h-64"><LoadingSpinner size="lg" /></div>;
-  if (!data) return <EmptyState icon={BarChart3} title="No analytics data" description="Start logging daily entries to see analytics." ctaLabel="Log entry" ctaHref="/entry" />;
+  if (!data || data.categoryScores.length === 0) return <EmptyState icon={BarChart3} title="Log an entry to see analytics" description="Your performance charts will appear here once you've logged a daily entry." ctaLabel="Log Today's Entry" ctaHref="/entry" />;
 
   const { categoryScores, trends, habitStats, projectStats } = data;
   const lineData = categoryScores.map((s) => ({
@@ -730,7 +730,7 @@ type Tab = "dashboard" | "analytics" | "progression";
 
 export default function DashboardTabs(props: DashboardTabsProps) {
   const {
-    hasData, scores, latestScoreDate, habits, projects,
+    scores, latestScoreDate, habits, projects,
     entryNotes, entryDate,
   } = props;
 
@@ -784,24 +784,14 @@ export default function DashboardTabs(props: DashboardTabsProps) {
       {/* Dashboard tab */}
       {tab === "dashboard" && (
         <>
-          {!hasData ? (
-            <EmptyState
-              icon={Star}
-              title="No data yet"
-              description="Start tracking habits and daily entries to see your performance scores."
-              ctaLabel="Log your first entry"
-              ctaHref="/entry"
-            />
-          ) : (
-            <>
-              {/* Meals & Routines previews */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <MealsPreview />
-                <RoutinesPreview />
-              </div>
+          {/* Meals & Routines previews — always visible */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <MealsPreview />
+            <RoutinesPreview />
+          </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Habits */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Habits */}
                 <section className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
@@ -881,16 +871,14 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                 </section>
               </div>
 
-              {entryNotes && (
-                <section className="mt-6 rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
-                  <h2 className="font-semibold mb-3" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
-                    Last Entry Notes
-                    {entryDate && <span className="text-xs font-normal ml-2" style={{ color: "#2d4a6a" }}>({new Date(entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</span>}
-                  </h2>
-                  <p className="text-sm leading-relaxed" style={{ color: "#6b8cb8" }}>{entryNotes}</p>
-                </section>
-              )}
-            </>
+          {entryNotes && (
+            <section className="mt-6 rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+              <h2 className="font-semibold mb-3" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
+                Last Entry Notes
+                {entryDate && <span className="text-xs font-normal ml-2" style={{ color: "#2d4a6a" }}>({new Date(entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</span>}
+              </h2>
+              <p className="text-sm leading-relaxed" style={{ color: "#6b8cb8" }}>{entryNotes}</p>
+            </section>
           )}
         </>
       )}

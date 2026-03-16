@@ -403,14 +403,14 @@ export default function AnalyticsPage() {
     );
   }
 
-  if (error || !data) {
+  if (error || !data || data.categoryScores.length === 0) {
     return (
       <div className="p-6">
         <EmptyState
           icon={BarChart3}
-          title="No analytics data"
-          description="Start logging daily entries to see your performance analytics."
-          ctaLabel="Log your first entry"
+          title="Log an entry to see analytics"
+          description="Your performance charts and trends will appear here once you've logged a daily entry."
+          ctaLabel="Log Today's Entry"
           ctaHref="/entry"
         />
       </div>

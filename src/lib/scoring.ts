@@ -19,6 +19,7 @@ export interface DailyEntryInput {
   overallDayRating?: number | null;
   incomeActivity?: boolean | null;
   caloriesEaten?: number | null;
+  rightWithGod?: boolean | null;
 }
 
 export interface ProjectStats {
@@ -101,7 +102,7 @@ function calcFinancial(entry: DailyEntryInput): number {
   return clamp(score);
 }
 
-// Discipline: <50% habit completion = 0 from habits (harsh threshold)
+// Discipline: derived from habits, daily self-control signals, and consistency
 function calcDiscipline(
   entry: DailyEntryInput,
   habitCompletionRate: number,
@@ -109,19 +110,19 @@ function calcDiscipline(
 ): number {
   let score = 0;
 
-  // Habit completion — strict thresholds
-  if (habitCompletionRate >= 0.9) score += 5;
-  else if (habitCompletionRate >= 0.75) score += 3.5;
-  else if (habitCompletionRate >= 0.5) score += 2;
+  // Habit completion — strict thresholds (4pts max)
+  if (habitCompletionRate >= 0.9) score += 4;
+  else if (habitCompletionRate >= 0.75) score += 3;
+  else if (habitCompletionRate >= 0.5) score += 1.5;
   else score += 0; // below 50% = zero — no participation trophy
 
-  // Streak: consistency over time
-  if (recentStreak >= 30) score += 3;
-  else if (recentStreak >= 14) score += 2;
-  else if (recentStreak >= 7) score += 1.5;
+  // Streak: consistency over time (2pts max)
+  if (recentStreak >= 30) score += 2;
+  else if (recentStreak >= 14) score += 1.5;
+  else if (recentStreak >= 7) score += 1;
   else if (recentStreak >= 3) score += 0.5;
 
-  // Task completion
+  // Task completion: did you do what you planned? (2pts max)
   const planned = entry.tasksPlanned ?? 0;
   const completed = entry.tasksCompleted ?? 0;
   if (planned > 0) {
@@ -129,8 +130,23 @@ function calcDiscipline(
     if (ratio >= 1) score += 2;
     else if (ratio >= 0.75) score += 1.5;
     else if (ratio >= 0.5) score += 0.75;
-    // below 50% task completion = 0 pts here too
+    // below 50% = 0 pts
   }
+
+  // Screen time discipline: low screen time = self-control (1pt max, -0.5 penalty)
+  const screen = entry.screenTimeHours;
+  if (screen != null) {
+    if (screen <= 2) score += 1;
+    else if (screen <= 4) score += 0.5;
+    else if (screen > 5) score -= 0.5; // active penalty for excessive screen time
+  }
+
+  // Sleep discipline: staying in healthy window shows body regulation (0.5pt)
+  const sleep = entry.sleepHours ?? 0;
+  if (sleep >= 7 && sleep <= 9) score += 0.5;
+
+  // Spiritual discipline: rightWithGod check (0.5pt)
+  if (entry.rightWithGod) score += 0.5;
 
   return clamp(score);
 }

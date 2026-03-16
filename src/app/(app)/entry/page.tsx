@@ -377,7 +377,6 @@ interface CategoryScores {
 
 type StepId =
   | "date"
-  | "habits"
   | "sleep"
   | "workout"
   | "conditioning"
@@ -389,7 +388,6 @@ type StepId =
 
 const STEP_ORDER: StepId[] = [
   "date",
-  "habits",
   "sleep",
   "workout",
   "conditioning",
@@ -431,12 +429,6 @@ const STEP_META: Record<
     prompt: "Which day are we scoring?",
     hint: "Entries are stored per day. Change the date only if you are backfilling.",
     icon: CalendarDays,
-  },
-  habits: {
-    title: "Habit Check-In",
-    prompt: "Let's check off your habits for today.",
-    hint: "Mark each habit you completed. These sync directly to your habit tracker.",
-    icon: CheckCircle2,
   },
   sleep: {
     title: "Sleep",
@@ -700,12 +692,10 @@ const defaultForm: DailyEntryForm = {
   overallDayRating: 0,
 };
 
-function buildStepDraft(stepId: StepId, form: DailyEntryForm, habitChecks: Record<string, boolean> = {}): Record<string, unknown> {
+function buildStepDraft(stepId: StepId, form: DailyEntryForm): Record<string, unknown> {
   switch (stepId) {
     case "date":
       return { date: form.date };
-    case "habits":
-      return { habitChecks };
     case "sleep":
       return {
         sleepHours: form.sleepHours,
@@ -763,21 +753,10 @@ function buildStepDraft(stepId: StepId, form: DailyEntryForm, habitChecks: Recor
 function summarizeAnswer(
   stepId: StepId,
   form: DailyEntryForm,
-  activeHabits: {id: string; name: string; category: string; color: string}[] = [],
-  habitChecks: Record<string, boolean> = {}
 ): string[] {
   switch (stepId) {
     case "date":
       return [`Scoring date: ${form.date}`];
-    case "habits": {
-      const completed = activeHabits.filter((h) => habitChecks[h.id]);
-      const total = activeHabits.length;
-      if (total === 0) return ["No habits tracked."];
-      return [
-        `${completed.length}/${total} habits completed`,
-        ...completed.map((h) => `✓ ${h.name}`),
-      ];
-    }
     case "sleep":
       return [
         `${form.sleepHours}h sleep`,
@@ -850,8 +829,6 @@ export default function EntryPage() {
   const [existingId, setExistingId] = useState<string | null>(null);
   const [routines, setRoutines] = useState<WeightRoutine[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [activeHabits, setActiveHabits] = useState<{id: string; name: string; category: string; color: string}[]>([]);
-  const [habitChecks, setHabitChecks] = useState<Record<string, boolean>>({});
 
   const currentStepId = STEP_ORDER[currentStepIndex] ?? null;
   const progress = Math.round(
@@ -862,33 +839,14 @@ export default function EntryPage() {
   const fetchTodayEntry = useCallback(async () => {
     setLoading(true);
     try {
-      const [entriesRes, routinesRes, habitsRes] = await Promise.all([
+      const [entriesRes, routinesRes] = await Promise.all([
         fetch("/api/daily-entries", { credentials: "include" }),
         fetch("/api/weights/routines", { credentials: "include" }),
-        fetch("/api/habits", { credentials: "include" }),
       ]);
 
       if (routinesRes.ok) {
         const data = await routinesRes.json();
         setRoutines(data);
-      }
-
-      if (habitsRes.ok) {
-        const habitsData = await habitsRes.json();
-        setActiveHabits(habitsData.map((h: {id: string; name: string; category: string; color: string}) => ({
-          id: h.id, name: h.name, category: h.category, color: h.color,
-        })));
-        // Load today's logs if they exist
-        const todayStr = getToday();
-        const checks: Record<string, boolean> = {};
-        for (const h of habitsData) {
-          const todayLog = (h.logs ?? []).find((l: {date: string; completed: boolean}) => {
-            const d = new Date(l.date);
-            return d.toISOString().slice(0, 10) === todayStr;
-          });
-          checks[h.id] = todayLog?.completed ?? false;
-        }
-        setHabitChecks(checks);
       }
 
       if (entriesRes.ok) {
@@ -955,7 +913,7 @@ export default function EntryPage() {
 
   useEffect(() => {
     if (!currentStepId) return;
-    setDraft(buildStepDraft(currentStepId, form, habitChecks));
+    setDraft(buildStepDraft(currentStepId, form));
     setStepError("");
   }, [currentStepId, form]);
 
@@ -1042,7 +1000,6 @@ export default function EntryPage() {
         }
         return null;
       }
-      case "habits":
       case "conditioning":
       case "movement":
       case "focus":
@@ -1066,8 +1023,6 @@ export default function EntryPage() {
             ...current,
             date: getString("date"),
           };
-        case "habits":
-          return current;
         case "sleep":
           return {
             ...current,
@@ -1240,20 +1195,6 @@ export default function EntryPage() {
       }
       setSaved(true);
       setChatReady(true);
-      // Save habit logs
-      if (activeHabits.length > 0) {
-        const today = form.date;
-        await Promise.allSettled(
-          activeHabits.map((habit) =>
-            fetch(`/api/habits/${habit.id}/log`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ completed: habitChecks[habit.id] ?? false, date: today }),
-            })
-          )
-        );
-      }
       setTimeout(() => setSaved(false), 3000);
     } catch (saveError) {
       setError(
@@ -1414,41 +1355,6 @@ export default function EntryPage() {
                 className="w-full rounded-xl border border-[#334155] bg-[#111827] px-3 py-2.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
               />
             </div>
-          </div>
-        );
-      case "habits":
-        return (
-          <div className="space-y-3 rounded-3xl border border-[#1f2937] bg-[#020617] px-5 py-5">
-            {activeHabits.length === 0 ? (
-              <p className="text-sm text-slate-500 py-4 text-center">No active habits. Add habits in the Habits tab.</p>
-            ) : (
-              activeHabits.map((habit) => (
-                <button
-                  key={habit.id}
-                  type="button"
-                  onClick={() => setHabitChecks((prev) => ({ ...prev, [habit.id]: !prev[habit.id] }))}
-                  className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border text-left transition-all ${
-                    habitChecks[habit.id]
-                      ? "border-emerald-500/40 bg-emerald-500/10"
-                      : "border-[#1f2937] bg-[#0f172a] hover:border-[#334155]"
-                  }`}
-                >
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: habit.color }}
-                  />
-                  <span className={`flex-1 text-sm font-medium ${habitChecks[habit.id] ? "text-emerald-200" : "text-slate-200"}`}>
-                    {habit.name}
-                  </span>
-                  <span className="text-xs text-slate-600 capitalize">{habit.category}</span>
-                  {habitChecks[habit.id] ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-                  ) : (
-                    <div className="h-4 w-4 rounded-full border-2 border-slate-600 flex-shrink-0" />
-                  )}
-                </button>
-              ))
-            )}
           </div>
         );
       case "sleep":
@@ -1760,7 +1666,7 @@ export default function EntryPage() {
                   </>
                 ) : (
                   <UserAnswer
-                    lines={summarizeAnswer(stepId, form, activeHabits, habitChecks)}
+                    lines={summarizeAnswer(stepId, form)}
                     onEdit={() => handleEdit(index)}
                   />
                 )}

@@ -220,6 +220,7 @@ export async function POST(req: NextRequest) {
         incomeActivity: entry.incomeActivity ?? false,
         caloriesEaten: entry.caloriesEaten ?? undefined,
         overallDayRating: entry.overallDayRating ?? undefined,
+        rightWithGod: entry.rightWithGod ?? false,
       },
       habitCompletionRate,
       projectStats: { completedThisWeek, overdueCount, totalActive },

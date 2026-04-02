@@ -60,6 +60,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         title: body.title ?? undefined,
         description: body.description ?? undefined,
         specs: body.specs ?? undefined,
+        notes: body.notes !== undefined ? body.notes : undefined,
         priority: body.priority ?? undefined,
         status: body.status ?? undefined,
         deadline: body.deadline ? new Date(body.deadline) : undefined,

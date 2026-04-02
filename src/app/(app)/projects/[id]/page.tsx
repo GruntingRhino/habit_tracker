@@ -45,6 +45,7 @@ interface Project {
   title: string;
   description: string | null;
   specs: string | null;
+  notes: string | null;
   priority: string;
   status: string;
   deadline: string | null;
@@ -380,6 +381,10 @@ export default function ProjectDetailPage() {
   const [generateSuccess, setGenerateSuccess] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
   const [showPastePanel, setShowPastePanel] = useState(false);
+  const [showListPanel, setShowListPanel] = useState(false);
+  const [listText, setListText] = useState("");
+  const [listSaving, setListSaving] = useState(false);
+  const [listSaved, setListSaved] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pasteImporting, setPasteImporting] = useState(false);
   const [pasteError, setPasteError] = useState("");
@@ -437,6 +442,10 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     void fetchAnalysis();
   }, [fetchAnalysis]);
+
+  useEffect(() => {
+    if (project?.notes) setListText(project.notes);
+  }, [project?.notes]);
 
   async function handleGenerate() {
     setGenerating(true);
@@ -550,6 +559,25 @@ export default function ProjectDetailPage() {
 
   // Live preview of parsed tasks
   const parsedPreview = pasteText.trim() ? parsePasteText(pasteText) : [];
+
+  async function handleSaveList() {
+    setListSaving(true);
+    try {
+      await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ notes: listText }),
+      });
+      setListSaved(true);
+      setTimeout(() => setListSaved(false), 1500);
+      await refreshProjectState();
+    } catch {
+      // ignore
+    } finally {
+      setListSaving(false);
+    }
+  }
 
   async function updateProjectStatus(status: string) {
     try {
@@ -751,11 +779,18 @@ export default function ProjectDetailPage() {
           )}
         </button>
         <button
-          onClick={() => { setShowPastePanel(!showPastePanel); setShowAddTask(false); }}
+          onClick={() => { setShowPastePanel(!showPastePanel); setShowAddTask(false); setShowListPanel(false); }}
           className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 text-emerald-400 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           <ClipboardList className="w-4 h-4" />
           Paste List
+        </button>
+        <button
+          onClick={() => { setShowListPanel(!showListPanel); setShowPastePanel(false); setShowAddTask(false); }}
+          className="flex items-center gap-2 bg-slate-600/20 hover:bg-slate-600/30 border border-slate-500/20 text-slate-300 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          <ClipboardList className="w-4 h-4" />
+          List
         </button>
         <button
           onClick={() => { setShowAddTask(!showAddTask); setShowPastePanel(false); }}
@@ -873,6 +908,46 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {/* List panel */}
+      {showListPanel && (
+        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-slate-100 font-semibold text-sm">Project List</h3>
+              <p className="text-slate-500 text-xs mt-0.5">One item per line — use for rules, notes, references, etc.</p>
+            </div>
+            <button
+              onClick={() => setShowListPanel(false)}
+              className="text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <textarea
+            value={listText}
+            onChange={(e) => setListText(e.target.value)}
+            placeholder={"Rule 1: always validate input\nRule 2: no external deps\nRule 3: write tests first"}
+            rows={8}
+            className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-slate-500/50 resize-none font-mono mb-3"
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={handleSaveList}
+              disabled={listSaving}
+              className="flex items-center gap-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {listSaving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+              ) : listSaved ? (
+                <><CheckCircle2 className="w-4 h-4" /> Saved</>
+              ) : (
+                "Save List"
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       {generateError && (
         <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5 mb-4">
           <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
@@ -947,6 +1022,29 @@ export default function ProjectDetailPage() {
           );
         })}
       </div>
+
+      {/* List */}
+      {project.notes && (
+        <div className="mt-6 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-slate-100 text-sm">List</h2>
+            <button
+              onClick={() => { setShowListPanel(true); setShowPastePanel(false); setShowAddTask(false); }}
+              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              Edit
+            </button>
+          </div>
+          <ul className="space-y-1.5">
+            {project.notes.split("\n").filter((l) => l.trim()).map((line, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-500 flex-shrink-0" />
+                {line.trim()}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Specs */}
       {project.specs && (

@@ -620,14 +620,14 @@ export default function ProjectDetailPage() {
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto pb-20 lg:pb-6">
       {/* Back */}
       <Link
-        href="/dashboard"
+        href="/projects"
         className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors"
         style={{ color: "#3d5a7a" }}
         onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
         onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}
       >
         <ArrowLeft className="w-4 h-4" />
-        Dashboard
+        Projects
       </Link>
 
       {/* Project header */}

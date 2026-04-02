@@ -560,6 +560,23 @@ export default function ProjectDetailPage() {
   // Live preview of parsed tasks
   const parsedPreview = pasteText.trim() ? parsePasteText(pasteText) : [];
 
+  function parseListItems(raw: string) {
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const parts = line.split(":").map((p) => p.trim());
+        return {
+          label: parts[0],
+          tag: parts[1] ?? null,
+          note: parts[2] ?? null,
+        };
+      });
+  }
+
+  const listPreview = listText.trim() ? parseListItems(listText) : [];
+
   async function handleSaveList() {
     setListSaving(true);
     try {
@@ -914,7 +931,14 @@ export default function ProjectDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="text-slate-100 font-semibold text-sm">Project List</h3>
-              <p className="text-slate-500 text-xs mt-0.5">One item per line — use for rules, notes, references, etc.</p>
+              <p className="text-slate-500 text-xs mt-0.5">
+                One item per line. Format:{" "}
+                <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item:tag:note</code>
+                {" "}or{" "}
+                <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item:tag</code>
+                {" "}or just{" "}
+                <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item</code>
+              </p>
             </div>
             <button
               onClick={() => setShowListPanel(false)}
@@ -923,14 +947,44 @@ export default function ProjectDetailPage() {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <textarea
-            value={listText}
-            onChange={(e) => setListText(e.target.value)}
-            placeholder={"Rule 1: always validate input\nRule 2: no external deps\nRule 3: write tests first"}
-            rows={8}
-            className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-slate-500/50 resize-none font-mono mb-3"
-          />
-          <div className="flex justify-end">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <textarea
+                value={listText}
+                onChange={(e) => setListText(e.target.value)}
+                placeholder={"No external deps:rule:critical\nWrite tests first:rule\nValidate all input:security:high priority\nKeep it simple"}
+                rows={8}
+                className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-slate-500/50 resize-none font-mono"
+              />
+            </div>
+            <div>
+              <p className="text-slate-500 text-xs mb-2">
+                Preview — {listPreview.length} item{listPreview.length !== 1 ? "s" : ""} detected
+              </p>
+              <div className="space-y-1.5 max-h-[196px] overflow-y-auto">
+                {listPreview.length === 0 ? (
+                  <p className="text-slate-600 text-xs italic">Start typing to see preview…</p>
+                ) : (
+                  listPreview.map((item, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-[#0a0f1e] border border-[#1e293b] rounded-lg px-3 py-2">
+                      <span className="flex-1 text-slate-200 text-xs truncate">{item.label}</span>
+                      {item.tag && (
+                        <span className="text-xs px-1.5 py-0.5 rounded border flex-shrink-0 text-slate-300 bg-slate-500/10 border-slate-500/20">
+                          {item.tag}
+                        </span>
+                      )}
+                      {item.note && (
+                        <span className="text-slate-500 text-xs truncate max-w-[80px] flex-shrink-0">{item.note}</span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-4">
             <button
               onClick={handleSaveList}
               disabled={listSaving}
@@ -941,7 +995,7 @@ export default function ProjectDetailPage() {
               ) : listSaved ? (
                 <><CheckCircle2 className="w-4 h-4" /> Saved</>
               ) : (
-                "Save List"
+                `Save ${listPreview.length > 0 ? `${listPreview.length} item${listPreview.length !== 1 ? "s" : ""}` : "List"}`
               )}
             </button>
           </div>
@@ -1035,14 +1089,21 @@ export default function ProjectDetailPage() {
               Edit
             </button>
           </div>
-          <ul className="space-y-1.5">
-            {project.notes.split("\n").filter((l) => l.trim()).map((line, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-500 flex-shrink-0" />
-                {line.trim()}
-              </li>
+          <div className="space-y-1.5">
+            {parseListItems(project.notes).map((item, i) => (
+              <div key={i} className="flex items-center gap-2 bg-[#0a0f1e] border border-[#1e293b] rounded-lg px-3 py-2">
+                <span className="flex-1 text-slate-200 text-sm">{item.label}</span>
+                {item.tag && (
+                  <span className="text-xs px-1.5 py-0.5 rounded border flex-shrink-0 text-slate-300 bg-slate-500/10 border-slate-500/20">
+                    {item.tag}
+                  </span>
+                )}
+                {item.note && (
+                  <span className="text-slate-500 text-xs flex-shrink-0">{item.note}</span>
+                )}
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 

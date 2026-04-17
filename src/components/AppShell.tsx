@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import Sidebar from "./Sidebar";
+import FloatingCoach from "./FloatingCoach";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -43,6 +44,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-y-auto relative">
         {children}
       </main>
+
+      {/* ── Floating AI Coach (bottom-right) ── */}
+      <FloatingCoach />
 
       {/* ── Mobile FAB toggle (bottom-left) ── */}
       <button

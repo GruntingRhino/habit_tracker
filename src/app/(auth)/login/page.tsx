@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Brain, Mail, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { Brain, User, Lock, AlertCircle, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function LoginPage() {
         redirect: false,
       });
       if (result?.error) {
-        setError("Invalid email or password. Please try again.");
+        setError("Invalid username or password. Please try again.");
       } else if (result?.ok) {
         router.replace("/dashboard");
       }
@@ -179,18 +179,18 @@ export default function LoginPage() {
                 className="block text-sm font-medium mb-1.5"
                 style={{ color: "#6b8cb8" }}
               >
-                Email address
+                Username or Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#2d4a6a" }} />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#2d4a6a" }} />
                 <input
                   id="email"
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="username or email"
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                   className="w-full rounded-lg pl-10 pr-4 py-2.5 text-sm outline-none transition-all duration-150"
                   style={{
                     background: "rgba(6,13,28,0.8)",

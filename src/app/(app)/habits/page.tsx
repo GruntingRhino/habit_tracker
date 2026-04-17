@@ -12,6 +12,8 @@ import {
   CheckSquare,
   AlertCircle,
   ArrowLeft,
+  Sparkles,
+  Check,
 } from "lucide-react";
 import {
   BarChart,
@@ -90,6 +92,235 @@ function formatDay(d: Date): string {
 
 function getDayLabel(d: Date): string {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+}
+
+// ── Example habits library ──────────────────────────────────────────────────
+
+interface ExampleHabit {
+  name: string;
+  description: string;
+  category: string;
+  color: string;
+  emoji: string;
+  targetDays: string[];
+}
+
+const ALL_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri"];
+
+const EXAMPLE_HABITS: { section: string; habits: ExampleHabit[] }[] = [
+  {
+    section: "Physical",
+    habits: [
+      { name: "Morning Run", description: "Start the day with a run, any distance", category: "physical", color: "#22c55e", emoji: "🏃", targetDays: ALL_DAYS },
+      { name: "Hit the Gym", description: "Structured workout session", category: "physical", color: "#ef4444", emoji: "🏋️", targetDays: WEEKDAYS },
+      { name: "100 Push-Ups", description: "Daily push-up challenge, can split into sets", category: "physical", color: "#f97316", emoji: "💪", targetDays: ALL_DAYS },
+      { name: "Walk 10,000 Steps", description: "Reach your daily step goal", category: "physical", color: "#14b8a6", emoji: "👟", targetDays: ALL_DAYS },
+      { name: "Cold Shower", description: "End your shower with 60 seconds cold", category: "health", color: "#06b6d4", emoji: "🚿", targetDays: ALL_DAYS },
+      { name: "Stretching & Mobility", description: "15 minutes of stretching or yoga", category: "physical", color: "#f59e0b", emoji: "🧘", targetDays: ALL_DAYS },
+    ],
+  },
+  {
+    section: "Mental",
+    habits: [
+      { name: "Daily Meditation", description: "10+ minutes of mindfulness or breathwork", category: "mental", color: "#8b5cf6", emoji: "🧠", targetDays: ALL_DAYS },
+      { name: "Morning Journaling", description: "Write 3 pages or reflect on goals", category: "mental", color: "#ec4899", emoji: "✍️", targetDays: WEEKDAYS },
+      { name: "Gratitude Practice", description: "List 3 things you're grateful for", category: "mental", color: "#a78bfa", emoji: "🙏", targetDays: ALL_DAYS },
+      { name: "No Phone First Hour", description: "Avoid screens for 1 hour after waking", category: "mental", color: "#6366f1", emoji: "📵", targetDays: ALL_DAYS },
+      { name: "Evening Review", description: "Reflect on the day's wins and misses", category: "mental", color: "#818cf8", emoji: "🌙", targetDays: WEEKDAYS },
+    ],
+  },
+  {
+    section: "Health",
+    habits: [
+      { name: "Sleep by 10 PM", description: "Lights out, phone away by 10 PM", category: "health", color: "#6366f1", emoji: "😴", targetDays: WEEKDAYS },
+      { name: "Drink 2L Water", description: "Track and hit your daily water goal", category: "health", color: "#22d3ee", emoji: "💧", targetDays: ALL_DAYS },
+      { name: "No Junk Food", description: "Stick to whole foods all day", category: "health", color: "#22c55e", emoji: "🥗", targetDays: ALL_DAYS },
+      { name: "Track Calories", description: "Log everything you eat", category: "health", color: "#f59e0b", emoji: "🍽️", targetDays: ALL_DAYS },
+      { name: "No Alcohol", description: "Fully alcohol-free day", category: "health", color: "#ef4444", emoji: "🚫", targetDays: ALL_DAYS },
+      { name: "Cook Your Meals", description: "Prepare at least 2 meals at home", category: "health", color: "#10b981", emoji: "🍳", targetDays: WEEKDAYS },
+    ],
+  },
+  {
+    section: "Productivity",
+    habits: [
+      { name: "Deep Work Block", description: "2+ hours of focused, distraction-free work", category: "productivity", color: "#3b82f6", emoji: "⚡", targetDays: WEEKDAYS },
+      { name: "Read 30 Minutes", description: "Read a non-fiction book for 30+ minutes", category: "productivity", color: "#60a5fa", emoji: "📚", targetDays: ALL_DAYS },
+      { name: "Plan Tomorrow", description: "Write out tomorrow's tasks before bed", category: "productivity", color: "#818cf8", emoji: "📋", targetDays: WEEKDAYS },
+      { name: "No Social Media Before Noon", description: "Keep mornings free from feeds", category: "productivity", color: "#f97316", emoji: "🔕", targetDays: WEEKDAYS },
+      { name: "Weekly Review", description: "Review goals, wins, and next week's plan", category: "productivity", color: "#14b8a6", emoji: "📊", targetDays: ["sun"] },
+      { name: "Learn Something New", description: "30 min of studying, courses, or skills", category: "productivity", color: "#6366f1", emoji: "🎓", targetDays: WEEKDAYS },
+    ],
+  },
+  {
+    section: "Financial",
+    habits: [
+      { name: "Track Daily Spending", description: "Log every expense, no exceptions", category: "finance", color: "#22c55e", emoji: "💰", targetDays: ALL_DAYS },
+      { name: "No Unnecessary Purchases", description: "Stick to your budget — skip impulse buys", category: "finance", color: "#f59e0b", emoji: "💳", targetDays: ALL_DAYS },
+      { name: "Work on Side Hustle", description: "Dedicate time to income-generating work", category: "finance", color: "#3b82f6", emoji: "💼", targetDays: WEEKDAYS },
+      { name: "Review Finances", description: "Check accounts, expenses, and savings", category: "finance", color: "#10b981", emoji: "📈", targetDays: ["mon"] },
+    ],
+  },
+];
+
+const SECTION_COLORS: Record<string, string> = {
+  Physical: "text-green-400 bg-green-500/10 border-green-500/20",
+  Mental: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  Health: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+  Productivity: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  Financial: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20",
+};
+
+interface ExampleHabitsModalProps {
+  onClose: () => void;
+  onAdded: () => void;
+  existingNames: Set<string>;
+}
+
+function ExampleHabitsModal({ onClose, onAdded, existingNames }: ExampleHabitsModalProps) {
+  const [adding, setAdding] = useState<string | null>(null);
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [activeSection, setActiveSection] = useState("Physical");
+
+  async function addHabit(habit: ExampleHabit) {
+    setAdding(habit.name);
+    try {
+      const res = await fetch("/api/habits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: habit.name,
+          description: habit.description,
+          category: habit.category,
+          color: habit.color,
+          targetDays: habit.targetDays,
+        }),
+      });
+      if (res.ok) {
+        setAdded((prev) => new Set([...prev, habit.name]));
+        onAdded();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAdding(null);
+    }
+  }
+
+  const currentSection = EXAMPLE_HABITS.find((s) => s.section === activeSection);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center bg-black/70 px-0 sm:px-4">
+      <div className="bg-[#060e20] border border-[#1e293b] rounded-t-2xl sm:rounded-2xl w-full max-w-2xl flex flex-col"
+        style={{ maxHeight: "90vh" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-[#1e293b] flex-shrink-0">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <Sparkles className="w-4 h-4 text-blue-400" />
+              <h2 className="text-base font-semibold text-slate-100">Habit Library</h2>
+            </div>
+            <p className="text-xs text-slate-500">Tap any habit to add it instantly</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-500 hover:text-slate-100 transition-colors p-1"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Category tabs */}
+        <div className="flex gap-1.5 px-5 py-3 overflow-x-auto border-b border-[#1e293b] flex-shrink-0">
+          {EXAMPLE_HABITS.map(({ section }) => (
+            <button
+              key={section}
+              onClick={() => setActiveSection(section)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                activeSection === section
+                  ? "bg-blue-600 text-white"
+                  : "bg-[#0f172a] text-slate-400 hover:text-slate-200 border border-[#1e293b]"
+              }`}
+            >
+              {section}
+            </button>
+          ))}
+        </div>
+
+        {/* Habits grid */}
+        <div className="overflow-y-auto flex-1 p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {currentSection?.habits.map((habit) => {
+              const alreadyAdded = added.has(habit.name) || existingNames.has(habit.name.toLowerCase());
+              const isAdding = adding === habit.name;
+              const sectionColor = SECTION_COLORS[activeSection] ?? "text-slate-400 bg-slate-500/10 border-slate-500/20";
+
+              return (
+                <div
+                  key={habit.name}
+                  className="flex items-start gap-3 bg-[#0a1020] border border-[#1e293b] rounded-xl p-4 transition-colors hover:border-[#334155]"
+                >
+                  {/* Emoji + color dot */}
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-lg"
+                    style={{ background: `${habit.color}18`, border: `1px solid ${habit.color}30` }}
+                  >
+                    {habit.emoji}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="text-sm font-medium text-slate-100 leading-tight">{habit.name}</p>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-2 line-clamp-2">{habit.description}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border capitalize ${sectionColor}`}>
+                        {habit.category}
+                      </span>
+                      <button
+                        onClick={() => !alreadyAdded && addHabit(habit)}
+                        disabled={alreadyAdded || isAdding}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
+                          alreadyAdded
+                            ? "text-green-400 bg-green-500/10 border border-green-500/20 cursor-default"
+                            : "text-blue-400 bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20"
+                        } disabled:opacity-60`}
+                      >
+                        {isAdding ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : alreadyAdded ? (
+                          <>
+                            <Check className="w-3 h-3" />
+                            Added
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3 h-3" />
+                            Add
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-[#1e293b] flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 bg-[#0f172a] hover:bg-[#1e293b] border border-[#1e293b] text-slate-300 rounded-xl text-sm font-medium transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface AddHabitModalProps {
@@ -296,7 +527,10 @@ export default function HabitsPage() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const existingHabitNames = new Set(habits.map((h) => h.name.toLowerCase()));
 
   const last7Days = getLast7Days();
   const todayStr = formatDay(new Date());
@@ -377,23 +611,50 @@ export default function HabitsPage() {
             {habits.length} active habit{habits.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Habit
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowLibrary(true)}
+            className="flex items-center gap-2 bg-[#0f172a] hover:bg-[#1e293b] border border-[#334155] text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+          >
+            <Sparkles className="w-4 h-4 text-blue-400" />
+            <span className="hidden sm:inline">Browse Library</span>
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Habit
+          </button>
+        </div>
       </div>
 
       {habits.length === 0 ? (
-        <EmptyState
-          icon={CheckSquare}
-          title="No habits yet"
-          description="Start building your habits by adding your first one."
-          ctaLabel="Add your first habit"
-          onCtaClick={() => setShowModal(true)}
-        />
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#0f172a] border border-[#1e293b] flex items-center justify-center">
+            <CheckSquare className="w-6 h-6 text-slate-600" />
+          </div>
+          <div className="text-center">
+            <p className="text-slate-100 font-semibold mb-1">No habits yet</p>
+            <p className="text-slate-500 text-sm">Build your routine from scratch or pick from the library.</p>
+          </div>
+          <div className="flex gap-3 flex-wrap justify-center mt-1">
+            <button
+              onClick={() => setShowLibrary(true)}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+            >
+              <Sparkles className="w-4 h-4" />
+              Browse Habit Library
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-[#0f172a] hover:bg-[#1e293b] border border-[#334155] text-slate-300 text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Create Custom
+            </button>
+          </div>
+        </div>
       ) : (
         <>
           {/* Habit List with weekly grid */}
@@ -554,6 +815,14 @@ export default function HabitsPage() {
             setShowModal(false);
             fetchHabits();
           }}
+        />
+      )}
+
+      {showLibrary && (
+        <ExampleHabitsModal
+          onClose={() => setShowLibrary(false)}
+          onAdded={() => fetchHabits()}
+          existingNames={existingHabitNames}
         />
       )}
     </div>

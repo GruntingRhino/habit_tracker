@@ -1,9 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { chatWithCoach, type ChatMessage } from "@/lib/ollama";
-import { startOfDay, addDays, subDays } from "date-fns";
+import { getCoachChatState, sendCoachMessage } from "@/lib/coach";
+
+function getLastUserMessage(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    const item = value[index];
+    if (
+      item &&
+      typeof item === "object" &&
+      "role" in item &&
+      "content" in item &&
+      item.role === "user" &&
+      typeof item.content === "string"
+    ) {
+      return item.content;
+    }
+  }
+
+  return null;
+}
+
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const payload = await getCoachChatState(session.user.id);
+    return NextResponse.json(payload);
+  } catch (error) {
+    console.error("[coach chat GET] error:", error);
+    return NextResponse.json(
+      { error: "Failed to load coach history" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -11,69 +47,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json() as { messages: ChatMessage[] };
-  const messages: ChatMessage[] = body.messages ?? [];
-  const userId = session.user.id;
+  try {
+    const body = await req.json() as {
+      message?: string;
+      messages?: Array<{ role: string; content: string }>;
+    };
 
-  const todayStart = startOfDay(new Date());
-  const todayEnd = addDays(todayStart, 1);
+    const message = body.message?.trim() || getLastUserMessage(body.messages)?.trim();
+    if (!message) {
+      return NextResponse.json(
+        { error: "message is required" },
+        { status: 400 }
+      );
+    }
 
-  const [todayEntry, todayScore, recentScores] = await Promise.all([
-    prisma.dailyEntry.findFirst({
-      where: { userId, date: { gte: todayStart, lt: todayEnd } },
-    }),
-    prisma.categoryScore.findFirst({
-      where: { userId, date: { gte: todayStart, lt: todayEnd } },
-    }),
-    prisma.categoryScore.findMany({
-      where: { userId, date: { gte: subDays(new Date(), 30) } },
-      orderBy: { date: "desc" },
-    }),
-  ]);
-
-  const recentAvg =
-    recentScores.length > 0
-      ? Math.round(
-          (recentScores.reduce((s, r) => s + (r.overall ?? 0), 0) /
-            recentScores.length) *
-            10
-        ) / 10
-      : undefined;
-
-  const reply = await chatWithCoach(messages, {
-    entry: todayEntry
-      ? {
-          sleepHours: todayEntry.sleepHours,
-          workoutCompleted: todayEntry.workoutCompleted,
-          workoutRoutineName: todayEntry.workoutRoutineName,
-          workoutDurationMinutes: todayEntry.workoutDurationMinutes,
-          workoutIntensity: todayEntry.workoutIntensity,
-          deepWorkHours: todayEntry.deepWorkHours,
-          screenTimeHours: todayEntry.screenTimeHours,
-          tasksPlanned: todayEntry.tasksPlanned,
-          tasksCompleted: todayEntry.tasksCompleted,
-          moneySpent: todayEntry.moneySpent,
-          moneySaved: todayEntry.moneySaved,
-          incomeActivity: todayEntry.incomeActivity,
-          steps: todayEntry.steps,
-          caloriesEaten: todayEntry.caloriesEaten,
-          overallDayRating: todayEntry.overallDayRating,
-          notes: todayEntry.notes,
-        }
-      : undefined,
-    scores: todayScore
-      ? {
-          physical: todayScore.physical ?? 0,
-          focus: todayScore.focus ?? 0,
-          discipline: todayScore.discipline ?? 0,
-          financial: todayScore.financial ?? 0,
-          mental: todayScore.mental ?? 0,
-          appearance: todayScore.appearance ?? 0,
-          overall: todayScore.overall ?? 0,
-        }
-      : undefined,
-    recentAvg,
-  });
-
-  return NextResponse.json({ message: reply });
+    const payload = await sendCoachMessage(session.user.id, message);
+    return NextResponse.json(payload);
+  } catch (error) {
+    console.error("[coach chat POST] error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate coach response" },
+      { status: 500 }
+    );
+  }
 }

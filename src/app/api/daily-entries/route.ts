@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { calculateScores } from "@/lib/scoring";
+import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import {
   dailyEntryPayloadSchema,
   normalizeDailyEntryPayload,
@@ -135,134 +135,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Compute habit completion rate for this day
-    const habits = await prisma.habit.findMany({
-      where: { userId, isActive: true },
-      include: {
-        logs: {
-          where: { date: entryDate },
-        },
-      },
-    });
-
-    const totalHabits = habits.length;
-    const completedHabits = habits.filter(
-      (h) => h.logs[0]?.completed === true
-    ).length;
-    const habitCompletionRate =
-      totalHabits > 0 ? completedHabits / totalHabits : 0;
-
-    // Get project stats
-    const oneWeekAgo = subDays(new Date(), 7);
-    const [completedThisWeek, overdueCount, totalActive] = await Promise.all([
-      prisma.project.count({
-        where: {
-          userId,
-          status: "completed",
-          completedAt: { gte: oneWeekAgo },
-        },
-      }),
-      prisma.project.count({
-        where: {
-          userId,
-          status: { not: "completed" },
-          deadline: { lt: new Date() },
-        },
-      }),
-      prisma.project.count({
-        where: { userId, status: "active" },
-      }),
-    ]);
-
-    // Calculate streak from habit logs
-    const allLogs = await prisma.habitLog.findMany({
-      where: {
-        habit: { userId },
-      },
-      orderBy: { date: "desc" },
-      take: 60,
-    });
-
-    // Aggregate by date: a day counts as "completed" if >= 50% habits done
-    const logsByDate = new Map<string, { completed: number; total: number }>();
-    for (const log of allLogs) {
-      const key = getStartOfDay(log.date).toISOString();
-      if (!logsByDate.has(key)) logsByDate.set(key, { completed: 0, total: 0 });
-      const dayStats = logsByDate.get(key)!;
-      dayStats.total++;
-      if (log.completed) dayStats.completed++;
-    }
-
-    const streakLogs = Array.from(logsByDate.entries()).map(([date, stats]) => ({
-      date: new Date(date),
-      completed: stats.total > 0 && stats.completed / stats.total >= 0.5,
-    }));
-
-    const recentStreak = calcStreakFromLogs(streakLogs);
-
-    const scores = calculateScores({
-      entry: {
-        sleepHours: entry.sleepHours ?? undefined,
-        workoutCompleted: entry.workoutCompleted,
-        workoutRoutineName: entry.workoutRoutineName ?? undefined,
-        workoutDurationMinutes: entry.workoutDurationMinutes ?? undefined,
-        workoutIntensity: entry.workoutIntensity ?? undefined,
-        workoutDetails: entry.workoutDetails ?? undefined,
-        sportsTrainingMinutes: entry.sportsTrainingMinutes ?? undefined,
-        steps: entry.steps ?? undefined,
-        deepWorkHours: entry.deepWorkHours ?? undefined,
-        screenTimeHours: entry.screenTimeHours ?? undefined,
-        tasksPlanned: entry.tasksPlanned ?? undefined,
-        tasksCompleted: entry.tasksCompleted ?? undefined,
-        taskDifficultyRating: entry.taskDifficultyRating ?? undefined,
-        moneySpent: entry.moneySpent ?? undefined,
-        moneySaved: entry.moneySaved ?? undefined,
-        incomeActivity: entry.incomeActivity ?? false,
-        caloriesEaten: entry.caloriesEaten ?? undefined,
-        overallDayRating: entry.overallDayRating ?? undefined,
-        rightWithGod: entry.rightWithGod ?? false,
-      },
-      habitCompletionRate,
-      projectStats: { completedThisWeek, overdueCount, totalActive },
-      recentStreak,
-    });
-
-    // Save or update category scores (no unique constraint, use findFirst pattern)
-    const existingScore = await prisma.categoryScore.findFirst({
-      where: { userId, date: entryDate },
-    });
-
-    let savedScores;
-    if (existingScore) {
-      savedScores = await prisma.categoryScore.update({
-        where: { id: existingScore.id },
-        data: {
-          physical:   scores.physical,
-          financial:  scores.financial,
-          discipline: scores.discipline,
-          focus:      scores.focus,
-          mental:     scores.mental,
-          appearance: scores.appearance,
-          overall:    scores.overall,
-          dailyEntryId: entry.id,
-        },
-      });
-    } else {
-      savedScores = await prisma.categoryScore.create({
-        data: {
-          userId,
-          dailyEntryId: entry.id,
-          date:       entryDate,
-          physical:   scores.physical,
-          financial:  scores.financial,
-          discipline: scores.discipline,
-          focus:      scores.focus,
-          mental:     scores.mental,
-          appearance: scores.appearance,
-          overall:    scores.overall,
-        },
-      });
-    }
+    const savedScores = await recomputeCategoryScoreForDate(userId, entryDate);
 
     return NextResponse.json(
       { entry, scores: savedScores },
@@ -275,34 +148,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function calcStreakFromLogs(
-  logs: { date: Date; completed: boolean }[]
-): number {
-  if (!logs.length) return 0;
-
-  const sorted = [...logs].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  const today = getStartOfDay(new Date()).getTime();
-  let streak = 0;
-  let cursor = today;
-
-  for (const log of sorted) {
-    const logDay = getStartOfDay(log.date).getTime();
-    if (logDay === cursor) {
-      if (log.completed) {
-        streak++;
-        cursor -= 86400000;
-      } else {
-        break;
-      }
-    } else if (logDay < cursor) {
-      break;
-    }
-  }
-
-  return streak;
 }

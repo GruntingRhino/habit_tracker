@@ -19,7 +19,6 @@ import {
   Loader2,
   Moon,
   Save,
-  Send,
   Sparkles,
   Star,
   Wallet,
@@ -27,6 +26,7 @@ import {
 import { type LucideIcon } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ScoreCard from "@/components/ScoreCard";
+import DailyCoachChat from "@/components/DailyCoachChat";
 import {
   assessWorkout,
   type WorkoutIntensity,
@@ -36,134 +36,6 @@ import {
 interface WeightRoutine {
   id: string;
   name: string;
-}
-
-interface CoachMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-function DailyCoachChat() {
-  const [messages, setMessages] = useState<CoachMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!initialized) {
-      setInitialized(true);
-      void sendMessage(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  async function sendMessage(userText: string | null) {
-    const newMessages: CoachMessage[] = userText
-      ? [...messages, { role: "user" as const, content: userText }]
-      : [{ role: "user" as const, content: "Give me a quick assessment of my day and the most important thing I should focus on tomorrow." }];
-
-    if (userText) setMessages(newMessages);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/chat/daily", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ messages: newMessages }),
-      });
-      const data = await res.json() as { message: string };
-      const assistantMsg: CoachMessage = { role: "assistant", content: data.message };
-      setMessages((prev) => {
-        const base = userText ? prev : [];
-        return [...base, assistantMsg];
-      });
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Failed to connect to the AI coach. Check your connection." },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleSend() {
-    const text = input.trim();
-    if (!text || loading) return;
-    setInput("");
-    void sendMessage(text);
-  }
-
-  return (
-    <section className="mt-8">
-      <div className="mb-4 flex items-center gap-2">
-        <Bot className="h-4 w-4 text-blue-300" />
-        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Daily Coach
-        </h2>
-      </div>
-      <div className="rounded-3xl border border-[#1f2937] bg-[#0a0f1a] overflow-hidden">
-        <div className="h-80 overflow-y-auto p-5 space-y-4">
-          {messages.length === 0 && !loading && (
-            <p className="text-sm text-slate-500 italic">Starting session...</p>
-          )}
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} gap-3`}>
-              {msg.role === "assistant" && (
-                <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-300">
-                  <Bot className="h-3.5 w-3.5" />
-                </div>
-              )}
-              <div
-                className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === "assistant"
-                    ? "rounded-tl-md border border-[#1f2937] bg-[#0f172a] text-slate-100"
-                    : "rounded-tr-md bg-blue-600 text-white"
-                }`}
-              >
-                {msg.content}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div className="flex justify-start gap-3">
-              <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-300">
-                <Bot className="h-3.5 w-3.5" />
-              </div>
-              <div className="rounded-2xl rounded-tl-md border border-[#1f2937] bg-[#0f172a] px-4 py-3">
-                <Loader2 className="h-4 w-4 animate-spin text-blue-300" />
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-        <div className="border-t border-[#1f2937] p-4 flex gap-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            placeholder="Ask your coach anything about today..."
-            disabled={loading}
-            className="flex-1 rounded-xl border border-[#334155] bg-[#111827] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function SleepTimeSlider({

@@ -742,13 +742,18 @@ function inferGoalsFromMessage(
 
     const title = match[1].trim().replace(/\s+/g, " ");
     if (!title) continue;
+    const parsed = parseGoalRequest(title);
+    const normalizedTitle =
+      parsed.isMuscleGain && (parsed.targetWeightText || parsed.deadlineLabel)
+        ? `Gain ${parsed.targetWeightText ?? "muscle"}${parsed.deadlineLabel ? ` by ${parsed.deadlineLabel}` : ""}`
+        : title[0].toUpperCase() + title.slice(1);
 
     return [
       {
-        title: title[0].toUpperCase() + title.slice(1),
+        title: normalizedTitle,
         description: null,
-        category: inferGoalCategory(title),
-        timeframe: null,
+        category: parsed.category,
+        timeframe: parsed.deadlineLabel,
         priority: "high",
         status: "active",
       },
@@ -758,10 +763,100 @@ function inferGoalsFromMessage(
   return [];
 }
 
-function goalMentionsMuscleGain(text: string): boolean {
-  return /build muscle|muscle gain|bulk|bulking|hypertrophy|gain mass/.test(
-    normalizeText(text)
+interface ParsedGoalRequest {
+  normalized: string;
+  category: string;
+  isMuscleGain: boolean;
+  targetWeightText: string | null;
+  deadlineLabel: string | null;
+  deadlineIso: string | null;
+  wantsProject: boolean;
+  allIn: boolean;
+}
+
+function parseGoalRequest(text: string | null | undefined): ParsedGoalRequest {
+  const raw = text ?? "";
+  const normalized = normalizeText(raw);
+  const category = inferGoalCategory(raw);
+  const isMuscleGain =
+    /build muscle|gain(?: as much)? muscle|put on .*muscle|muscle gain|bulk|bulking|hypertrophy|gain mass/.test(
+      normalized
+    );
+
+  const targetMatch = raw.match(
+    /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds)/i
+  ) ?? raw.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds)/i);
+
+  const targetWeightText = targetMatch
+    ? targetMatch[2]
+      ? `${targetMatch[1]}-${targetMatch[2]} lb`
+      : `${targetMatch[1]} lb`
+    : null;
+
+  const monthMatch = raw.match(
+    /\b(january|february|march|april|may|june|july|august|september|sept|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i
   );
+
+  let deadlineLabel: string | null = null;
+  let deadlineIso: string | null = null;
+
+  if (monthMatch) {
+    const monthMap: Record<string, number> = {
+      january: 1,
+      february: 2,
+      march: 3,
+      april: 4,
+      may: 5,
+      june: 6,
+      july: 7,
+      august: 8,
+      september: 9,
+      sept: 9,
+      october: 10,
+      november: 11,
+      december: 12,
+    };
+
+    const month = monthMap[monthMatch[1].toLowerCase()];
+    const day = Number(monthMatch[2]);
+    const now = new Date();
+    let year = now.getFullYear();
+    const candidate = new Date(year, month - 1, day);
+    if (candidate.getTime() < now.getTime()) {
+      year += 1;
+    }
+    const resolved = new Date(year, month - 1, day);
+    deadlineIso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    deadlineLabel = resolved.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  } else if (/end of summer/.test(normalized)) {
+    const now = new Date();
+    let year = now.getFullYear();
+    const maybeThisYear = new Date(year, 8, 1);
+    if (maybeThisYear.getTime() < now.getTime()) {
+      year += 1;
+    }
+    deadlineIso = `${year}-09-01`;
+    deadlineLabel = "September 1, " + year;
+  }
+
+  return {
+    normalized,
+    category,
+    isMuscleGain,
+    targetWeightText,
+    deadlineLabel,
+    deadlineIso,
+    wantsProject:
+      /project/i.test(raw) || Boolean(targetWeightText) || Boolean(deadlineLabel),
+    allIn:
+      /willing to change anything|change anything in my lifestyle|anything in my lifestyle|all in|whatever it takes|willing to do anything/.test(
+        normalized
+      ),
+  };
 }
 
 function formatHabitList(names: string[]): string {
@@ -783,29 +878,116 @@ function selectExistingHabitNames(
     .map((habit) => habit.name);
 }
 
+function selectExistingHabitNamesInPriorityOrder(
+  snapshot: CoachSnapshot,
+  groups: Array<{ patterns: RegExp[] }>
+): string[] {
+  const selected = new Set<string>();
+  const names: string[] = [];
+
+  for (const group of groups) {
+    const matches = selectExistingHabitNames(snapshot, group.patterns);
+    for (const name of matches) {
+      if (selected.has(name)) continue;
+      selected.add(name);
+      names.push(name);
+    }
+  }
+
+  return names;
+}
+
+function buildFocusNoDataResponse(
+  snapshot: CoachSnapshot,
+  request: ParsedGoalRequest,
+  activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
+): z.infer<typeof CoachModelResponseSchema> {
+  const aligned = selectExistingHabitNamesInPriorityOrder(snapshot, [
+    { patterns: [/focus|deep work/] },
+    { patterns: [/reading/] },
+    { patterns: [/limit screen|screen off/] },
+    { patterns: [/sleep/] },
+  ]).slice(0, 5);
+
+  return {
+    message:
+      `You have zero daily entries and zero completion logs, so I cannot tell you what is actually happening day to day yet. I can still give you a system. For this goal, the highest-leverage setup is: one protected deep-work block every day, a hard screen/distraction cutoff, and a weekly review that turns the goal into concrete work. The habits already aligned are ${formatHabitList(aligned)}. The next missing pieces are a fixed “most important task” habit and a weekly planning loop.`,
+    profileSummary: snapshot.profileSummary,
+    goals: activeGoal && "id" in activeGoal ? [] : activeGoal ? [activeGoal] : [],
+    actions: [
+      {
+        type: "add_habit",
+        label: "Add Daily MIT habit",
+        reason: "Ambition without a single daily priority turns into scattered effort.",
+        habit: {
+          name: "Daily MIT Set",
+          description: "Set the single most important task before starting work and finish it before low-value tasks.",
+          category: "focus",
+          targetDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+          color: habitColorForCategory("focus"),
+        },
+      },
+    ],
+  };
+}
+
+function buildFinancialNoDataResponse(
+  snapshot: CoachSnapshot,
+  request: ParsedGoalRequest,
+  activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
+): z.infer<typeof CoachModelResponseSchema> {
+  const aligned = selectExistingHabitNamesInPriorityOrder(snapshot, [
+    { patterns: [/save|money|financial/] },
+    { patterns: [/focus|deep work/] },
+    { patterns: [/limit screen/] },
+  ]).slice(0, 5);
+
+  return {
+    message:
+      `You have zero daily entries and zero completion logs, so I cannot judge your execution yet. For this goal, the structure is simple: protect a daily revenue block, track money every day, and review the numbers weekly. The habits already aligned are ${formatHabitList(aligned)}. The missing piece is a specific income habit tied to one repeatable activity, not just vague intent.`,
+    profileSummary: snapshot.profileSummary,
+    goals: activeGoal && "id" in activeGoal ? [] : activeGoal ? [activeGoal] : [],
+    actions: [
+      {
+        type: "add_habit",
+        label: "Add Revenue Block habit",
+        reason: "Money goals fail when income work competes with everything else.",
+        habit: {
+          name: "Revenue Block 60min",
+          description: "Spend 60 focused minutes on the highest-probability income activity before distractions.",
+          category: "financial",
+          targetDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+          color: habitColorForCategory("financial"),
+        },
+      },
+    ],
+  };
+}
+
 function buildNoDataGoalResponse(
   snapshot: CoachSnapshot,
   userMessage: string | null,
   activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
 ): z.infer<typeof CoachModelResponseSchema> {
   const goalText = [activeGoal?.title, userMessage].filter(Boolean).join(" ");
+  const request = parseGoalRequest(goalText);
   const actions: z.infer<typeof CoachModelResponseSchema>["actions"] = [];
 
-  if (goalMentionsMuscleGain(goalText)) {
-    const supportiveHabits = selectExistingHabitNames(snapshot, [
-      /workout|training session/,
-      /protein/,
-      /calories eaten|3500kcal|calorie/,
-      /sleep/,
-      /water intake/,
-      /stretch|mobility/,
+  if (request.isMuscleGain) {
+    const supportiveHabits = selectExistingHabitNamesInPriorityOrder(snapshot, [
+      { patterns: [/workout|training session/] },
+      { patterns: [/protein/] },
+      { patterns: [/calories eaten|3500kcal|calorie/] },
+      { patterns: [/sleep 9hrs|sleep/] },
+      { patterns: [/water intake/] },
+      { patterns: [/stretch|mobility/] },
     ]).slice(0, 6);
 
-    const conditionalConflicts = selectExistingHabitNames(snapshot, [
-      /steps|10,000/,
-      /shadowboxing|bag work/,
-      /jump|explosive movement/,
-      /reflex training/,
+    const conditionalConflicts = selectExistingHabitNamesInPriorityOrder(snapshot, [
+      { patterns: [/steps|10,000/] },
+      { patterns: [/shadowboxing|bag work/] },
+      { patterns: [/jump|explosive movement/] },
+      { patterns: [/reflex training/] },
     ]).slice(0, 4);
 
     actions.push(
@@ -837,18 +1019,20 @@ function buildNoDataGoalResponse(
       }
     );
 
-    if (/project/i.test(userMessage ?? "")) {
+    if (request.wantsProject) {
       actions.push({
         type: "add_project",
-        label: "Add Build Muscle Fast project",
+        label: "Add Summer Muscle Gain project",
         reason: "Turn the goal into a concrete training and nutrition system.",
         project: {
-          title: "Build Muscle Fast",
+          title: request.deadlineLabel
+            ? `Gain ${request.targetWeightText ?? "Muscle"} by ${request.deadlineLabel}`
+            : "Summer Muscle Gain",
           description: "Hypertrophy-focused muscle gain plan with recovery and nutrition tracked tightly.",
           specs:
-            "Optimize for fast muscle gain. Prioritize progressive overload, sufficient calories, protein adherence, recovery, weekly bodyweight tracking, and clear training sessions.",
+            `Optimize for ${request.targetWeightText ?? "fast muscle gain"}. Prioritize progressive overload, a controlled calorie surplus, protein adherence, recovery, weekly bodyweight tracking, and hard lifting sessions. ${request.deadlineLabel ? `Target date: ${request.deadlineLabel}. ` : ""}${request.allIn ? "User is willing to aggressively change lifestyle to support recovery, food, and training." : ""}`,
           priority: "high",
-          deadline: null,
+          deadline: request.deadlineIso,
           generateTasks: true,
         },
       });
@@ -859,9 +1043,20 @@ function buildNoDataGoalResponse(
         ? `The only conditional conflicts I see are ${formatHabitList(conditionalConflicts)} if they push fatigue too high or make it harder to stay in a calorie surplus.`
         : "I do not see a direct conflicting habit configured yet; the main risk is poor execution, not the current habit list.";
 
+    const targetText = request.targetWeightText
+      ? `${request.targetWeightText} by ${request.deadlineLabel ?? "your target date"}`
+      : request.deadlineLabel
+        ? `meaningful muscle gain by ${request.deadlineLabel}`
+        : "fast muscle gain";
+
+    const routineText =
+      snapshot.routines.length > 0
+        ? "Use your existing lifting routines as the base rather than inventing more exercises."
+        : "Build your week around 4-6 hypertrophy-focused lifting sessions.";
+
     return {
       message:
-        `You have zero daily entries and zero completion logs, so I cannot tell you what is actually consistent or inconsistent yet. I can only judge the habits currently configured in your account. For fast muscle gain, the habits already aligned are ${formatHabitList(supportiveHabits)}. ${conflictText} The missing pieces are progressive overload tracking and weekly bodyweight feedback, so I added those as habits${/project/i.test(userMessage ?? "") ? " plus a project" : ""}.`,
+        `You have zero daily entries and zero completion logs, so I cannot tell you what is actually consistent or inconsistent yet. I can still map the plan. To hit ${targetText}, treat this like a mass-gain block: train hard 4-6 days per week, keep a real calorie surplus every day, and make recovery non-negotiable. ${routineText} Aim to gain roughly 0.5-0.75 lb per week, not all at once. If your weekly average bodyweight is not rising after 7-10 days, increase calories. The habits already helping are ${formatHabitList(supportiveHabits)}. ${conflictText} Since ${request.allIn ? "you said you're willing to change anything, " : ""}the missing pieces are progressive overload tracking and weekly bodyweight feedback, I added those${request.wantsProject ? " plus a project" : ""}.`,
       profileSummary: snapshot.profileSummary,
       goals: activeGoal && "id" in activeGoal
         ? []
@@ -872,7 +1067,15 @@ function buildNoDataGoalResponse(
     };
   }
 
-  const category = inferGoalCategory(goalText);
+  if (request.category === "focus") {
+    return buildFocusNoDataResponse(snapshot, request, activeGoal);
+  }
+
+  if (request.category === "financial") {
+    return buildFinancialNoDataResponse(snapshot, request, activeGoal);
+  }
+
+  const category = request.category;
   const helpfulHabits = snapshot.habits
     .filter((habit) => normalizeHabitCategory(habit.category) === normalizeHabitCategory(category))
     .map((habit) => habit.name)
@@ -880,14 +1083,31 @@ function buildNoDataGoalResponse(
 
   return {
     message:
-      `You have zero daily entries and zero completion logs, so I cannot make claims about streaks, consistency, or progress yet. I can only analyze the habits configured in your account. For this goal, the habits already most aligned are ${formatHabitList(helpfulHabits)}. If you want a sharper answer, tell me the exact outcome, deadline, and tradeoffs you are willing to make, and I will turn that into habits and a project plan.`,
+      `You have zero daily entries and zero completion logs, so I cannot make claims about streaks, consistency, or progress yet. I can still analyze the system you have configured. For this goal, the habits already most aligned are ${formatHabitList(helpfulHabits)}. The next step is to turn the goal into one measurable project, a small number of daily habits, and one weekly review loop. I am not blocked on more detail, but the more specific the target and deadline, the more aggressive I can make the plan.`,
     profileSummary: snapshot.profileSummary,
     goals: activeGoal && "id" in activeGoal
       ? []
       : activeGoal
         ? [activeGoal]
         : [],
-    actions: [],
+    actions:
+      request.wantsProject && activeGoal
+        ? [
+            {
+              type: "add_project",
+              label: `Add ${activeGoal.title} project`,
+              reason: "A deadline goal without a project structure drifts.",
+              project: {
+                title: activeGoal.title,
+                description: activeGoal.description,
+                specs: `Build a concrete execution plan for: ${activeGoal.title}.${activeGoal.timeframe ? ` Target date: ${activeGoal.timeframe}.` : ""}`,
+                priority: "high",
+                deadline: request.deadlineIso,
+                generateTasks: true,
+              },
+            },
+          ]
+        : [],
   };
 }
 

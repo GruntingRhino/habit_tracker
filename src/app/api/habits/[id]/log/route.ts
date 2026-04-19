@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
 
 interface RouteParams {
@@ -38,31 +39,41 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       },
     });
 
-    let log;
-    if (existing) {
-      // Toggle: flip completed state
-      const newCompleted =
-        body.completed !== undefined ? body.completed : !existing.completed;
+    const { log, scores } = await prisma.$transaction(async (tx) => {
+      let nextLog;
+      if (existing) {
+        // Toggle: flip completed state
+        const newCompleted =
+          body.completed !== undefined ? body.completed : !existing.completed;
 
-      log = await prisma.habitLog.update({
-        where: { id: existing.id },
-        data: {
-          completed: newCompleted,
-          notes: body.notes ?? existing.notes,
-        },
-      });
-    } else {
-      log = await prisma.habitLog.create({
-        data: {
-          habitId,
-          date: logDate,
-          completed: body.completed ?? true,
-          notes: body.notes ?? undefined,
-        },
-      });
-    }
+        nextLog = await tx.habitLog.update({
+          where: { id: existing.id },
+          data: {
+            completed: newCompleted,
+            notes: body.notes ?? existing.notes,
+          },
+        });
+      } else {
+        nextLog = await tx.habitLog.create({
+          data: {
+            habitId,
+            date: logDate,
+            completed: body.completed ?? true,
+            notes: body.notes ?? undefined,
+          },
+        });
+      }
 
-    return NextResponse.json(log, { status: 201 });
+      const nextScores = await recomputeCategoryScoreForDate(
+        session.user.id,
+        logDate,
+        tx
+      );
+
+      return { log: nextLog, scores: nextScores };
+    });
+
+    return NextResponse.json({ log, scores }, { status: 201 });
   } catch (error) {
     console.error("[habit log POST] error:", error);
     return NextResponse.json(

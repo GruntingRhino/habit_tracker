@@ -19,11 +19,19 @@ export default async function DashboardPage() {
   today.setHours(0, 0, 0, 0);
 
   // Fetch last 2 category scores for trend
-  const recentScores = await prisma.categoryScore.findMany({
+  const rawRecentScores = await prisma.categoryScore.findMany({
     where: { userId },
-    orderBy: { date: "desc" },
-    take: 2,
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    take: 14,
   });
+
+  const recentScores = Array.from(
+    rawRecentScores.reduce((map, score) => {
+      const key = score.date.toISOString().slice(0, 10);
+      if (!map.has(key)) map.set(key, score);
+      return map;
+    }, new Map<string, (typeof rawRecentScores)[number]>()).values()
+  ).slice(0, 2);
 
   const latestScore = recentScores[0] ?? null;
   const previousScore = recentScores[1] ?? null;

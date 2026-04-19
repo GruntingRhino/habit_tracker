@@ -7,6 +7,20 @@ import { subDays } from "date-fns";
 
 type TrendDirection = "improving" | "declining" | "stable";
 
+function getDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function dedupeScoresByDate<T extends { date: Date }>(scores: T[]): T[] {
+  const byDate = new Map<string, T>();
+  for (const score of scores) {
+    byDate.set(getDateKey(score.date), score);
+  }
+  return Array.from(byDate.values()).sort(
+    (a, b) => a.date.getTime() - b.date.getTime()
+  );
+}
+
 function calcTrend(values: number[]): TrendDirection {
   if (values.length < 2) return "stable";
 
@@ -37,13 +51,14 @@ export async function GET() {
     const oneWeekAgo = subDays(new Date(), 7);
 
     // --- Last 30 days of category scores ---
-    const categoryScores = await prisma.categoryScore.findMany({
+    const rawCategoryScores = await prisma.categoryScore.findMany({
       where: {
         userId,
         date: { gte: thirtyDaysAgo },
       },
-      orderBy: { date: "asc" },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     });
+    const categoryScores = dedupeScoresByDate(rawCategoryScores);
 
     // --- Trend directions ---
     const trends: Record<string, TrendDirection> = {

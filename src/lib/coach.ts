@@ -1,6 +1,12 @@
 import Groq from "groq-sdk";
 import { startOfDay, subDays, formatISO } from "date-fns";
 import { z } from "zod";
+import {
+  GROQ_API_KEY,
+  GROQ_MODEL,
+  OLLAMA_BASE_URL,
+  OLLAMA_MODEL,
+} from "@/lib/ai-config";
 import prisma from "@/lib/prisma";
 import {
   type CoachAction,
@@ -12,11 +18,6 @@ import {
 } from "@/lib/coach-types";
 import { calcStreak } from "@/lib/utils";
 import { assessWorkout } from "@/lib/workout";
-
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3";
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.1-8b-instant";
 
 const VALID_DAY_CODES = new Set<WeekdayCode>(WEEKDAY_CODES);
 const VALID_PRIORITIES = new Set(["low", "medium", "high"] as const);

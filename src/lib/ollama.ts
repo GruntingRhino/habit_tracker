@@ -1,10 +1,11 @@
 import Groq from "groq-sdk";
+import {
+  GROQ_API_KEY,
+  GROQ_MODEL,
+  OLLAMA_BASE_URL,
+  OLLAMA_MODEL,
+} from "@/lib/ai-config";
 import { CategoryScores } from "@/lib/scoring";
-
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3";
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.1-8b-instant";
 
 export interface ProjectTask {
   title: string;

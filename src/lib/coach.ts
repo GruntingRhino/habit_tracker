@@ -603,7 +603,8 @@ function buildCoachSystemPrompt(): string {
     "Use the provided user data and conversation to answer questions, recommend good habits, and suggest concrete projects when appropriate.",
     "If you suggest a habit, it must be behavior-based, measurable, realistic, and clearly connected to the user's stated goals or weak spots.",
     "Never invent performance evidence. Do not claim streaks, weekly frequency, consistency, progress, missed targets, or completion patterns unless those claims are explicitly supported by the provided user data.",
-    "If the user has zero daily entries and zero completion history, say that plainly and limit yourself to analyzing configured habits, routines, meals, and projects.",
+    "If the user has zero daily entries and zero completion history, say that plainly when relevant, but do not let that swallow the answer. Lack of logs limits performance claims, not planning advice.",
+    "When the user asks tactical questions about calories, protein, training structure, schedules, or tradeoffs, answer directly from their stated context and configured habits even if execution history is empty.",
     "Do not recommend a habit or project that duplicates an existing one in the user's data.",
     "When the user shares durable goals, constraints, preferences, or recurring priorities, capture them in goals or profileSummary.",
     "The goals array is only for durable memory updates learned in this turn. Leave it empty if nothing new should be remembered.",
@@ -860,6 +861,106 @@ function parseGoalRequest(text: string | null | undefined): ParsedGoalRequest {
   };
 }
 
+interface ParsedNutritionContext {
+  asksCalories: boolean;
+  asksProtein: boolean;
+  asksTooMuch: boolean;
+  ageYears: number | null;
+  weightLb: number | null;
+  heightInches: number | null;
+  explicitCalories: number | null;
+  isLean: boolean;
+}
+
+function parseNutritionContext(text: string | null | undefined): ParsedNutritionContext {
+  const raw = text ?? "";
+  const normalized = normalizeText(raw);
+
+  const ageMatch = raw.match(/\b(\d{1,2})\s*(?:years? old|yo)\b/i);
+  const bodyweightMatch =
+    raw.match(
+      /\b(?:bodyweight|body weight|current bodyweight|current weight|weigh(?:ing)?)(?:\s+is|\s+at|\s+around)?\s*(\d+(?:\.\d+)?)/i
+    ) ?? raw.match(/\b(?:i am|i'm)\s+(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds)\b/i);
+  const heightFeetMatch =
+    raw.match(/\b(\d)\s*'\s*(\d{1,2})\b/) ??
+    raw.match(/\b(\d)\s*(?:ft|foot|feet)\s*(\d{1,2})\b/i);
+  const heightInchesMatch = raw.match(/\b(\d{2,3})\s*(?:in|inch|inches)\b/i);
+  const caloriesMatch = raw.match(/\b(\d{3,4})\s*(?:cal|cals|calorie|calories|kcal)\b/i);
+
+  let heightInches: number | null = null;
+  if (heightFeetMatch) {
+    heightInches = Number(heightFeetMatch[1]) * 12 + Number(heightFeetMatch[2]);
+  } else if (heightInchesMatch) {
+    heightInches = Number(heightInchesMatch[1]);
+  }
+
+  return {
+    asksCalories:
+      /\bcal(?:ories?|s)?\b|\bkcal\b|\beat each day\b|\beat per day\b|\bhow much should i eat\b|\bhow much do i aim to eat\b|\bsurplus\b/.test(
+        normalized
+      ),
+    asksProtein: /\bprotein\b/.test(normalized),
+    asksTooMuch: /\btoo much\b|\btoo high\b|\btoo low\b/.test(normalized),
+    ageYears: ageMatch ? Number(ageMatch[1]) : null,
+    weightLb: bodyweightMatch ? Number(bodyweightMatch[1]) : null,
+    heightInches,
+    explicitCalories: caloriesMatch ? Number(caloriesMatch[1]) : null,
+    isLean: /\blean\b/.test(normalized),
+  };
+}
+
+function roundToNearest50(value: number): number {
+  return Math.round(value / 50) * 50;
+}
+
+function formatNumericRange(low: number, high: number): string {
+  return low === high ? `${low}` : `${low}-${high}`;
+}
+
+function estimateMuscleGainCalorieRange(
+  context: ParsedNutritionContext
+): { low: number; high: number } | null {
+  if (context.ageYears !== null && context.ageYears <= 18) {
+    let low = 2700;
+    let high = 2900;
+
+    if (context.heightInches !== null && context.heightInches >= 71) {
+      low += 100;
+      high += 100;
+    }
+    if (context.weightLb !== null && context.weightLb <= 145) {
+      low += 100;
+      high += 100;
+    }
+    if (context.isLean) {
+      low += 100;
+      high += 100;
+    }
+
+    return {
+      low: roundToNearest50(low),
+      high: roundToNearest50(high),
+    };
+  }
+
+  if (context.weightLb !== null) {
+    let low = context.weightLb * 18.5;
+    let high = context.weightLb * 20;
+
+    if (context.isLean) {
+      low += 100;
+      high += 100;
+    }
+
+    return {
+      low: roundToNearest50(low),
+      high: roundToNearest50(high),
+    };
+  }
+
+  return null;
+}
+
 function formatHabitList(names: string[]): string {
   if (names.length === 0) return "none";
   if (names.length === 1) return names[0];
@@ -965,6 +1066,94 @@ function buildFinancialNoDataResponse(
   };
 }
 
+function buildNutritionNoDataResponse(
+  snapshot: CoachSnapshot,
+  request: ParsedGoalRequest,
+  userMessage: string | null,
+  activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
+): z.infer<typeof CoachModelResponseSchema> {
+  const nutrition = parseNutritionContext([activeGoal?.title, userMessage].filter(Boolean).join(" "));
+  const calorieRange = estimateMuscleGainCalorieRange(nutrition);
+  const supportiveHabits = selectExistingHabitNamesInPriorityOrder(snapshot, [
+    { patterns: [/protein/] },
+    { patterns: [/calories eaten|kcal|calorie/] },
+    { patterns: [/workout|training session|lift/] },
+    { patterns: [/sleep/] },
+    { patterns: [/water intake/] },
+  ]).slice(0, 5);
+
+  const calorieHabitName =
+    selectExistingHabitNames(snapshot, [/3500kcal|calories eaten|calorie/])[0] ?? null;
+  const proteinHabitName =
+    selectExistingHabitNames(snapshot, [/protein/])[0] ?? null;
+
+  const actions: z.infer<typeof CoachModelResponseSchema>["actions"] = [
+    {
+      type: "add_habit",
+      label: "Add Morning Bodyweight Check habit",
+      reason: "Calorie targets should be adjusted from weekly weight data, not guessing.",
+      habit: {
+        name: "Morning Bodyweight Check",
+        description:
+          "Weigh yourself after waking at least 4 mornings per week and track the 7-day average.",
+        category: "physical",
+        targetDays: ["mon", "tue", "thu", "sat"],
+        color: habitColorForCategory("physical"),
+      },
+    },
+  ];
+
+  const metricTextParts = [
+    nutrition.weightLb !== null ? `${nutrition.weightLb} lb` : null,
+    nutrition.heightInches !== null ? `${Math.floor(nutrition.heightInches / 12)}'${nutrition.heightInches % 12}"` : null,
+    nutrition.ageYears !== null ? `${nutrition.ageYears} years old` : null,
+    nutrition.isLean ? "lean" : null,
+  ].filter(Boolean);
+
+  const profileText =
+    metricTextParts.length > 0
+      ? `For someone at ${metricTextParts.join(", ")}, `
+      : "For this goal, ";
+
+  let calorieJudgment = "";
+  if (nutrition.explicitCalories !== null && calorieRange) {
+    if (nutrition.explicitCalories > calorieRange.high + 150) {
+      calorieJudgment = `${nutrition.explicitCalories} calories is too aggressive as a blind starting target. `;
+    } else if (nutrition.explicitCalories < calorieRange.low - 150) {
+      calorieJudgment = `${nutrition.explicitCalories} calories is probably too low if the goal is to gain muscle quickly. `;
+    } else {
+      calorieJudgment = `${nutrition.explicitCalories} calories is in a plausible range, but it still needs to be validated against weekly weight change. `;
+    }
+  } else if (nutrition.explicitCalories !== null) {
+    calorieJudgment = `${nutrition.explicitCalories} calories might be fine, but it should be validated against weekly weight change instead of guessed. `;
+  }
+
+  const calorieTargetText = calorieRange
+    ? `I would start closer to ${formatNumericRange(calorieRange.low, calorieRange.high)} calories per day, not jump straight to a bigger surplus.`
+    : "I would start with a moderate calorie surplus, then adjust from the scale instead of guessing.";
+
+  const habitAdjustmentText = calorieHabitName
+    ? `${calorieHabitName} should be treated as a testable target, not a permanent truth. `
+    : "";
+  const proteinText = proteinHabitName
+    ? `${proteinHabitName} is already doing its job; calories, sleep, and progressive training are the bigger levers now. `
+    : "";
+  const noDataText =
+    "You have zero entries and zero completion logs right now, so I cannot tell you whether your current intake is actually moving your bodyweight yet.";
+  const teenSafetyText =
+    nutrition.ageYears !== null && nutrition.ageYears < 18
+      ? " Because you are still growing, keep the bulk controlled rather than force-feeding. If you plan to push intake hard, involve a parent or pediatrician."
+      : "";
+
+  return {
+    message:
+      `${profileText}${calorieJudgment}${calorieTargetText} Run that for 10-14 days, track the 7-day morning bodyweight average, and only add 150-200 calories if weight is not rising by about 0.5-1.0 lb per week. If weight jumps faster than that and your waist is climbing fast, pull calories back. ${habitAdjustmentText}${proteinText}The habits already supporting this are ${formatHabitList(supportiveHabits)}. ${noDataText}${teenSafetyText}`,
+    profileSummary: snapshot.profileSummary,
+    goals: activeGoal && "id" in activeGoal ? [] : activeGoal ? [activeGoal] : [],
+    actions,
+  };
+}
+
 function buildNoDataGoalResponse(
   snapshot: CoachSnapshot,
   userMessage: string | null,
@@ -972,7 +1161,12 @@ function buildNoDataGoalResponse(
 ): z.infer<typeof CoachModelResponseSchema> {
   const goalText = [activeGoal?.title, userMessage].filter(Boolean).join(" ");
   const request = parseGoalRequest(goalText);
+  const nutrition = parseNutritionContext(goalText);
   const actions: z.infer<typeof CoachModelResponseSchema>["actions"] = [];
+
+  if (request.category === "physical" && (nutrition.asksCalories || nutrition.asksProtein || nutrition.explicitCalories !== null)) {
+    return buildNutritionNoDataResponse(snapshot, request, userMessage, activeGoal);
+  }
 
   if (request.isMuscleGain) {
     const supportiveHabits = selectExistingHabitNamesInPriorityOrder(snapshot, [
@@ -1209,12 +1403,36 @@ function buildFallbackCoachResponse(
   };
 }
 
+function shouldUseDeterministicNoDataPhysicalResponse(
+  snapshot: CoachSnapshot,
+  userMessage: string | null
+): boolean {
+  if (snapshot.dataAvailability.hasPerformanceData || !userMessage) {
+    return false;
+  }
+
+  const activeGoal = snapshot.goals.find((goal) => goal.status === "active");
+  const combinedText = [activeGoal?.title, userMessage].filter(Boolean).join(" ");
+  const request = parseGoalRequest(combinedText);
+  const nutrition = parseNutritionContext(combinedText);
+
+  return (
+    request.isMuscleGain ||
+    (request.category === "physical" &&
+      (nutrition.asksCalories || nutrition.asksProtein || nutrition.explicitCalories !== null))
+  );
+}
+
 async function generateCoachResponse(
   snapshot: CoachSnapshot,
   conversation: Array<{ role: "user" | "assistant"; content: string }>,
   userMessage: string | null,
   instruction: string
 ): Promise<z.infer<typeof CoachModelResponseSchema>> {
+  if (shouldUseDeterministicNoDataPhysicalResponse(snapshot, userMessage)) {
+    return buildFallbackCoachResponse(snapshot, userMessage, instruction);
+  }
+
   const prompt = buildCoachPromptPayload(snapshot, conversation, instruction);
 
   try {

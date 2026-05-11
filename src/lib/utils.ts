@@ -27,6 +27,11 @@ export function getStartOfDay(date: Date | string): Date {
   return d;
 }
 
+export function getLocalDateKey(date: Date | string = new Date()): string {
+  const d = typeof date === "string" ? parseISO(date) : new Date(date);
+  return format(d, "yyyy-MM-dd");
+}
+
 export function calcStreak(
   logs: { date: Date; completed: boolean }[]
 ): number {

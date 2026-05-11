@@ -27,6 +27,7 @@ import { type LucideIcon } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ScoreCard from "@/components/ScoreCard";
 import DailyCoachChat from "@/components/DailyCoachChat";
+import { getLocalDateKey } from "@/lib/utils";
 import {
   assessWorkout,
   type WorkoutIntensity,
@@ -352,10 +353,6 @@ const STEP_META: Record<
   },
 };
 
-function getToday(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -539,7 +536,7 @@ function UserAnswer({
 }
 
 const defaultForm: DailyEntryForm = {
-  date: getToday(),
+  date: getLocalDateKey(),
   sleepHours: 0,
   workoutCompleted: false,
   workoutRoutineName: "",
@@ -723,7 +720,7 @@ export default function EntryPage() {
 
       if (entriesRes.ok) {
         const entries = await entriesRes.json();
-        const today = getToday();
+        const today = getLocalDateKey();
         const todayEntry = entries.find((entry: { date: string; id: string }) =>
           entry.date.startsWith(today)
         );

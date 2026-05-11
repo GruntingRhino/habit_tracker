@@ -1,22 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import Sidebar from "./Sidebar";
 import FloatingCoach from "./FloatingCoach";
+import DailyEntryReminder from "./DailyEntryReminder";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
   const pathname = usePathname();
-
-  // Close sidebar on route change (mobile)
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const open = openPath === pathname;
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--background)" }}>
+      <DailyEntryReminder />
 
       {/* ── Desktop sidebar (always visible) ── */}
       <div className="hidden lg:block flex-shrink-0">
@@ -28,7 +26,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div
           className="fixed inset-0 z-40 lg:hidden"
           style={{ background: "rgba(6,13,28,0.8)", backdropFilter: "blur(4px)" }}
-          onClick={() => setOpen(false)}
+          onClick={() => setOpenPath(null)}
         />
       )}
 
@@ -37,7 +35,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         className="fixed inset-y-0 left-0 z-50 lg:hidden transition-transform duration-300 ease-out"
         style={{ transform: open ? "translateX(0)" : "translateX(-100%)" }}
       >
-        <Sidebar onClose={() => setOpen(false)} />
+        <Sidebar onClose={() => setOpenPath(null)} />
       </div>
 
       {/* ── Main content ── */}
@@ -50,7 +48,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile FAB toggle (bottom-left) ── */}
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() =>
+          setOpenPath((current) => (current === pathname ? null : pathname))
+        }
         aria-label={open ? "Close menu" : "Open menu"}
         className="fixed bottom-5 left-5 z-50 lg:hidden w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
         style={{

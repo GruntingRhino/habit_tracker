@@ -6,6 +6,7 @@ import {
   GROQ_MODEL,
   OLLAMA_BASE_URL,
   OLLAMA_MODEL,
+  OLLAMA_TIMEOUT_MS,
 } from "@/lib/ai-config";
 import prisma from "@/lib/prisma";
 import {
@@ -51,7 +52,7 @@ const ProjectActionSchema = z.object({
 });
 
 const CoachModelResponseSchema = z.object({
-  message: z.string().trim().min(1).max(2400),
+  message: z.string().trim().min(1).max(3600),
   profileSummary: z.string().trim().max(800).nullable().optional(),
   goals: z
     .array(
@@ -598,18 +599,26 @@ async function buildCoachSnapshot(userId: string): Promise<CoachSnapshot> {
 
 function buildCoachSystemPrompt(): string {
   return [
-    "You are the in-app AI coach for Habit Intelligence.",
-    "You are direct, precise, and pragmatic. No fluff. No generic self-help cliches.",
-    "Use the provided user data and conversation to answer questions, recommend good habits, and suggest concrete projects when appropriate.",
-    "If you suggest a habit, it must be behavior-based, measurable, realistic, and clearly connected to the user's stated goals or weak spots.",
-    "Never invent performance evidence. Do not claim streaks, weekly frequency, consistency, progress, missed targets, or completion patterns unless those claims are explicitly supported by the provided user data.",
-    "If the user has zero daily entries and zero completion history, say that plainly when relevant, but do not let that swallow the answer. Lack of logs limits performance claims, not planning advice.",
-    "When the user asks tactical questions about calories, protein, training structure, schedules, or tradeoffs, answer directly from their stated context and configured habits even if execution history is empty.",
-    "Do not recommend a habit or project that duplicates an existing one in the user's data.",
-    "When the user shares durable goals, constraints, preferences, or recurring priorities, capture them in goals or profileSummary.",
-    "The goals array is only for durable memory updates learned in this turn. Leave it empty if nothing new should be remembered.",
-    "Return at most 3 actions, and only when they are concrete enough to create immediately.",
-    "Always return valid JSON only. No markdown. No prose outside JSON.",
+    "You are a high-performance personal coach embedded in this user's habit and goal tracking app.",
+    "You have full access to their goals, habits, scores, workout sessions, meal data, projects, and daily logs.",
+    "You function like a personal trainer who has studied this person's data in depth — direct, specific, and results-focused. No generic advice. No fluff.",
+    "",
+    "CORE RULES:",
+    "1. RELEVANCE-GATED GOAL REFERENCES: Only mention a goal if (a) it is directly relevant to the user's question topic and (b) its goalAlignment entry has needsAttention: true (avgHabitCompletion30d < 0.6 or hasNoSupportingHabits: true). Do NOT list all goals in every response. If the user asks about sleep, only surface sleep/mental/physical goals that are underperforming. If they ask about money, only surface financial goals that are underperforming. If the topic is general, surface the highest-priority needsAttention goal only.",
+    "2. IDENTIFY HABIT GAPS ONLY WHERE RELEVANT: When a needsAttention goal is topically relevant to the question, call out its weak or missing supporting habits by name and completion rate. Skip goals that are performing well (avgHabitCompletion30d >= 0.6 with at least one habit) unless the user specifically asks about them.",
+    "3. CALL OUT WEAK EXECUTION: If a habit's completionRate30d is below 0.6 AND it relates to the question topic, name it and say exactly what the number is. Never mention underperforming habits from unrelated categories.",
+    "4. USE STRUCTURED FORMATTING: Use line breaks (\\n) and '- ' for bullet points when giving multi-point analysis. Do not write dense walls of text — the user should be able to scan the response quickly.",
+    "5. BE HYPER-SPECIFIC: Never say 'stay consistent' or 'keep working hard'. Always say exactly which habit, which goal, which number, which day, which action.",
+    "6. PROACTIVE HABIT SUGGESTIONS: When the user asks what habits to add, cross-reference goalAlignment to find needsAttention goals whose categories have zero or low-completion habits. Only suggest habits for those gaps.",
+    "7. PERSONAL TRAINER TONE: Direct, specific, results-focused. Call out what is not working in the relevant area. Give the next concrete step.",
+    "",
+    "CONSTRAINTS:",
+    "- Never fabricate performance data. Only cite streaks, completion rates, or trends that appear explicitly in userContext.",
+    "- If the user has zero daily entries or logs, say so briefly but still provide a plan based on their goals and configured habits.",
+    "- Do not recommend a habit or project that duplicates an existing one in existingHabitNames or existingProjectTitles.",
+    "- The goals array is ONLY for durable new goals learned THIS turn. Leave it empty if no new goal was shared.",
+    "- Return at most 3 actions. Only include actions that are specific enough to create immediately.",
+    "- Always return valid JSON only. No markdown fences. No prose outside the JSON object.",
     "JSON schema:",
     JSON.stringify(
       {
@@ -659,6 +668,106 @@ function buildCoachSystemPrompt(): string {
   ].join("\n");
 }
 
+function buildGoalAlignment(snapshot: CoachSnapshot) {
+  return snapshot.goals.map((goal) => {
+    const goalCategory = normalizeHabitCategory(goal.category);
+    const supportingHabits = snapshot.habits.filter(
+      (habit) => normalizeHabitCategory(habit.category) === goalCategory
+    );
+    const avgCompletion =
+      supportingHabits.length > 0
+        ? roundScore(
+            supportingHabits.reduce((sum, h) => sum + h.completionRate30d, 0) /
+              supportingHabits.length
+          )
+        : 0;
+
+    const weakHabits = supportingHabits
+      .filter((h) => h.completionRate30d < 0.6)
+      .map((h) => ({ name: h.name, completionRate30d: h.completionRate30d }));
+
+    return {
+      goal: goal.title,
+      category: goalCategory,
+      priority: goal.priority,
+      timeframe: goal.timeframe ?? null,
+      status: goal.status,
+      supportingHabitCount: supportingHabits.length,
+      avgHabitCompletion30d: avgCompletion,
+      supportingHabits: supportingHabits.slice(0, 6).map((h) => ({
+        name: h.name,
+        completionRate30d: h.completionRate30d,
+        streak: h.streak,
+      })),
+      weakSupportingHabits: weakHabits.slice(0, 4),
+      hasNoSupportingHabits: supportingHabits.length === 0,
+      needsAttention: supportingHabits.length === 0 || avgCompletion < 0.6,
+    };
+  });
+}
+
+function buildCompactCoachContext(snapshot: CoachSnapshot) {
+  return {
+    profileSummary: snapshot.profileSummary,
+    goals: snapshot.goals.map((goal) => ({
+      title: goal.title,
+      description: goal.description,
+      category: goal.category,
+      timeframe: goal.timeframe,
+      priority: goal.priority,
+      status: goal.status,
+    })),
+    goalAlignment: buildGoalAlignment(snapshot),
+    dataAvailability: snapshot.dataAvailability,
+    today: snapshot.today,
+    scores: snapshot.scores,
+    weakestHabits: snapshot.weakestHabits.slice(0, 5),
+    strongestHabits: snapshot.strongestHabits.slice(0, 3),
+    habits: snapshot.habits.slice(0, 12).map((habit) => ({
+      name: habit.name,
+      category: habit.category,
+      targetDays: habit.targetDays,
+      streak: habit.streak,
+      completionRate30d: habit.completionRate30d,
+    })),
+    projects: snapshot.projects.slice(0, 8).map((project) => ({
+      title: project.title,
+      priority: project.priority,
+      status: project.status,
+      deadline: project.deadline,
+      completionPercentage: project.completionPercentage,
+      openTasks: project.openTasks.slice(0, 3),
+    })),
+    meals: {
+      total: snapshot.meals.total,
+      categories: snapshot.meals.categories,
+      examples: snapshot.meals.examples.slice(0, 5),
+    },
+    routines: snapshot.routines.slice(0, 4).map((routine) => ({
+      name: routine.name,
+      exercises: routine.exercises.slice(0, 4),
+      recentSessions: routine.recentSessions.slice(0, 3),
+    })),
+    workoutSessions: snapshot.workoutSessions.slice(0, 5),
+    recentEntries: snapshot.recentEntries.slice(0, 5).map((entry) => ({
+      date: entry.date,
+      sleepHours: entry.sleepHours,
+      deepWorkHours: entry.deepWorkHours,
+      screenTimeHours: entry.screenTimeHours,
+      tasksCompleted: entry.tasksCompleted,
+      tasksPlanned: entry.tasksPlanned,
+      steps: entry.steps,
+      moneySaved: entry.moneySaved,
+      moneySpent: entry.moneySpent,
+      caloriesEaten: entry.caloriesEaten,
+      overallDayRating: entry.overallDayRating,
+      workoutSummary: entry.workoutSummary,
+    })),
+    existingHabitNames: snapshot.existingHabitNames,
+    existingProjectTitles: snapshot.existingProjectTitles,
+  };
+}
+
 function buildCoachPromptPayload(
   snapshot: CoachSnapshot,
   conversation: Array<{ role: "user" | "assistant"; content: string }>,
@@ -668,7 +777,7 @@ function buildCoachPromptPayload(
     {
       instruction,
       conversation,
-      userContext: snapshot,
+      userContext: buildCompactCoachContext(snapshot),
       scoringGuide: {
         habitQuality:
           "Good habits are concrete, measurable, sustainable, and clearly tied to a goal or a repeated failure pattern in the user's data.",
@@ -697,16 +806,24 @@ async function askGroqForCoachResponse(prompt: string): Promise<string> {
 
 async function askOllamaForCoachResponse(prompt: string): Promise<string> {
   const fullPrompt = `${buildCoachSystemPrompt()}\n\n${prompt}`;
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt: fullPrompt,
-      stream: false,
-      format: "json",
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: fullPrompt,
+        stream: false,
+        format: "json",
+      }),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     throw new Error(`Ollama responded with status ${res.status}`);
@@ -872,6 +989,16 @@ interface ParsedNutritionContext {
   isLean: boolean;
 }
 
+interface CoachIntent {
+  asksWeakestArea: boolean;
+  asksForProjectRecommendation: boolean;
+  asksForPlan: boolean;
+  asksForHabits: boolean;
+  asksForRoutine: boolean;
+  asksForCalories: boolean;
+  asksForProtein: boolean;
+}
+
 function parseNutritionContext(text: string | null | undefined): ParsedNutritionContext {
   const raw = text ?? "";
   const normalized = normalizeText(raw);
@@ -909,12 +1036,75 @@ function parseNutritionContext(text: string | null | undefined): ParsedNutrition
   };
 }
 
+function detectCoachIntent(text: string | null | undefined): CoachIntent {
+  const normalized = normalizeText(text);
+
+  return {
+    asksWeakestArea:
+      /\bweakest area\b|\bweakest\b|\blowest area\b|\bbased on my actual data\b/.test(normalized),
+    asksForProjectRecommendation:
+      /\bsuggest one project\b|\bwhat project should i start\b|\bone project\b|\bbest project\b/.test(
+        normalized
+      ),
+    asksForPlan: /\bplan\b|\bthis week\b|\bnext week\b|\b7-?day\b/.test(normalized),
+    asksForHabits: /\bhabit\b|\bhabits\b/.test(normalized),
+    asksForRoutine: /\broutine\b|\broutines\b/.test(normalized),
+    asksForCalories:
+      /\bcal(?:ories?|s)?\b|\bkcal\b|\beat each day\b|\beat per day\b|\bhow much should i eat\b|\bexact calorie target\b|\bcalorie target\b|\bsurplus\b/.test(
+        normalized
+      ),
+    asksForProtein: /\bprotein\b/.test(normalized),
+  };
+}
+
 function roundToNearest50(value: number): number {
   return Math.round(value / 50) * 50;
 }
 
 function formatNumericRange(low: number, high: number): string {
   return low === high ? `${low}` : `${low}-${high}`;
+}
+
+function getWeakestScoreArea(snapshot: CoachSnapshot): [string, number] | null {
+  const average30d = snapshot.scores.average30d;
+  if (!average30d) return null;
+
+  return Object.entries(average30d)
+    .filter(([key]) => key !== "overall")
+    .sort((left, right) => left[1] - right[1])[0] ?? null;
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function buildWeakHabitProjectAction(snapshot: CoachSnapshot): z.infer<typeof CoachModelResponseSchema>["actions"] {
+  const weakHabits = snapshot.weakestHabits
+    .filter((habit) => habit.category === "physical")
+    .slice(0, 5);
+
+  if (weakHabits.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      type: "add_project",
+      label: "Start Weekly Physical Activation",
+      reason: "Directly targets the user's weakest physical habits from their own completion data.",
+      project: {
+        title: "Weekly Physical Activation",
+        description:
+          "A one-week execution project built around the lowest-completion physical habits in the app data.",
+        specs: `Build seven days of tasks that force completion of these habits at least once: ${weakHabits
+          .map((habit) => habit.name)
+          .join(", ")}.`,
+        priority: "high",
+        deadline: null,
+        generateTasks: true,
+      },
+    },
+  ];
 }
 
 function estimateMuscleGainCalorieRange(
@@ -1329,22 +1519,184 @@ function messageContainsUnsupportedPerformanceClaims(
   return unsupportedPatterns.some((pattern) => pattern.test(text));
 }
 
+function buildPerformanceNutritionResponse(
+  snapshot: CoachSnapshot,
+  userMessage: string | null,
+  activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
+): z.infer<typeof CoachModelResponseSchema> {
+  const goalText = [activeGoal?.title, userMessage].filter(Boolean).join(" ");
+  const nutrition = parseNutritionContext(goalText);
+  const calorieRange = estimateMuscleGainCalorieRange(nutrition);
+  const calorieHabitName =
+    selectExistingHabitNames(snapshot, [/3500kcal|calories eaten|calorie/])[0] ?? null;
+  const proteinHabitName = selectExistingHabitNames(snapshot, [/protein/])[0] ?? null;
+  const workoutHabitName =
+    selectExistingHabitNames(snapshot, [/workout|training session|lift/])[0] ?? null;
+  const routineNames = snapshot.routines.slice(0, 3).map((routine) => routine.name);
+  const recentWorkoutCount = snapshot.workoutSessions.length;
+
+  const calorieTargetText = calorieRange
+    ? `Start at ${formatNumericRange(calorieRange.low, calorieRange.high)} calories per day.`
+    : calorieHabitName
+      ? `${calorieHabitName} is the only calorie target in your tracked habits, so use that as the starting point until bodyweight data proves it wrong.`
+      : "I cannot calculate an exact calorie target from your app data alone because age, bodyweight, and height are missing. Add those or track morning bodyweight so the target can be tuned instead of guessed.";
+
+  const proteinText = proteinHabitName
+    ? `${proteinHabitName} is already configured, so protein is not the missing lever.`
+    : "You do not have a dedicated protein habit configured, so add one and make it measurable.";
+
+  const routineText =
+    routineNames.length > 0
+      ? `Your current lifting base is ${formatHabitList(routineNames)}. Use those routines instead of inventing a new split.`
+      : "You do not have lifting routines configured yet, so training structure is still underspecified.";
+
+  const executionText =
+    recentWorkoutCount > 0
+      ? `You also have ${recentWorkoutCount} logged workout sessions, so the gap is execution consistency, not lack of tooling.`
+      : "You have routines and habits configured, but no logged workout sessions in the recent snapshot, so consistency is still unproven.";
+
+  const actions: z.infer<typeof CoachModelResponseSchema>["actions"] = [];
+  if (!selectExistingHabitNames(snapshot, [/morning bodyweight|bodyweight check|weigh/]).length) {
+    actions.push({
+      type: "add_habit",
+      label: "Add Morning Bodyweight Check habit",
+      reason: "A calorie target without weekly bodyweight feedback is blind.",
+      habit: {
+        name: "Morning Bodyweight Check",
+        description: "Weigh yourself after waking at least 4 mornings per week and track the 7-day average.",
+        category: "physical",
+        targetDays: ["mon", "tue", "thu", "sat"],
+        color: habitColorForCategory("physical"),
+      },
+    });
+  }
+  if (!selectExistingHabitNames(snapshot, [/log every lift|progressive overload|log lifts/]).length) {
+    actions.push({
+      type: "add_habit",
+      label: "Add Log Every Lift habit",
+      reason: "Muscle gain without progressive overload logging is guesswork.",
+      habit: {
+        name: "Log Every Lift",
+        description: "Record sets, reps, and load for every lifting session and beat the last result when possible.",
+        category: "physical",
+        targetDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+        color: habitColorForCategory("physical"),
+      },
+    });
+  }
+
+  return {
+    message:
+      `${calorieTargetText} ${proteinText} ${routineText} ${executionText} ${workoutHabitName ? `${workoutHabitName} already exists, so use it as the compliance signal.` : ""} If your 7-day average bodyweight is not rising after 10-14 days, raise calories by 150-200. If weight jumps too fast and waist size climbs, pull calories back.`,
+    profileSummary: snapshot.profileSummary,
+    goals: [],
+    actions: actions.slice(0, 2),
+  };
+}
+
+function buildWeakestAreaResponse(
+  snapshot: CoachSnapshot
+): z.infer<typeof CoachModelResponseSchema> {
+  const weakestArea = getWeakestScoreArea(snapshot);
+  const weakestHabits = snapshot.weakestHabits.slice(0, 5);
+  const weakHabitText =
+    weakestHabits.length > 0
+      ? weakestHabits
+          .map((habit) => `${habit.name} (${formatPercent(habit.completionRate30d)})`)
+          .join(", ")
+      : "no weak habits available";
+
+  const actions =
+    weakestArea?.[0] === "physical" || weakestHabits.some((habit) => habit.category === "physical")
+      ? buildWeakHabitProjectAction(snapshot)
+      : [];
+
+  return {
+    message: weakestArea
+      ? `Your weakest area is ${weakestArea[0]} at ${weakestArea[1]}/10 over 30 days. The weakest habits driving that are ${weakHabitText}.`
+      : `I do not have enough scored history to rank categories yet. The weakest habits I can see are ${weakHabitText}.`,
+    profileSummary: snapshot.profileSummary,
+    goals: [],
+    actions,
+  };
+}
+
+function buildProjectRecommendationResponse(
+  snapshot: CoachSnapshot,
+  activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
+): z.infer<typeof CoachModelResponseSchema> {
+  const weakestHabits = snapshot.weakestHabits
+    .filter((habit) => habit.category === "physical")
+    .slice(0, 5);
+  const hasExistingActivationProject = snapshot.projects.some(
+    (project) => normalizeText(project.title) === "weekly physical activation"
+  );
+
+  if (weakestHabits.length > 0) {
+    const actions = hasExistingActivationProject ? [] : buildWeakHabitProjectAction(snapshot);
+    return {
+      message: `The best project for this week is a one-week physical activation sprint. It matches your active priority${activeGoal ? ` (${activeGoal.title})` : ""} and directly attacks the lowest-completion habits in your own data: ${weakestHabits.map((habit) => habit.name).join(", ")}.`,
+      profileSummary: snapshot.profileSummary,
+      goals: [],
+      actions,
+    };
+  }
+
+  const topProject = snapshot.projects
+    .filter((project) => project.status !== "completed")
+    .sort((left, right) => {
+      const priorityRank = { high: 0, medium: 1, low: 2 };
+      const leftRank = priorityRank[left.priority as keyof typeof priorityRank] ?? 3;
+      const rightRank = priorityRank[right.priority as keyof typeof priorityRank] ?? 3;
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return left.completionPercentage - right.completionPercentage;
+    })[0];
+
+  if (topProject) {
+    return {
+      message: `The best project to push this week is ${topProject.title}. It is already in your data, it is still active, and it has only ${topProject.completionPercentage}% completion. Finish the open tasks before creating more projects.`,
+      profileSummary: snapshot.profileSummary,
+      goals: [],
+      actions: [],
+    };
+  }
+
+  return {
+    message: "There is no active project with enough signal to prioritize. The best move is to create one project tied to your weakest scored area and keep everything else secondary.",
+    profileSummary: snapshot.profileSummary,
+    goals: [],
+    actions: [],
+  };
+}
+
 function buildFallbackCoachResponse(
   snapshot: CoachSnapshot,
   userMessage: string | null,
   instruction: string
 ): z.infer<typeof CoachModelResponseSchema> {
+  const intent = detectCoachIntent(userMessage);
   const inferredGoals = inferGoalsFromMessage(userMessage);
   const weakest = snapshot.weakestHabits[0];
   const activeGoal = snapshot.goals.find((goal) => goal.status === "active") ?? inferredGoals[0];
   if (!snapshot.dataAvailability.hasPerformanceData) {
     return buildNoDataGoalResponse(snapshot, userMessage, activeGoal);
   }
+  if (intent.asksForCalories || intent.asksForProtein || parseGoalRequest(userMessage).isMuscleGain) {
+    return buildPerformanceNutritionResponse(snapshot, userMessage, activeGoal);
+  }
+  if (intent.asksForProjectRecommendation) {
+    return buildProjectRecommendationResponse(snapshot, activeGoal);
+  }
+  if (intent.asksWeakestArea) {
+    return buildWeakestAreaResponse(snapshot);
+  }
+
   const lowerScore = snapshot.scores.average30d
     ? Object.entries(snapshot.scores.average30d).sort((left, right) => left[1] - right[1])[0]
     : null;
 
-  const wantsHabits = /habit|routine|goal|project|plan/i.test(userMessage ?? "");
+  const wantsHabits =
+    intent.asksForHabits || intent.asksForRoutine || intent.asksForPlan || /goal|project/.test(normalizeText(userMessage));
   const actions: z.infer<typeof CoachModelResponseSchema>["actions"] = [];
 
   if (wantsHabits && activeGoal) {
@@ -1375,6 +1727,8 @@ function buildFallbackCoachResponse(
           color: habitColorForCategory("financial"),
         },
       });
+    } else if (/physical|muscle|fitness|workout|body|weight/.test(goalTitle)) {
+      actions.push(...buildWeakHabitProjectAction(snapshot));
     } else {
       actions.push({
         type: "add_habit",
@@ -1391,14 +1745,67 @@ function buildFallbackCoachResponse(
     }
   }
 
-  const message = activeGoal
-    ? `Current priority: ${activeGoal.title}. ${weakest ? `${weakest.name} is your weakest active habit at ${Math.round(weakest.completionRate30d * 100)}% over 30 days.` : "You need a tighter system around that goal."} ${actions.length > 0 ? "I gave you one concrete action you can add immediately." : "Tell me the exact outcome and timeline you want, and I’ll turn it into habits and projects."}`
-    : `I can read your habits, projects, scores, and recent logs, but there is no durable goal saved yet. ${lowerScore ? `Your weakest 30-day area is ${lowerScore[0]} at ${lowerScore[1]}/10.` : ""} ${instruction.includes("overview") ? "Tell me your top 1-3 goals and timeframe, and I’ll build the system around them." : "Tell me your goal and deadline, and I’ll turn it into habits and projects."}`;
+  const goalAlignment = buildGoalAlignment(snapshot);
+  const userTopic = normalizeText(userMessage);
+  const relevantCategory = /sleep|mental|mind|stress|anxiety/.test(userTopic)
+    ? "mental"
+    : /money|income|financ|business|trade|revenue/.test(userTopic)
+    ? "financial"
+    : /workout|fitness|physical|muscle|lift|run|steps|body/.test(userTopic)
+    ? "physical"
+    : /focus|study|deep work|school|learn|read/.test(userTopic)
+    ? "focus"
+    : null;
+
+  const attentionGoals = goalAlignment.filter(
+    (g) => g.needsAttention && g.status === "active" &&
+      (relevantCategory === null || g.category === relevantCategory)
+  );
+  const goalsWithNoHabits = attentionGoals.filter((g) => g.hasNoSupportingHabits);
+  const goalsWithWeakHabits = attentionGoals.filter(
+    (g) => !g.hasNoSupportingHabits && g.avgHabitCompletion30d < 0.6
+  );
+
+  let message: string;
+  if (activeGoal) {
+    const parts: string[] = [`Your active goal: ${activeGoal.title}.`];
+    if (goalsWithNoHabits.length > 0) {
+      parts.push(
+        `\n\nGoals with NO supporting habits: ${goalsWithNoHabits.map((g) => g.goal).join(", ")}. These are going nowhere without a daily system.`
+      );
+    }
+    if (goalsWithWeakHabits.length > 0) {
+      parts.push(
+        `\n\nGoals with weak habit execution: ${goalsWithWeakHabits.map((g) => `${g.goal} (${Math.round(g.avgHabitCompletion30d * 100)}% avg completion)`).join(", ")}.`
+      );
+    }
+    if (weakest) {
+      parts.push(`\n\nWeakest habit: ${weakest.name} at ${Math.round(weakest.completionRate30d * 100)}% over 30 days.`);
+    }
+    if (actions.length > 0) {
+      parts.push("\n\nI added one concrete action below — tap to add it immediately.");
+    } else {
+      parts.push("\n\nTell me the specific outcome and deadline you want, and I’ll build the system.");
+    }
+    message = parts.join("");
+  } else {
+    const parts: string[] = ["I can see your habits, projects, scores, and logs, but no goals are saved yet."];
+    if (lowerScore) {
+      parts.push(`\n\nYour weakest 30-day area: ${lowerScore[0]} at ${lowerScore[1]}/10.`);
+    }
+    if (snapshot.weakestHabits.length > 0) {
+      parts.push(
+        `\n\nWeakest habits: ${snapshot.weakestHabits.slice(0, 3).map((h) => `${h.name} (${Math.round(h.completionRate30d * 100)}%)`).join(", ")}.`
+      );
+    }
+    parts.push("\n\nTell me your top 1-3 goals and their deadlines, and I’ll build the system around them.");
+    message = parts.join("");
+  }
 
   return {
     message,
     profileSummary: snapshot.profileSummary,
-    goals: inferredGoals,
+    goals: [],
     actions,
   };
 }
@@ -1423,14 +1830,36 @@ function shouldUseDeterministicNoDataPhysicalResponse(
   );
 }
 
+function shouldUseDeterministicUserDataResponse(userMessage: string | null): boolean {
+  const intent = detectCoachIntent(userMessage);
+  const goalRequest = parseGoalRequest(userMessage);
+
+  return (
+    intent.asksWeakestArea ||
+    intent.asksForProjectRecommendation ||
+    intent.asksForCalories ||
+    intent.asksForProtein ||
+    goalRequest.isMuscleGain
+  );
+}
+
 async function generateCoachResponse(
   snapshot: CoachSnapshot,
   conversation: Array<{ role: "user" | "assistant"; content: string }>,
   userMessage: string | null,
   instruction: string
-): Promise<z.infer<typeof CoachModelResponseSchema>> {
-  if (shouldUseDeterministicNoDataPhysicalResponse(snapshot, userMessage)) {
-    return buildFallbackCoachResponse(snapshot, userMessage, instruction);
+): Promise<{
+  response: z.infer<typeof CoachModelResponseSchema>;
+  usedFallback: boolean;
+}> {
+  if (
+    shouldUseDeterministicNoDataPhysicalResponse(snapshot, userMessage) ||
+    shouldUseDeterministicUserDataResponse(userMessage)
+  ) {
+    return {
+      response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+      usedFallback: true,
+    };
   }
 
   const prompt = buildCoachPromptPayload(snapshot, conversation, instruction);
@@ -1443,18 +1872,27 @@ async function generateCoachResponse(
     } else if (await isOllamaAvailable()) {
       rawText = await askOllamaForCoachResponse(prompt);
     } else {
-      return buildFallbackCoachResponse(snapshot, userMessage, instruction);
+      return {
+        response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+        usedFallback: true,
+      };
     }
 
     const jsonText = extractJsonObject(rawText) ?? rawText;
     const parsed = CoachModelResponseSchema.parse(JSON.parse(jsonText));
     if (messageContainsUnsupportedPerformanceClaims(snapshot, parsed.message)) {
-      return buildFallbackCoachResponse(snapshot, userMessage, instruction);
+      return {
+        response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+        usedFallback: true,
+      };
     }
-    return parsed;
+    return { response: parsed, usedFallback: false };
   } catch (error) {
     console.error("[coach] generateCoachResponse error:", error);
-    return buildFallbackCoachResponse(snapshot, userMessage, instruction);
+    return {
+      response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+      usedFallback: true,
+    };
   }
 }
 
@@ -1662,14 +2100,16 @@ export async function getCoachChatState(userId: string): Promise<{
     };
   }
 
-  const response = await generateCoachResponse(
+  const { response, usedFallback } = await generateCoachResponse(
     snapshot,
     [],
     null,
-    "Open the conversation. Give a short overview of the user's current situation, mention remembered goals if any, and ask one sharp follow-up about what they want next."
+    "Do a personalized goal audit. Focus ONLY on goals where needsAttention is true (avgHabitCompletion30d < 0.6 or hasNoSupportingHabits). For each such goal, state: which supporting habits exist and their completion rate, and what key habit is missing or failing. Skip goals that are already performing well. Then call out the single most urgent fix. Use line breaks and bullets to keep it scannable. If no goals are saved yet, introduce yourself briefly and ask what their top priorities are."
   );
   const actions = sanitizeCoachActions(response.actions, snapshot);
-  await upsertCoachMemory(userId, response.profileSummary, response.goals);
+  if (!usedFallback) {
+    await upsertCoachMemory(userId, response.profileSummary, response.goals);
+  }
   const assistantMessage = await persistCoachMessage(
     userId,
     "assistant",
@@ -1707,15 +2147,17 @@ export async function sendCoachMessage(
       content: message.content,
     }));
 
-  const response = await generateCoachResponse(
+  const { response, usedFallback } = await generateCoachResponse(
     snapshot,
     conversation,
     content,
-    "Answer the user's last message. Use their data. If they ask for goals, habits, routines, or projects, give concrete recommendations and create ready-to-add actions where useful."
+    "Answer the user's message. Only reference goals from goalAlignment that are (1) topically relevant to what the user asked and (2) have needsAttention: true. Do not dump all goals into the response. If the user asks about a specific topic, only surface underperforming goals in that category. Give specific, actionable advice grounded in their data. Create ready-to-add actions only when the recommendation is concrete enough to implement immediately."
   );
   const actions = sanitizeCoachActions(response.actions, snapshot);
 
-  await upsertCoachMemory(userId, response.profileSummary, response.goals);
+  if (!usedFallback) {
+    await upsertCoachMemory(userId, response.profileSummary, response.goals);
+  }
 
   const assistantMessage = await persistCoachMessage(
     userId,
@@ -1730,3 +2172,13 @@ export async function sendCoachMessage(
     goals: refreshedSnapshot.goals,
   };
 }
+
+export const __testables = {
+  detectCoachIntent,
+  parseGoalRequest,
+  parseNutritionContext,
+  buildFallbackCoachResponse,
+  buildWeakestAreaResponse,
+  buildProjectRecommendationResponse,
+  buildPerformanceNutritionResponse,
+};

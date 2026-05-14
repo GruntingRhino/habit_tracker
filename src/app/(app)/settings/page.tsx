@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
+  scheduleWakeAlarms,
+  cancelWakeAlarms,
+  requestAlarmPermission,
+  isNativeAlarmSupported,
+  startWakeChallenge,
+} from "@/lib/capacitor-wake-alarm";
+import {
   User,
   Lock,
   Cpu,
@@ -314,6 +321,7 @@ function WakeAlarmSection() {
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingChallenge, setTestingChallenge] = useState(false);
   const [status, setStatus] = useState<{
     type: "success" | "error";
     message: string;
@@ -405,6 +413,17 @@ function WakeAlarmSection() {
 
       const saved = (await response.json()) as WakeAlarmSettings;
       setSettings(saved);
+
+      // Sync to native iOS alarm scheduler when running in the app
+      if (isNativeAlarmSupported()) {
+        await requestAlarmPermission();
+        if (saved.enabled) {
+          await scheduleWakeAlarms(saved);
+        } else {
+          await cancelWakeAlarms();
+        }
+      }
+
       setStatus({
         type: "success",
         message: "Wake alarm settings saved.",
@@ -422,6 +441,42 @@ function WakeAlarmSection() {
     }
   }
 
+  async function handleTestChallenge() {
+    if (!isNativeAlarmSupported()) {
+      setStatus({
+        type: "error",
+        message: "Native wake challenge testing is only available inside the iPhone app.",
+      });
+      return;
+    }
+
+    setTestingChallenge(true);
+    setStatus(null);
+
+    try {
+      await requestAlarmPermission();
+      const challenge = await startWakeChallenge(settings);
+      if (!challenge) {
+        throw new Error("Challenge bridge is unavailable.");
+      }
+
+      setStatus({
+        type: "success",
+        message: `Native challenge started using ${challenge.effectiveMissionType} verification.`,
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to start the native wake challenge.",
+      });
+    } finally {
+      setTestingChallenge(false);
+    }
+  }
+
   return (
     <Section
       title="Wake Alarm"
@@ -429,7 +484,7 @@ function WakeAlarmSection() {
     >
       <div className="space-y-4">
         <p className="text-slate-400 text-sm">
-          Stores the schedule and mission rules for the future native iPhone alarm.
+          Stores the wake alarm schedule and drives the native iPhone challenge flow.
         </p>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -551,26 +606,47 @@ function WakeAlarmSection() {
         </div>
 
         <p className="text-slate-500 text-xs">
-          This web app stores the alarm config. Exact 6:00 AM alarm execution, camera checks, and anti-sleep enforcement still require a native iOS app.
+          Native verification currently uses step counting for `Steps` and motion-counted reps for the other mission modes. Camera-based AI verification is not wired yet.
         </p>
 
         {status && <StatusMsg type={status.type} message={status.message} />}
 
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={loading || saving}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            "Save Wake Alarm"
-          )}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={loading || saving}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Wake Alarm"
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleTestChallenge}
+            disabled={loading || saving || testingChallenge || !isNativeAlarmSupported()}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            {testingChallenge ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Starting Test...
+              </>
+            ) : (
+              <>
+                <TestTube className="w-4 h-4" />
+                Test Native Challenge
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </Section>
   );

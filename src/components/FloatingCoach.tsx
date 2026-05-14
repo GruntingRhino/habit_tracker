@@ -5,11 +5,20 @@ import { Bot, MessageSquare, Send, Sparkles, X } from "lucide-react";
 import CoachActionButtons from "@/components/CoachActionButtons";
 import { useCoachChat } from "@/hooks/useCoachChat";
 
+const CATEGORY_DOT_COLORS: Record<string, string> = {
+  physical: "#22c55e",
+  financial: "#10b981",
+  focus: "#3b82f6",
+  mental: "#a855f7",
+  appearance: "#f59e0b",
+  general: "#64748b",
+};
+
 const QUICK_PROMPTS = [
-  "What goals am I currently optimizing for?",
-  "What habits should I add to hit my goals?",
-  "What project should I create next?",
-  "What am I neglecting right now?",
+  "Audit my goals — where am I falling short?",
+  "What habits am I missing for my goals?",
+  "Which of my habits are underperforming?",
+  "Build me a game plan for this week",
 ];
 
 function FloatingCoachPanel() {
@@ -72,22 +81,30 @@ function FloatingCoachPanel() {
         style={{ borderBottom: "1px solid rgba(40, 76, 140, 0.15)" }}
       >
         {goals.length > 0 ? (
-          goals.slice(0, 3).map((goal) => (
-            <span
-              key={goal.id}
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
-              style={{
-                background: "rgba(79,114,255,0.1)",
-                border: "1px solid rgba(79,114,255,0.18)",
-                color: "#8fb4ff",
-              }}
-            >
-              {goal.title}
-            </span>
-          ))
+          goals.map((goal) => {
+            const dotColor = CATEGORY_DOT_COLORS[goal.category] ?? CATEGORY_DOT_COLORS.general;
+            return (
+              <span
+                key={goal.id}
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                style={{
+                  background: "rgba(79,114,255,0.08)",
+                  border: "1px solid rgba(79,114,255,0.15)",
+                  color: "#8fb4ff",
+                }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ background: dotColor }}
+                />
+                {goal.priority === "high" && <span className="text-[9px] text-amber-400">↑</span>}
+                {goal.title}
+              </span>
+            );
+          })
         ) : (
           <span className="text-[11px]" style={{ color: "#516b89" }}>
-            No remembered goals yet
+            No remembered goals yet — tell me what you&apos;re working toward
           </span>
         )}
       </div>

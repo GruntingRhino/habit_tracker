@@ -262,3 +262,15 @@ model CoachChatMessage {
 
   @@index([userId, createdAt])
 }
+
+model RateLimitBucket {
+  id          String   @id
+  count       Int
+  windowStart DateTime
+  lockedUntil DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([lockedUntil])
+  @@index([updatedAt])
+}

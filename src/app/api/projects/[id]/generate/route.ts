@@ -7,6 +7,11 @@ import {
   isAIAvailable,
   ProjectTask,
 } from "@/lib/ollama";
+import {
+  buildScopedRateLimitKeys,
+  extractClientIp,
+  isRateLimited,
+} from "@/lib/rate-limit";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -52,6 +57,20 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
   }
 
   try {
+    const limit = await isRateLimited(
+      buildScopedRateLimitKeys(
+        "project-generate",
+        session.user.id,
+        extractClientIp(_req.headers)
+      )
+    );
+    if (limit) {
+      return NextResponse.json(
+        { error: "Too many task-generation requests. Try again shortly." },
+        { status: 429 }
+      );
+    }
+
     const { id: projectId } = await params;
 
     const project = await prisma.project.findUnique({ where: { id: projectId } });

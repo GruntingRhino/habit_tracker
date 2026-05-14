@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { assessWorkout } from "@/lib/workout";
 import { subDays } from "date-fns";
+import { reportError } from "@/lib/monitoring";
+import {
+  buildScopedRateLimitKeys,
+  extractClientIp,
+  isRateLimited,
+} from "@/lib/rate-limit";
 
 export interface InsightProblem {
   text: string;
@@ -45,30 +52,72 @@ function fmtSteps(n: number) {
   return n.toLocaleString("en-US");
 }
 
+const insightRequestSchema = z.object({
+  category: z.enum([
+    "appearance",
+    "discipline",
+    "focus",
+    "general",
+    "health",
+    "financial",
+    "mental",
+    "overall",
+    "physical",
+    "productivity",
+    "social",
+    "spiritual",
+  ]),
+  currentScore: z.number().min(0).max(10),
+});
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { category, currentScore } = await req.json();
-  const userId = session.user.id;
-  const since = subDays(new Date(), 30);
+  try {
+    const limit = await isRateLimited(
+      buildScopedRateLimitKeys(
+        "insights",
+        session.user.id,
+        extractClientIp(req.headers)
+      )
+    );
+    if (limit) {
+      return NextResponse.json(
+        { error: "Too many insight requests. Try again shortly." },
+        { status: 429 }
+      );
+    }
 
-  const [entries, scores, habits] = await Promise.all([
-    prisma.dailyEntry.findMany({
-      where: { userId, date: { gte: since } },
-      orderBy: { date: "desc" },
-    }),
-    prisma.categoryScore.findMany({
-      where: { userId, date: { gte: since } },
-      orderBy: { date: "desc" },
-    }),
-    prisma.habit.findMany({
-      where: { userId, isActive: true },
-      include: { logs: { where: { date: { gte: since } } } },
-    }),
-  ]);
+    const rawBody = await req.json();
+    const parsed = insightRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid payload" },
+        { status: 400 }
+      );
+    }
+
+    const { category, currentScore } = parsed.data;
+    const userId = session.user.id;
+    const since = subDays(new Date(), 30);
+
+    const [entries, scores, habits] = await Promise.all([
+      prisma.dailyEntry.findMany({
+        where: { userId, date: { gte: since } },
+        orderBy: { date: "desc" },
+      }),
+      prisma.categoryScore.findMany({
+        where: { userId, date: { gte: since } },
+        orderBy: { date: "desc" },
+      }),
+      prisma.habit.findMany({
+        where: { userId, isActive: true },
+        include: { logs: { where: { date: { gte: since } } } },
+      }),
+    ]);
 
   const n = entries.length;
   const latestEntry = entries[0] ?? null;
@@ -518,5 +567,12 @@ export async function POST(req: NextRequest) {
     actions.push({ type: "advice", text: "Every input in this category is passing — push each one 10% further. Marginal improvements across all inputs add up to a full point." });
   }
 
-  return NextResponse.json({ category, currentScore, thirtyDayAvg, problems, actions } satisfies InsightResult);
+    return NextResponse.json({ category, currentScore, thirtyDayAvg, problems, actions } satisfies InsightResult);
+  } catch (error) {
+    reportError({ context: "insights POST", error, userId: session.user.id });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

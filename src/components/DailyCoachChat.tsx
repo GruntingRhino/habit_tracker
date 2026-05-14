@@ -1,9 +1,29 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Loader2, Send } from "lucide-react";
+import { Bot, Loader2, Send, Sparkles } from "lucide-react";
 import CoachActionButtons from "@/components/CoachActionButtons";
 import { useCoachChat } from "@/hooks/useCoachChat";
+
+const QUICK_PROMPTS = [
+  "Audit my goals — where am I falling short?",
+  "What habits am I missing for my goals?",
+  "Which habits are underperforming?",
+  "Build me a game plan for this week",
+];
+
+const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  physical: { bg: "bg-green-500/10", border: "border-green-500/20", text: "text-green-300" },
+  financial: { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-300" },
+  focus: { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-300" },
+  mental: { bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-300" },
+  appearance: { bg: "bg-amber-500/10", border: "border-amber-500/20", text: "text-amber-300" },
+  general: { bg: "bg-slate-500/10", border: "border-slate-500/20", text: "text-slate-300" },
+};
+
+function getGoalColors(category: string) {
+  return CATEGORY_COLORS[category] ?? CATEGORY_COLORS.general;
+}
 
 export default function DailyCoachChat() {
   const { messages, goals, loading, ready, error, sendMessage, applyAction, pendingActionIds } =
@@ -27,23 +47,45 @@ export default function DailyCoachChat() {
       <div className="mb-4 flex items-center gap-2">
         <Bot className="h-4 w-4 text-blue-300" />
         <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Daily Coach
+          AI Coach
         </h2>
+        <span className="flex items-center gap-1 rounded-full bg-green-500/10 border border-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+          Goal-aware
+        </span>
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
         {goals.length > 0 ? (
-          goals.slice(0, 4).map((goal) => (
-            <span
-              key={goal.id}
-              className="inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[11px] font-medium text-blue-200"
-            >
-              {goal.title}
-            </span>
-          ))
+          goals.map((goal) => {
+            const colors = getGoalColors(goal.category);
+            return (
+              <span
+                key={goal.id}
+                className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium ${colors.bg} ${colors.border} ${colors.text}`}
+              >
+                {goal.priority === "high" && <span className="mr-1 text-[9px]">↑</span>}
+                {goal.title}
+              </span>
+            );
+          })
         ) : (
           <span className="text-xs text-slate-500">Tell the coach your goals and it will remember them here.</span>
         )}
+      </div>
+
+      <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+        {QUICK_PROMPTS.map((prompt) => (
+          <button
+            key={prompt}
+            onClick={() => void sendMessage(prompt)}
+            disabled={loading}
+            className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-full border border-[#1f2937] bg-[#0a0f1a] hover:border-blue-500/40 hover:bg-blue-500/5 px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-blue-300 transition-all disabled:opacity-40"
+          >
+            <Sparkles className="h-3 w-3" />
+            {prompt}
+          </button>
+        ))}
       </div>
 
       <div className="rounded-3xl border border-[#1f2937] bg-[#0a0f1a] overflow-hidden">

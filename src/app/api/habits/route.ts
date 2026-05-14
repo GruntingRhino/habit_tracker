@@ -1,9 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { calcStreak, getStartOfDay } from "@/lib/utils";
+import { reportError } from "@/lib/monitoring";
+import { calcStreak } from "@/lib/utils";
 import { subDays } from "date-fns";
+
+const VALID_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+const VALID_CATEGORIES = [
+  "general", "physical", "mental", "health",
+  "productivity", "financial", "social", "spiritual",
+] as const;
+
+const habitPostSchema = z.object({
+  name: z.string().trim().min(1, "name is required").max(100),
+  description: z.string().trim().max(500).optional(),
+  category: z.enum(VALID_CATEGORIES).default("general"),
+  targetDays: z.array(z.enum(VALID_DAYS)).min(1).max(7).default([...VALID_DAYS]),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "color must be a hex code like #3b82f6")
+    .default("#3b82f6"),
+});
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -48,7 +67,7 @@ export async function GET() {
 
     return NextResponse.json(habitsWithStreak);
   } catch (error) {
-    console.error("[habits GET] error:", error);
+    reportError({ context: "habits GET", error, userId: session.user.id });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -63,11 +82,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
-
-    if (!body.name || typeof body.name !== "string") {
+    const rawBody = await req.json();
+    const parsed = habitPostSchema.safeParse(rawBody);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "name is required" },
+        { error: parsed.error.issues[0]?.message ?? "Invalid payload" },
         { status: 400 }
       );
     }
@@ -75,17 +94,17 @@ export async function POST(req: NextRequest) {
     const habit = await prisma.habit.create({
       data: {
         userId: session.user.id,
-        name: body.name.trim(),
-        description: body.description ?? undefined,
-        category: body.category ?? "general",
-        targetDays: body.targetDays ?? ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-        color: body.color ?? "#3b82f6",
+        name: parsed.data.name,
+        description: parsed.data.description,
+        category: parsed.data.category,
+        targetDays: parsed.data.targetDays,
+        color: parsed.data.color,
       },
     });
 
     return NextResponse.json(habit, { status: 201 });
   } catch (error) {
-    console.error("[habits POST] error:", error);
+    reportError({ context: "habits POST", error, userId: session.user.id });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

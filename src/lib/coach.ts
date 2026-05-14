@@ -609,7 +609,7 @@ function buildCoachSystemPrompt(): string {
     "3. CALL OUT WEAK EXECUTION: If a habit's completionRate30d is below 0.6 AND it relates to the question topic, name it and say exactly what the number is. Never mention underperforming habits from unrelated categories.",
     "4. USE STRUCTURED FORMATTING: Use line breaks (\\n) and '- ' for bullet points when giving multi-point analysis. Do not write dense walls of text — the user should be able to scan the response quickly.",
     "5. BE HYPER-SPECIFIC: Never say 'stay consistent' or 'keep working hard'. Always say exactly which habit, which goal, which number, which day, which action.",
-    "6. PROACTIVE HABIT SUGGESTIONS: When the user asks what habits to add, cross-reference goalAlignment to find needsAttention goals whose categories have zero or low-completion habits. Only suggest habits for those gaps.",
+    "6. HABIT SUGGESTIONS: When identifying a missing habit in your message text, name it and explain why it matters. Do NOT include it as an action unless the user explicitly asked to add habits or asked for recommendations to act on.",
     "7. PERSONAL TRAINER TONE: Direct, specific, results-focused. Call out what is not working in the relevant area. Give the next concrete step.",
     "",
     "CONSTRAINTS:",
@@ -617,7 +617,8 @@ function buildCoachSystemPrompt(): string {
     "- If the user has zero daily entries or logs, say so briefly but still provide a plan based on their goals and configured habits.",
     "- Do not recommend a habit or project that duplicates an existing one in existingHabitNames or existingProjectTitles.",
     "- The goals array is ONLY for durable new goals learned THIS turn. Leave it empty if no new goal was shared.",
-    "- Return at most 3 actions. Only include actions that are specific enough to create immediately.",
+    "- ACTIONS (the add buttons): Only populate the actions array when the user explicitly asks to add a habit, create a project, or asks for recommendations they can act on immediately (e.g. 'what habits should I add', 'suggest a habit', 'create a project for me'). For audits, analysis, check-ins, or general questions — always return actions: [].",
+    "- Return at most 3 actions. Only include actions concrete enough to implement immediately.",
     "- Always return valid JSON only. No markdown fences. No prose outside the JSON object.",
     "JSON schema:",
     JSON.stringify(
@@ -1695,11 +1696,12 @@ function buildFallbackCoachResponse(
     ? Object.entries(snapshot.scores.average30d).sort((left, right) => left[1] - right[1])[0]
     : null;
 
-  const wantsHabits =
-    intent.asksForHabits || intent.asksForRoutine || intent.asksForPlan || /goal|project/.test(normalizeText(userMessage));
+  const userAsksToAdd =
+    intent.asksForHabits ||
+    /add.*habit|suggest.*habit|what habit|which habit|recommend.*habit/i.test(userMessage ?? "");
   const actions: z.infer<typeof CoachModelResponseSchema>["actions"] = [];
 
-  if (wantsHabits && activeGoal) {
+  if (userAsksToAdd && activeGoal) {
     const goalTitle = activeGoal.title.toLowerCase();
     if (/study|school|college|exam|class|sat|debate/.test(goalTitle)) {
       actions.push({
@@ -1783,7 +1785,7 @@ function buildFallbackCoachResponse(
       parts.push(`\n\nWeakest habit: ${weakest.name} at ${Math.round(weakest.completionRate30d * 100)}% over 30 days.`);
     }
     if (actions.length > 0) {
-      parts.push("\n\nI added one concrete action below — tap to add it immediately.");
+      parts.push("\n\nI’ve surfaced a habit below you can add with one tap.");
     } else {
       parts.push("\n\nTell me the specific outcome and deadline you want, and I’ll build the system.");
     }
@@ -2104,7 +2106,7 @@ export async function getCoachChatState(userId: string): Promise<{
     snapshot,
     [],
     null,
-    "Do a personalized goal audit. Focus ONLY on goals where needsAttention is true (avgHabitCompletion30d < 0.6 or hasNoSupportingHabits). For each such goal, state: which supporting habits exist and their completion rate, and what key habit is missing or failing. Skip goals that are already performing well. Then call out the single most urgent fix. Use line breaks and bullets to keep it scannable. If no goals are saved yet, introduce yourself briefly and ask what their top priorities are."
+    "Do a personalized goal audit. Focus ONLY on goals where needsAttention is true (avgHabitCompletion30d < 0.6 or hasNoSupportingHabits). For each such goal, state which supporting habits exist and their completion rate, and name the key habit that is missing or underperforming. Skip goals that are performing well. End with the single most urgent fix the user should focus on. Use line breaks and bullets to keep it scannable. Return actions: [] — this is an informational audit, not an add prompt. If no goals are saved yet, introduce yourself briefly and ask what their top priorities are."
   );
   const actions = sanitizeCoachActions(response.actions, snapshot);
   if (!usedFallback) {
@@ -2151,7 +2153,7 @@ export async function sendCoachMessage(
     snapshot,
     conversation,
     content,
-    "Answer the user's message. Only reference goals from goalAlignment that are (1) topically relevant to what the user asked and (2) have needsAttention: true. Do not dump all goals into the response. If the user asks about a specific topic, only surface underperforming goals in that category. Give specific, actionable advice grounded in their data. Create ready-to-add actions only when the recommendation is concrete enough to implement immediately."
+    "Answer the user's message. Only reference goals from goalAlignment that are (1) topically relevant to what the user asked and (2) have needsAttention: true. Do not dump all goals into the response. Give specific, actionable advice grounded in their data. For the actions array: only populate it if the user explicitly asked to add a habit, create a project, or asked for actionable recommendations (e.g. 'what habits should I add', 'suggest something I can do', 'add this'). For audits, analysis, or general questions — return actions: []."
   );
   const actions = sanitizeCoachActions(response.actions, snapshot);
 

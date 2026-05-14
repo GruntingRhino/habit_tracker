@@ -1,5 +1,3 @@
-"use server";
-
 import { z } from "zod";
 import { WEEKDAY_CODES } from "@/lib/coach-types";
 

@@ -3,11 +3,28 @@ import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { calculateScores } from "@/lib/scoring";
 import { subDays, startOfDay } from "date-fns";
+import { isProduction, secureCompare } from "@/lib/runtime-config";
 
 export async function POST(req: NextRequest) {
   try {
+    if (isProduction()) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const url = new URL(req.url);
     const full = url.searchParams.get("full") === "true";
+    const seedSecret = process.env.SEED_SECRET;
+
+    if (!seedSecret) {
+      return NextResponse.json(
+        { message: "SEED_SECRET env var is required" },
+        { status: 403 }
+      );
+    }
+
+    if (!secureCompare(seedSecret, req.headers.get("x-seed-secret"))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const email = process.env.ADMIN_EMAIL;
     const password = process.env.ADMIN_PASSWORD;

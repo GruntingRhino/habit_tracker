@@ -2,6 +2,12 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
+import {
+  buildScopedRateLimitKeys,
+  checkRateLimit,
+  extractClientIp,
+  resetRateLimit,
+} from "@/lib/rate-limit";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -11,9 +17,21 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) {
           return null;
+        }
+
+        const rateLimitKeys = buildAuthRateLimitKeys(
+          credentials.email,
+          extractClientIp(req?.headers)
+        );
+
+        for (const rateLimitKey of rateLimitKeys) {
+          const limit = await checkRateLimit(rateLimitKey);
+          if (!limit.allowed) {
+            throw new Error("Too many login attempts. Try again in 15 minutes.");
+          }
         }
 
         // Support login by email OR username (name field)
@@ -39,6 +57,9 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        for (const rateLimitKey of rateLimitKeys) {
+          await resetRateLimit(rateLimitKey);
+        }
         return {
           id: user.id,
           email: user.email,
@@ -73,6 +94,10 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
 };
+
+function buildAuthRateLimitKeys(identifier: string, ip: string | null): string[] {
+  return buildScopedRateLimitKeys("auth", identifier, ip);
+}
 
 // Extend next-auth session types
 declare module "next-auth" {

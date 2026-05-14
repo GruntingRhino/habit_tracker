@@ -4,6 +4,7 @@ import {
   GROQ_MODEL,
   OLLAMA_BASE_URL,
   OLLAMA_MODEL,
+  OLLAMA_TIMEOUT_MS,
 } from "@/lib/ai-config";
 import { CategoryScores } from "@/lib/scoring";
 
@@ -95,16 +96,24 @@ async function generateWithGroq(title: string, specs: string): Promise<ProjectTa
 }
 
 async function generateWithOllama(title: string, specs: string): Promise<ProjectTask[]> {
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt: CHECKLIST_PROMPT(title, specs),
-      stream: false,
-      format: "json",
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: CHECKLIST_PROMPT(title, specs),
+        stream: false,
+        format: "json",
+      }),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) throw new Error(`Ollama responded with status ${res.status}`);
   const data = await res.json();
   return parseTasks(data.response ?? "");
@@ -153,15 +162,23 @@ async function insightsWithGroq(scores: CategoryScores, entrySummary: string): P
 }
 
 async function insightsWithOllama(scores: CategoryScores, entrySummary: string): Promise<string> {
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt: INSIGHTS_PROMPT(scores, entrySummary),
-      stream: false,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: INSIGHTS_PROMPT(scores, entrySummary),
+        stream: false,
+      }),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) throw new Error(`Ollama responded with status ${res.status}`);
   const data = await res.json();
   return (data.response as string) ?? "Unable to generate insights.";
@@ -230,15 +247,23 @@ async function chatWithOllama(
     .map((m) => `${m.role === "user" ? "User" : "Coach"}: ${m.content}`)
     .join("\n");
   const fullPrompt = `${buildCoachSystemPrompt(context)}\n\nConversation:\n${conversationText}\n\nCoach:`;
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt: fullPrompt,
-      stream: false,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: fullPrompt,
+        stream: false,
+      }),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) throw new Error(`Ollama responded with status ${res.status}`);
   const data = await res.json();
   return (data.response as string) ?? "Unable to generate response.";

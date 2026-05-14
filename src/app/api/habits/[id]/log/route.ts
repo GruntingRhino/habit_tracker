@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
+import { reportError } from "@/lib/monitoring";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
+
+const habitLogPostSchema = z.object({
+  date: z.string().datetime({ offset: true }).optional(),
+  completed: z.boolean().optional(),
+  notes: z.string().trim().max(1000).optional(),
+});
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const session = await getServerSession(authOptions);
@@ -17,7 +25,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   try {
     const { id: habitId } = await params;
-    const body = await req.json();
+    const rawBody = await req.json();
+    const parsed = habitLogPostSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid payload" },
+        { status: 400 }
+      );
+    }
+
+    const body = parsed.data;
 
     // Verify habit belongs to user
     const habit = await prisma.habit.findUnique({ where: { id: habitId } });
@@ -75,7 +92,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ log, scores }, { status: 201 });
   } catch (error) {
-    console.error("[habit log POST] error:", error);
+    reportError({ context: "habit log POST", error, userId: session.user.id });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

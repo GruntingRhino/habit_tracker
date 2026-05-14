@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import {
+  scheduleWakeAlarms,
+  cancelWakeAlarms,
+  requestAlarmPermission,
+  isNativeAlarmSupported,
+  startWakeChallenge,
+} from "@/lib/capacitor-wake-alarm";
 import {
   User,
   Lock,
   Cpu,
+  Bell,
+  Siren,
   AlertTriangle,
   CheckCircle2,
   AlertCircle,
@@ -14,6 +23,52 @@ import {
   TestTube,
   ArrowLeft,
 } from "lucide-react";
+import {
+  REMINDER_ENABLED_KEY,
+  REMINDER_HOUR,
+  REMINDER_MINUTE,
+  SETTINGS_EVENT,
+} from "@/components/DailyEntryReminder";
+import { WEEKDAY_CODES, type WeekdayCode } from "@/lib/coach-types";
+
+const WAKE_MISSION_OPTIONS = [
+  { value: "steps", label: "Steps" },
+  { value: "jumping_jacks", label: "Jumping Jacks" },
+  { value: "push_ups", label: "Push-Ups" },
+  { value: "mixed", label: "Mixed" },
+] as const;
+
+type WakeMissionType = (typeof WAKE_MISSION_OPTIONS)[number]["value"];
+
+interface WakeAlarmSettings {
+  enabled: boolean;
+  time: string;
+  repeatDays: WeekdayCode[];
+  missionType: WakeMissionType;
+  challengeTarget: number;
+  wakeUpCheckMinutes: number;
+  strictMode: boolean;
+}
+
+const defaultWakeAlarmSettings: WakeAlarmSettings = {
+  enabled: false,
+  time: "06:00",
+  repeatDays: [...WEEKDAY_CODES],
+  missionType: "steps",
+  challengeTarget: 40,
+  wakeUpCheckMinutes: 3,
+  strictMode: true,
+};
+
+const WEEKDAY_LABELS: Record<WeekdayCode, string> = {
+  mon: "Mon",
+  tue: "Tue",
+  wed: "Wed",
+  thu: "Thu",
+  fri: "Fri",
+  sat: "Sat",
+  sun: "Sun",
+};
 
 interface SectionProps {
   title: string;
@@ -260,6 +315,467 @@ function PasswordSection() {
   );
 }
 
+function WakeAlarmSection() {
+  const [settings, setSettings] = useState<WakeAlarmSettings>(
+    defaultWakeAlarmSettings
+  );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testingChallenge, setTestingChallenge] = useState(false);
+  const [status, setStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSettings() {
+      try {
+        const response = await fetch("/api/wake-alarm", {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to load wake alarm settings");
+        }
+
+        const data = (await response.json()) as WakeAlarmSettings;
+        if (active) {
+          setSettings(data);
+        }
+      } catch {
+        if (active) {
+          setStatus({
+            type: "error",
+            message: "Failed to load wake alarm settings.",
+          });
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadSettings();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function setField<K extends keyof WakeAlarmSettings>(
+    key: K,
+    value: WakeAlarmSettings[K]
+  ) {
+    setSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleRepeatDay(day: WeekdayCode) {
+    setSettings((current) => {
+      const repeatDays = current.repeatDays.includes(day)
+        ? current.repeatDays.filter((value) => value !== day)
+        : [...current.repeatDays, day];
+
+      return {
+        ...current,
+        repeatDays,
+      };
+    });
+  }
+
+  async function handleSave() {
+    if (settings.repeatDays.length === 0) {
+      setStatus({
+        type: "error",
+        message: "Choose at least one repeat day.",
+      });
+      return;
+    }
+
+    setSaving(true);
+    setStatus(null);
+
+    try {
+      const response = await fetch("/api/wake-alarm", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(settings),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error ?? "Failed to save wake alarm settings");
+      }
+
+      const saved = (await response.json()) as WakeAlarmSettings;
+      setSettings(saved);
+
+      // Sync to native iOS alarm scheduler when running in the app
+      if (isNativeAlarmSupported()) {
+        await requestAlarmPermission();
+        if (saved.enabled) {
+          await scheduleWakeAlarms(saved);
+        } else {
+          await cancelWakeAlarms();
+        }
+      }
+
+      setStatus({
+        type: "success",
+        message: "Wake alarm settings saved.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to save wake alarm settings.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTestChallenge() {
+    if (!isNativeAlarmSupported()) {
+      setStatus({
+        type: "error",
+        message: "Native wake challenge testing is only available inside the iPhone app.",
+      });
+      return;
+    }
+
+    setTestingChallenge(true);
+    setStatus(null);
+
+    try {
+      await requestAlarmPermission();
+      const challenge = await startWakeChallenge(settings);
+      if (!challenge) {
+        throw new Error("Challenge bridge is unavailable.");
+      }
+
+      setStatus({
+        type: "success",
+        message: `Native challenge started using ${challenge.effectiveMissionType} verification.`,
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to start the native wake challenge.",
+      });
+    } finally {
+      setTestingChallenge(false);
+    }
+  }
+
+  return (
+    <Section
+      title="Wake Alarm"
+      icon={<Siren className="w-4 h-4 text-blue-400" />}
+    >
+      <div className="space-y-4">
+        <p className="text-slate-400 text-sm">
+          Stores the wake alarm schedule and drives the native iPhone challenge flow.
+        </p>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label>
+            <span className={labelClass()}>Wake Alarm</span>
+            <select
+              value={settings.enabled ? "on" : "off"}
+              onChange={(e) => setField("enabled", e.target.value === "on")}
+              className={inputClass()}
+              disabled={loading || saving}
+            >
+              <option value="off">Off</option>
+              <option value="on">On</option>
+            </select>
+          </label>
+
+          <label>
+            <span className={labelClass()}>Time</span>
+            <input
+              type="time"
+              value={settings.time}
+              onChange={(e) => setField("time", e.target.value)}
+              className={inputClass()}
+              disabled={loading || saving}
+            />
+          </label>
+        </div>
+
+        <div>
+          <p className={labelClass()}>Repeat Days</p>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAY_CODES.map((day) => {
+              const active = settings.repeatDays.includes(day);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => toggleRepeatDay(day)}
+                  disabled={loading || saving}
+                  className="rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60"
+                  style={{
+                    background: active ? "#2563eb" : "#1e293b",
+                    color: active ? "#ffffff" : "#cbd5e1",
+                    border: active
+                      ? "1px solid #3b82f6"
+                      : "1px solid #334155",
+                  }}
+                >
+                  {WEEKDAY_LABELS[day]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label>
+            <span className={labelClass()}>Mission</span>
+            <select
+              value={settings.missionType}
+              onChange={(e) =>
+                setField("missionType", e.target.value as WakeMissionType)
+              }
+              className={inputClass()}
+              disabled={loading || saving}
+            >
+              {WAKE_MISSION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className={labelClass()}>Challenge Target</span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={settings.challengeTarget}
+              onChange={(e) =>
+                setField("challengeTarget", Number(e.target.value) || 1)
+              }
+              className={inputClass()}
+              disabled={loading || saving}
+            />
+          </label>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label>
+            <span className={labelClass()}>Wake-Up Check (Minutes)</span>
+            <input
+              type="number"
+              min={1}
+              max={15}
+              value={settings.wakeUpCheckMinutes}
+              onChange={(e) =>
+                setField("wakeUpCheckMinutes", Number(e.target.value) || 1)
+              }
+              className={inputClass()}
+              disabled={loading || saving}
+            />
+          </label>
+
+          <label>
+            <span className={labelClass()}>Strict Mode</span>
+            <select
+              value={settings.strictMode ? "on" : "off"}
+              onChange={(e) => setField("strictMode", e.target.value === "on")}
+              className={inputClass()}
+              disabled={loading || saving}
+            >
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+        </div>
+
+        <p className="text-slate-500 text-xs">
+          Native verification currently uses step counting for `Steps` and motion-counted reps for the other mission modes. Camera-based AI verification is not wired yet.
+        </p>
+
+        {status && <StatusMsg type={status.type} message={status.message} />}
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={loading || saving}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Wake Alarm"
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleTestChallenge}
+            disabled={loading || saving || testingChallenge || !isNativeAlarmSupported()}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            {testingChallenge ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Starting Test...
+              </>
+            ) : (
+              <>
+                <TestTube className="w-4 h-4" />
+                Test Native Challenge
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function ReminderSection() {
+  const [supported] = useState(
+    () => typeof window !== "undefined" && "Notification" in window
+  );
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
+    () =>
+      typeof window !== "undefined" && "Notification" in window
+        ? Notification.permission
+        : "unsupported"
+  );
+  const [enabled, setEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(REMINDER_ENABLED_KEY) === "true"
+  );
+  const [status, setStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  function syncEnabled(nextEnabled: boolean) {
+    window.localStorage.setItem(REMINDER_ENABLED_KEY, String(nextEnabled));
+    window.dispatchEvent(new Event(SETTINGS_EVENT));
+    setEnabled(nextEnabled);
+  }
+
+  async function handleEnableReminder() {
+    if (!supported) return;
+
+    setStatus(null);
+
+    if (Notification.permission === "granted") {
+      syncEnabled(true);
+      setPermission("granted");
+      setStatus({
+        type: "success",
+        message: "9:30 PM daily entry reminder enabled.",
+      });
+      return;
+    }
+
+    const nextPermission = await Notification.requestPermission();
+    setPermission(nextPermission);
+
+    if (nextPermission !== "granted") {
+      syncEnabled(false);
+      setStatus({
+        type: "error",
+        message: "Notification permission was not granted.",
+      });
+      return;
+    }
+
+    syncEnabled(true);
+    setStatus({
+      type: "success",
+      message: "9:30 PM daily entry reminder enabled.",
+    });
+  }
+
+  function handleDisableReminder() {
+    setStatus(null);
+    syncEnabled(false);
+  }
+
+  const reminderTimeLabel = `${String(
+    ((REMINDER_HOUR + 11) % 12) + 1
+  )}:${String(REMINDER_MINUTE).padStart(2, "0")} ${
+    REMINDER_HOUR >= 12 ? "PM" : "AM"
+  }`;
+
+  return (
+    <Section
+      title="Daily Entry Reminder"
+      icon={<Bell className="w-4 h-4 text-blue-400" />}
+    >
+      <div className="space-y-4">
+        <p className="text-slate-400 text-sm">
+          Sends a reminder at {reminderTimeLabel} if today&apos;s entry is still missing.
+        </p>
+
+        <div className="rounded-lg border border-[#1e293b] bg-[#0a0f1e] px-4 py-3 text-sm text-slate-300">
+          Status:{" "}
+          <span className="font-medium text-slate-100">
+            {!supported
+              ? "Notifications unsupported"
+              : enabled && permission === "granted"
+                ? "Enabled"
+                : permission === "denied"
+                  ? "Blocked by browser"
+                  : "Disabled"}
+          </span>
+        </div>
+
+        <p className="text-slate-500 text-xs">
+          Browser PWAs cannot schedule true OS alarms from nothing. This reminder works when the app is open or resumed after 9:30 PM.
+        </p>
+
+        {status && <StatusMsg type={status.type} message={status.message} />}
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={handleEnableReminder}
+            disabled={!supported || (enabled && permission === "granted")}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            Enable 9:30 PM Reminder
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDisableReminder}
+            disabled={!supported || !enabled}
+            className="flex items-center gap-2 bg-[#1e293b] hover:bg-[#334155] disabled:opacity-60 text-slate-300 font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            Disable
+          </button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 function OllamaSection() {
   const [baseUrl, setBaseUrl] = useState(
     process.env.NEXT_PUBLIC_OLLAMA_BASE_URL ?? "http://localhost:11434"
@@ -502,6 +1018,8 @@ export default function SettingsPage() {
       <div className="space-y-5">
         <ProfileSection />
         <PasswordSection />
+        <WakeAlarmSection />
+        <ReminderSection />
         <OllamaSection />
         <DangerZone />
       </div>

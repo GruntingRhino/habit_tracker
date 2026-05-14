@@ -18,6 +18,23 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## iOS App Shell
+
+This repo now includes a Capacitor iOS shell in `ios/App`.
+
+Basic workflow:
+
+```bash
+export CAPACITOR_SERVER_URL=https://your-hosted-app-origin
+npm run cap:sync
+npm run cap:ios
+```
+
+The public App Store path and wake-alarm constraints are documented in:
+
+- `docs/ios-app-store-release.md`
+- `docs/wake-alarm-ios-plan.md`
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

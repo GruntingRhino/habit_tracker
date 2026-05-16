@@ -54,7 +54,6 @@ const SCORE_ICONS: Record<string, LucideIcon> = {
   discipline: RefreshCw,
   focus:      Brain,
   mental:     Sparkles,
-  appearance: Star,
   overall:    Star,
 };
 
@@ -65,7 +64,6 @@ const SCORE_COLORS: Record<string, [string, string, string, string]> = {
   discipline: ["#a78bfa", "rgba(167,139,250,0.08)", "rgba(167,139,250,0.22)", "rgba(167,139,250,0.18)"],
   focus:      ["#22d3ee", "rgba(34,211,238,0.08)",  "rgba(34,211,238,0.22)",  "rgba(34,211,238,0.18)"],
   mental:     ["#f472b6", "rgba(244,114,182,0.08)", "rgba(244,114,182,0.22)", "rgba(244,114,182,0.18)"],
-  appearance: ["#fbbf24", "rgba(251,191,36,0.08)",  "rgba(251,191,36,0.22)",  "rgba(251,191,36,0.18)"],
   overall:    ["#94a3b8", "rgba(148,163,184,0.08)", "rgba(148,163,184,0.2)",  "rgba(148,163,184,0.15)"],
 };
 
@@ -123,7 +121,6 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
         body: JSON.stringify({
           name: action.habitName ?? action.text,
           category: action.habitCategory ?? "general",
-          priority: "high",
         }),
       });
       if (res.ok) setAddedHabits((prev) => new Set(prev).add(key));
@@ -136,7 +133,10 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
     <div>
       {/* Scrollable on mobile, grid on desktop */}
       <div className="overflow-x-auto -mx-1 px-1 pb-1">
-      <div className="grid grid-cols-7 gap-2" style={{ minWidth: "420px" }}>
+      <div
+        className="grid gap-2"
+        style={{ minWidth: "420px", gridTemplateColumns: `repeat(${scores.length}, minmax(0, 1fr))` }}
+      >
         {scores.map(({ key, title, score, prevScore }) => {
           const Icon = SCORE_ICONS[key] ?? Star;
           const [textColor, bgColor, borderColor, glowColor] = SCORE_COLORS[key] ?? SCORE_COLORS.overall;

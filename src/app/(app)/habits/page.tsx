@@ -25,7 +25,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import EmptyState from "@/components/EmptyState";
+import { HABIT_CATEGORY_OPTIONS } from "@/lib/habit-category";
 
 interface HabitLog {
   id: string;
@@ -51,15 +51,7 @@ interface Habit {
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
-const CATEGORIES = [
-  "general",
-  "physical",
-  "mental",
-  "health",
-  "productivity",
-  "finance",
-  "social",
-];
+const CATEGORIES = [...HABIT_CATEGORY_OPTIONS];
 
 const COLORS = [
   "#3b82f6",
@@ -116,7 +108,7 @@ const EXAMPLE_HABITS: { section: string; habits: ExampleHabit[] }[] = [
       { name: "Hit the Gym", description: "Structured workout session", category: "physical", color: "#ef4444", emoji: "🏋️", targetDays: WEEKDAYS },
       { name: "100 Push-Ups", description: "Daily push-up challenge, can split into sets", category: "physical", color: "#f97316", emoji: "💪", targetDays: ALL_DAYS },
       { name: "Walk 10,000 Steps", description: "Reach your daily step goal", category: "physical", color: "#14b8a6", emoji: "👟", targetDays: ALL_DAYS },
-      { name: "Cold Shower", description: "End your shower with 60 seconds cold", category: "health", color: "#06b6d4", emoji: "🚿", targetDays: ALL_DAYS },
+      { name: "Cold Shower", description: "End your shower with 60 seconds cold", category: "physical", color: "#06b6d4", emoji: "🚿", targetDays: ALL_DAYS },
       { name: "Stretching & Mobility", description: "15 minutes of stretching or yoga", category: "physical", color: "#f59e0b", emoji: "🧘", targetDays: ALL_DAYS },
     ],
   },
@@ -133,32 +125,32 @@ const EXAMPLE_HABITS: { section: string; habits: ExampleHabit[] }[] = [
   {
     section: "Health",
     habits: [
-      { name: "Sleep by 10 PM", description: "Lights out, phone away by 10 PM", category: "health", color: "#6366f1", emoji: "😴", targetDays: WEEKDAYS },
-      { name: "Drink 2L Water", description: "Track and hit your daily water goal", category: "health", color: "#22d3ee", emoji: "💧", targetDays: ALL_DAYS },
-      { name: "No Junk Food", description: "Stick to whole foods all day", category: "health", color: "#22c55e", emoji: "🥗", targetDays: ALL_DAYS },
-      { name: "Track Calories", description: "Log everything you eat", category: "health", color: "#f59e0b", emoji: "🍽️", targetDays: ALL_DAYS },
-      { name: "No Alcohol", description: "Fully alcohol-free day", category: "health", color: "#ef4444", emoji: "🚫", targetDays: ALL_DAYS },
-      { name: "Cook Your Meals", description: "Prepare at least 2 meals at home", category: "health", color: "#10b981", emoji: "🍳", targetDays: WEEKDAYS },
+      { name: "Sleep by 10 PM", description: "Lights out, phone away by 10 PM", category: "physical", color: "#6366f1", emoji: "😴", targetDays: WEEKDAYS },
+      { name: "Drink 2L Water", description: "Track and hit your daily water goal", category: "physical", color: "#22d3ee", emoji: "💧", targetDays: ALL_DAYS },
+      { name: "No Junk Food", description: "Stick to whole foods all day", category: "physical", color: "#22c55e", emoji: "🥗", targetDays: ALL_DAYS },
+      { name: "Track Calories", description: "Log everything you eat", category: "physical", color: "#f59e0b", emoji: "🍽️", targetDays: ALL_DAYS },
+      { name: "No Alcohol", description: "Fully alcohol-free day", category: "physical", color: "#ef4444", emoji: "🚫", targetDays: ALL_DAYS },
+      { name: "Cook Your Meals", description: "Prepare at least 2 meals at home", category: "physical", color: "#10b981", emoji: "🍳", targetDays: WEEKDAYS },
     ],
   },
   {
     section: "Productivity",
     habits: [
-      { name: "Deep Work Block", description: "2+ hours of focused, distraction-free work", category: "productivity", color: "#3b82f6", emoji: "⚡", targetDays: WEEKDAYS },
-      { name: "Read 30 Minutes", description: "Read a non-fiction book for 30+ minutes", category: "productivity", color: "#60a5fa", emoji: "📚", targetDays: ALL_DAYS },
-      { name: "Plan Tomorrow", description: "Write out tomorrow's tasks before bed", category: "productivity", color: "#818cf8", emoji: "📋", targetDays: WEEKDAYS },
-      { name: "No Social Media Before Noon", description: "Keep mornings free from feeds", category: "productivity", color: "#f97316", emoji: "🔕", targetDays: WEEKDAYS },
-      { name: "Weekly Review", description: "Review goals, wins, and next week's plan", category: "productivity", color: "#14b8a6", emoji: "📊", targetDays: ["sun"] },
-      { name: "Learn Something New", description: "30 min of studying, courses, or skills", category: "productivity", color: "#6366f1", emoji: "🎓", targetDays: WEEKDAYS },
+      { name: "Deep Work Block", description: "2+ hours of focused, distraction-free work", category: "focus", color: "#3b82f6", emoji: "⚡", targetDays: WEEKDAYS },
+      { name: "Read 30 Minutes", description: "Read a non-fiction book for 30+ minutes", category: "focus", color: "#60a5fa", emoji: "📚", targetDays: ALL_DAYS },
+      { name: "Plan Tomorrow", description: "Write out tomorrow's tasks before bed", category: "discipline", color: "#818cf8", emoji: "📋", targetDays: WEEKDAYS },
+      { name: "No Social Media Before Noon", description: "Keep mornings free from feeds", category: "focus", color: "#f97316", emoji: "🔕", targetDays: WEEKDAYS },
+      { name: "Weekly Review", description: "Review goals, wins, and next week's plan", category: "discipline", color: "#14b8a6", emoji: "📊", targetDays: ["sun"] },
+      { name: "Learn Something New", description: "30 min of studying, courses, or skills", category: "focus", color: "#6366f1", emoji: "🎓", targetDays: WEEKDAYS },
     ],
   },
   {
     section: "Financial",
     habits: [
-      { name: "Track Daily Spending", description: "Log every expense, no exceptions", category: "finance", color: "#22c55e", emoji: "💰", targetDays: ALL_DAYS },
-      { name: "No Unnecessary Purchases", description: "Stick to your budget — skip impulse buys", category: "finance", color: "#f59e0b", emoji: "💳", targetDays: ALL_DAYS },
-      { name: "Work on Side Hustle", description: "Dedicate time to income-generating work", category: "finance", color: "#3b82f6", emoji: "💼", targetDays: WEEKDAYS },
-      { name: "Review Finances", description: "Check accounts, expenses, and savings", category: "finance", color: "#10b981", emoji: "📈", targetDays: ["mon"] },
+      { name: "Track Daily Spending", description: "Log every expense, no exceptions", category: "financial", color: "#22c55e", emoji: "💰", targetDays: ALL_DAYS },
+      { name: "No Unnecessary Purchases", description: "Stick to your budget — skip impulse buys", category: "financial", color: "#f59e0b", emoji: "💳", targetDays: ALL_DAYS },
+      { name: "Work on Side Hustle", description: "Dedicate time to income-generating work", category: "financial", color: "#3b82f6", emoji: "💼", targetDays: WEEKDAYS },
+      { name: "Review Finances", description: "Check accounts, expenses, and savings", category: "financial", color: "#10b981", emoji: "📈", targetDays: ["mon"] },
     ],
   },
 ];
@@ -529,6 +521,8 @@ export default function HabitsPage() {
   const [showModal, setShowModal] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [updatingCategoryId, setUpdatingCategoryId] = useState<string | null>(null);
+  const [characterizing, setCharacterizing] = useState(false);
 
   const existingHabitNames = new Set(habits.map((h) => h.name.toLowerCase()));
 
@@ -572,6 +566,43 @@ export default function HabitsPage() {
     }
   }
 
+  async function updateCategory(habitId: string, category: string) {
+    setUpdatingCategoryId(habitId);
+    try {
+      const res = await fetch(`/api/habits/${habitId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ category }),
+      });
+
+      if (res.ok) {
+        await fetchHabits();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setUpdatingCategoryId(null);
+    }
+  }
+
+  async function characterizeAllHabits() {
+    setCharacterizing(true);
+    try {
+      const res = await fetch("/api/habits/characterize", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        await fetchHabits();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setCharacterizing(false);
+    }
+  }
+
   // Build chart data: last 30 days completion count
   const chartData = Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
@@ -612,6 +643,14 @@ export default function HabitsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => void characterizeAllHabits()}
+            disabled={characterizing}
+            className="flex items-center gap-2 bg-[#0f172a] hover:bg-[#1e293b] border border-[#334155] text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-60"
+          >
+            {characterizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-blue-400" />}
+            <span className="hidden sm:inline">Characterize All Habits</span>
+          </button>
           <button
             onClick={() => setShowLibrary(true)}
             className="flex items-center gap-2 bg-[#0f172a] hover:bg-[#1e293b] border border-[#334155] text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition-colors"
@@ -682,15 +721,34 @@ export default function HabitsPage() {
                         <span className="font-medium text-slate-100 text-sm">
                           {habit.name}
                         </span>
-                        <span className="text-slate-600 text-xs capitalize ml-1">
-                          {habit.category}
-                        </span>
                       </div>
                       {habit.description && (
                         <p className="text-slate-500 text-xs ml-5 mb-2">
                           {habit.description}
                         </p>
                       )}
+                      <div className="ml-5 mb-2 flex items-center gap-2">
+                        <span className="text-[11px] uppercase tracking-wide text-slate-600">
+                          Category
+                        </span>
+                        <select
+                          value={habit.category}
+                          onChange={(event) =>
+                            void updateCategory(habit.id, event.target.value)
+                          }
+                          disabled={updatingCategoryId === habit.id}
+                          className="rounded-lg border border-[#334155] bg-[#111827] px-2 py-1 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
+                        >
+                          {HABIT_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option} value={option} className="bg-[#0f172a] capitalize">
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                        {updatingCategoryId === habit.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-slate-500" />
+                        ) : null}
+                      </div>
 
                       {/* Weekly grid */}
                       <div className="flex gap-1.5 ml-5 mt-2">

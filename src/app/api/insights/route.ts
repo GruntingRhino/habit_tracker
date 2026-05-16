@@ -48,24 +48,14 @@ function formatMoney(value: number): string {
   }).format(value);
 }
 
-function fmtSteps(n: number) {
-  return n.toLocaleString("en-US");
-}
-
 const insightRequestSchema = z.object({
   category: z.enum([
-    "appearance",
     "discipline",
     "focus",
-    "general",
-    "health",
     "financial",
     "mental",
     "overall",
     "physical",
-    "productivity",
-    "social",
-    "spiritual",
   ]),
   currentScore: z.number().min(0).max(10),
 });
@@ -104,7 +94,7 @@ export async function POST(req: NextRequest) {
     const userId = session.user.id;
     const since = subDays(new Date(), 30);
 
-    const [entries, scores, habits] = await Promise.all([
+    const [entries, scores, habits, overdueProjectCount] = await Promise.all([
       prisma.dailyEntry.findMany({
         where: { userId, date: { gte: since } },
         orderBy: { date: "desc" },
@@ -116,6 +106,13 @@ export async function POST(req: NextRequest) {
       prisma.habit.findMany({
         where: { userId, isActive: true },
         include: { logs: { where: { date: { gte: since } } } },
+      }),
+      prisma.project.count({
+        where: {
+          userId,
+          status: { not: "completed" },
+          deadline: { lt: new Date() },
+        },
       }),
     ]);
 
@@ -328,6 +325,10 @@ export async function POST(req: NextRequest) {
       problems.push({ text: `"${h.habitName}" completed ${Math.round(h.rate * 100)}% of the time — below the 50% floor.` });
     if (lowTaskDays > 10)
       problems.push({ text: `Completed fewer than half your planned tasks on ${lowTaskDays}/30 days.` });
+    if (overdueProjectCount > 0)
+      problems.push({
+        text: `${overdueProjectCount} active project${overdueProjectCount === 1 ? " is" : "s are"} overdue — discipline scoring is being penalized until that work is either finished or rescheduled.`,
+      });
 
     // Soft diagnostics
     if (problems.length === 0 && currentScore < 10) {
@@ -348,6 +349,11 @@ export async function POST(req: NextRequest) {
       actions.push({ type: "advice", text: "Cap your task list at 3 per day. Completing 3/3 beats completing 5/8 in both score and momentum." });
     if (latestHabitCompletionRate < 0.5)
       actions.push({ type: "advice", text: "Identify the 2–3 habits that must happen every day and hit those first before anything else." });
+    if (overdueProjectCount > 0)
+      actions.push({
+        type: "advice",
+        text: "Clear or reschedule every overdue project tonight. Leaving deadlines broken is a direct discipline penalty now.",
+      });
   }
 
   // ── Focus ───────────────────────────────────────────────────────────────────
@@ -369,6 +375,10 @@ export async function POST(req: NextRequest) {
       problems.push({ text: `Deep work under 2h on ${lowDeepWorkDays}/30 days — averaging ${avgDeepWork.toFixed(1)}h/day.` });
     if (highScreenDays > 15)
       problems.push({ text: `Screen time over 5h on ${highScreenDays}/30 days — averaging ${avgScreen.toFixed(1)}h/day. This actively penalizes your score.` });
+    if (overdueProjectCount > 0)
+      problems.push({
+        text: `${overdueProjectCount} active project${overdueProjectCount === 1 ? " is" : "s are"} overdue — open overdue work is splitting attention and cutting into focus scoring.`,
+      });
 
     // Soft diagnostics
     if (problems.length === 0 && currentScore < 10) {
@@ -391,6 +401,11 @@ export async function POST(req: NextRequest) {
       actions.push({ type: "advice", text: "Tomorrow: no reactive scrolling before your first deep-work block is complete." });
     if (avgDeepWork >= 2 && avgDeepWork < 3)
       actions.push({ type: "advice", text: `You're hitting 2h — add one more hour by starting 60 minutes earlier and protecting that window before your first meeting or task switch.` });
+    if (overdueProjectCount > 0)
+      actions.push({
+        type: "advice",
+        text: "Pick one overdue project and define the next concrete task. Ambiguous overdue work is what keeps fragmenting focus.",
+      });
   }
 
   // ── Mental ──────────────────────────────────────────────────────────────────
@@ -446,70 +461,11 @@ export async function POST(req: NextRequest) {
       actions.push({ type: "advice", text: "Log the 'right with God' field daily — even 5 seconds. Consistent spiritual reflection tracks directly into mental scoring." });
   }
 
-  // ── Appearance ──────────────────────────────────────────────────────────────
-  if (category === "appearance") {
-    const workoutAssessments = entries.map((entry) => ({
-      entry,
-      workout: assessWorkout({
-        workoutCompleted: entry.workoutCompleted,
-        workoutRoutineName: entry.workoutRoutineName,
-        workoutDurationMinutes: entry.workoutDurationMinutes,
-        workoutIntensity: entry.workoutIntensity,
-        workoutDetails: entry.workoutDetails,
-      }),
-    }));
-    const noWorkoutDays = workoutAssessments.filter(({ workout }) => !workout.countsAsWorkout).length;
-    const workoutDays = n - noWorkoutDays;
-    const lowStepDays = countDays((e) => (e.steps ?? 0) > 0 && (e.steps ?? 0) < 7000);
-    const noStepsDays = countDays((e) => (e.steps ?? 0) === 0);
-    const badSleepDays = countDays((e) => (e.sleepHours ?? 0) > 0 && (e.sleepHours ?? 0) < 7);
-    const avgSteps = n > 0 ? entries.reduce((s, e) => s + (e.steps ?? 0), 0) / n : 0;
-    const avgSleep = n > 0 ? entries.reduce((s, e) => s + (e.sleepHours ?? 0), 0) / n : 0;
-
-    // Hard problems (today)
-    if (latestWorkout && !latestWorkout.countsAsWorkout)
-      problems.push({ text: "Today: no meaningful workout credit — appearance scoring drops immediately without training." });
-    if (latestEntry && (latestEntry.steps ?? 0) > 0 && (latestEntry.steps ?? 0) < 7000)
-      problems.push({ text: `Today: only ${fmtSteps(latestEntry.steps ?? 0)} steps — low daily movement.` });
-
-    // Hard 30-day problems
-    if (noWorkoutDays > 15)
-      problems.push({ text: `No workout on ${noWorkoutDays}/30 days — under 50% training consistency.` });
-    if (lowStepDays > 10)
-      problems.push({ text: `Under 7,000 steps on ${lowStepDays}/30 tracked days — sedentary patterns affect appearance scoring.` });
-    if (noStepsDays > 20)
-      problems.push({ text: `Steps not tracked on ${noStepsDays}/30 days — start logging daily movement.` });
-    if (badSleepDays > 10)
-      problems.push({ text: `Under 7h sleep on ${badSleepDays}/30 days — sleep affects skin, body composition, and energy.` });
-
-    // Soft diagnostics
-    if (problems.length === 0 && currentScore < 10) {
-      if (avgSteps > 0 && avgSteps < 10000)
-        problems.push({ text: `Averaging ${fmtSteps(Math.round(avgSteps))} steps/day — 10,000+ is the appearance benchmark. You're ${fmtSteps(Math.round(10000 - avgSteps))} steps short per day.` });
-      if (workoutDays < n * 0.7 && n > 5)
-        problems.push({ text: `Training ${workoutDays}/${n} days (${Math.round((workoutDays / Math.max(n, 1)) * 100)}% frequency) — appearance scoring rewards 5–6x/week consistency.` });
-      if (avgSleep < 7.5)
-        problems.push({ text: `Averaging ${avgSleep.toFixed(1)}h sleep — this directly affects skin quality, body composition, and energy levels.` });
-      if (noStepsDays > 10)
-        problems.push({ text: `Steps not logged on ${noStepsDays}/30 days — you may be moving but if it's not tracked it doesn't score.` });
-    }
-
-    // Actions
-    if (avgSteps > 0 && avgSteps < 10000)
-      actions.push({ type: "advice", text: `Add a 20-minute walk after dinner — that alone adds ~2,000 steps and closes ${Math.round(((avgSteps + 2000) / 10000) * 100)}% of your daily gap.` });
-    if (workoutDays < n * 0.7)
-      actions.push({ type: "add_habit", text: "Commit to 5x weekly training sessions — frequency is the top appearance lever", habitName: "5x Weekly Training", habitCategory: "physical" });
-    if (avgSleep < 7.5)
-      actions.push({ type: "advice", text: "Push bedtime 30 minutes earlier this week. Sleep is cheaper than any supplement and scores better too." });
-    if (noStepsDays > 10)
-      actions.push({ type: "add_habit", text: "Add a 10,000 steps daily habit — track via phone or cheap pedometer", habitName: "10,000 Steps Daily", habitCategory: "physical" });
-  }
-
   // ── Overall ─────────────────────────────────────────────────────────────────
   if (category === "overall") {
     if (scores.length > 0) {
       const latest = scores[0];
-      const categoryKeys = ["physical", "financial", "discipline", "focus", "mental", "appearance"] as const;
+      const categoryKeys = ["physical", "financial", "discipline", "focus", "mental"] as const;
       const ranked = categoryKeys
         .map((k) => ({ key: k, score: latest[k] ?? 0 }))
         .sort((a, b) => a.score - b.score);
@@ -530,7 +486,7 @@ export async function POST(req: NextRequest) {
       });
       if (secondWeakest.score < 7) {
         problems.push({
-          text: `${secondWeakest.key} is also lagging at ${secondWeakest.score.toFixed(1)}/10 — fixing both would lift your overall by ~${((10 - weakest.score + 10 - secondWeakest.score) / 6 * 0.6).toFixed(1)} points.`,
+          text: `${secondWeakest.key} is also lagging at ${secondWeakest.score.toFixed(1)}/10 — fixing both would lift your overall by ~${((10 - weakest.score + 10 - secondWeakest.score) / 5 * 0.6).toFixed(1)} points.`,
         });
       }
 

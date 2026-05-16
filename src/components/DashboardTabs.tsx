@@ -14,10 +14,6 @@ import {
   RefreshCw,
   DollarSign,
   ClipboardCheck,
-  Star,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   Utensils,
   Flame,
   ChevronRight,
@@ -44,7 +40,6 @@ import {
 import DashboardScores from "@/components/DashboardScores";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
-import type { ScoreData } from "@/components/DashboardScores";
 import { type LucideIcon } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -95,7 +90,6 @@ interface CategoryScore {
   discipline: number;
   focus: number;
   mental: number;
-  appearance: number;
   overall: number;
 }
 
@@ -123,7 +117,6 @@ interface Trends {
   discipline: string;
   focus: string;
   mental: string;
-  appearance: string;
   overall: string;
 }
 
@@ -160,20 +153,11 @@ const SCORE_META: {
   { key: "overall",    label: "Overall",    color: "#14b8a6", icon: BarChart3 },
   { key: "focus",      label: "Focus",      color: "#3b82f6", icon: Brain },
   { key: "mental",     label: "Mental",     color: "#a78bfa", icon: ClipboardCheck },
-  { key: "appearance", label: "Appearance", color: "#ec4899", icon: Star },
 ];
 
 const PIE_COLORS = ["#3b82f6", "#1e293b", "#ef4444"];
 
 // ── Small shared components ───────────────────────────────────────────────────
-
-function TrendBadge({ trend }: { trend: string }) {
-  if (trend === "improving")
-    return <span className="flex items-center gap-1 text-green-400 text-xs"><TrendingUp className="w-3.5 h-3.5" />Improving</span>;
-  if (trend === "declining")
-    return <span className="flex items-center gap-1 text-red-400 text-xs"><TrendingDown className="w-3.5 h-3.5" />Declining</span>;
-  return <span className="flex items-center gap-1 text-xs" style={{ color: "#334d6e" }}><Minus className="w-3.5 h-3.5" />Stable</span>;
-}
 
 function getScoreColor(score: number) {
   if (score > 7) return "text-green-400";
@@ -342,6 +326,7 @@ interface Routine {
 function RoutinesPreview() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [todayMs] = useState(() => Date.now());
 
   useEffect(() => {
     fetch("/api/weights/routines", { credentials: "include" })
@@ -396,7 +381,7 @@ function RoutinesPreview() {
             {routines.map((routine) => {
               const lastSession = routine.sessions[0];
               const daysSince = lastSession
-                ? Math.floor((Date.now() - new Date(lastSession.date).getTime()) / 86400000)
+                ? Math.floor((todayMs - new Date(lastSession.date).getTime()) / 86400000)
                 : null;
               return (
                 <div key={routine.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(6,13,28,0.5)" }}>
@@ -447,7 +432,7 @@ function AnalyticsTab() {
   const lineData = categoryScores.map((s) => ({
     date: new Date(s.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     physical: s.physical, financial: s.financial, discipline: s.discipline,
-    focus: s.focus, mental: s.mental, appearance: s.appearance, overall: s.overall,
+    focus: s.focus, mental: s.mental, overall: s.overall,
   }));
   const radarData = SCORE_META.filter((m) => m.key !== "overall").map(({ key, label }) => {
     const last7 = categoryScores.slice(-7);
@@ -730,7 +715,7 @@ type Tab = "dashboard" | "analytics" | "progression";
 
 export default function DashboardTabs(props: DashboardTabsProps) {
   const {
-    scores, latestScoreDate, habits, projects,
+    habits, projects,
     entryNotes, entryDate,
   } = props;
 

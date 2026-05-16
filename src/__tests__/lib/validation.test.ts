@@ -41,7 +41,19 @@ const habitPostSchema = z.object({
   name: z.string().trim().min(1, "name is required").max(100),
   description: z.string().trim().max(500).optional(),
   category: z
-    .enum(["general", "physical", "mental", "health", "productivity", "financial", "social", "spiritual"])
+    .enum([
+      "general",
+      "physical",
+      "mental",
+      "health",
+      "productivity",
+      "financial",
+      "finance",
+      "social",
+      "spiritual",
+      "discipline",
+      "focus",
+    ])
     .default("general"),
   targetDays: z
     .array(z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]))
@@ -66,6 +78,12 @@ describe("habitPostSchema", () => {
 
   it("rejects invalid category", () => {
     expect(habitPostSchema.safeParse({ name: "Run", category: "unknown" }).success).toBe(false);
+  });
+
+  it("accepts coach/app categories used in production", () => {
+    expect(habitPostSchema.safeParse({ name: "Deep Work", category: "focus" }).success).toBe(true);
+    expect(habitPostSchema.safeParse({ name: "Track Spending", category: "finance" }).success).toBe(true);
+    expect(habitPostSchema.safeParse({ name: "No Scrolling", category: "discipline" }).success).toBe(true);
   });
 });
 

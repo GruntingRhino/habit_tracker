@@ -167,9 +167,9 @@ export async function POST(req: NextRequest) {
     const habitDefs = [
       { name: "Morning Workout",  category: "physical",     color: "#22c55e", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
       { name: "Meditation",       category: "mental",       color: "#8b5cf6", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
-      { name: "Read 30 min",      category: "productivity", color: "#3b82f6", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
-      { name: "Cold Shower",      category: "health",       color: "#06b6d4", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
-      { name: "No Junk Food",     category: "health",       color: "#f59e0b", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
+      { name: "Read 30 min",      category: "focus",        color: "#3b82f6", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
+      { name: "Cold Shower",      category: "physical",     color: "#06b6d4", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
+      { name: "No Junk Food",     category: "physical",     color: "#f59e0b", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
       { name: "Journal",          category: "mental",       color: "#ec4899", targetDays: ["mon","tue","wed","thu","fri"] },
       { name: "10k Steps",        category: "physical",     color: "#10b981", targetDays: ["mon","tue","wed","thu","fri","sat","sun"] },
     ];

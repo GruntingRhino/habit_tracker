@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { normalizeHabitCategory } from "@/lib/habit-category";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -12,7 +13,8 @@ interface RouteParams {
 const VALID_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const VALID_CATEGORIES = [
   "general", "physical", "mental", "health",
-  "productivity", "financial", "social", "spiritual",
+  "productivity", "financial", "finance", "social", "spiritual",
+  "discipline", "focus",
 ] as const;
 
 const habitPatchSchema = z.object({
@@ -54,7 +56,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       data: {
         name: body.name ?? undefined,
         description: body.description ?? undefined,
-        category: body.category ?? undefined,
+        category: body.category ? normalizeHabitCategory(body.category) : undefined,
         targetDays: body.targetDays ?? undefined,
         color: body.color ?? undefined,
         isActive: body.isActive ?? undefined,

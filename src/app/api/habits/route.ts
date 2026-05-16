@@ -5,12 +5,14 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { calcStreak } from "@/lib/utils";
+import { normalizeHabitCategory } from "@/lib/habit-category";
 import { subDays } from "date-fns";
 
 const VALID_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const VALID_CATEGORIES = [
   "general", "physical", "mental", "health",
-  "productivity", "financial", "social", "spiritual",
+  "productivity", "financial", "finance", "social", "spiritual",
+  "discipline", "focus",
 ] as const;
 
 const habitPostSchema = z.object({
@@ -96,7 +98,7 @@ export async function POST(req: NextRequest) {
         userId: session.user.id,
         name: parsed.data.name,
         description: parsed.data.description,
-        category: parsed.data.category,
+        category: normalizeHabitCategory(parsed.data.category),
         targetDays: parsed.data.targetDays,
         color: parsed.data.color,
       },

@@ -14,6 +14,7 @@ import {
   User,
   Lock,
   Cpu,
+  Brain,
   Bell,
   Siren,
   AlertTriangle,
@@ -311,6 +312,147 @@ function PasswordSection() {
           loadingLabel="Updating..."
         />
       </form>
+    </Section>
+  );
+}
+
+interface ScoringSettings {
+  strictness: "lenient" | "balanced" | "strict";
+  ageYears: number | null;
+}
+
+function ScoringSection() {
+  const [settings, setSettings] = useState<ScoringSettings>({
+    strictness: "balanced",
+    ageYears: null,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSettings() {
+      try {
+        const res = await fetch("/api/scoring-settings", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to load scoring settings");
+        const data = await res.json();
+        if (active) setSettings(data);
+      } catch {
+        if (active) {
+          setStatus({ type: "error", message: "Failed to load scoring settings." });
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setStatus(null);
+
+    try {
+      const res = await fetch("/api/scoring-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(settings),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Failed to save scoring settings");
+      }
+
+      setSettings(await res.json());
+      setStatus({ type: "success", message: "Scoring settings saved." });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to save scoring settings.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Section title="Scoring" icon={<Brain className="w-4 h-4 text-blue-400" />}>
+      <div className="space-y-4">
+        <p className="text-slate-400 text-sm">
+          Controls how strict the 1-10 analytics grading should be and how financial scoring interprets age.
+        </p>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label>
+            <span className={labelClass()}>Grading Strictness</span>
+            <select
+              value={settings.strictness}
+              onChange={(e) =>
+                setSettings((current) => ({
+                  ...current,
+                  strictness: e.target.value as ScoringSettings["strictness"],
+                }))
+              }
+              className={inputClass()}
+              disabled={loading || saving}
+            >
+              <option value="lenient">Lenient</option>
+              <option value="balanced">Balanced</option>
+              <option value="strict">Strict</option>
+            </select>
+          </label>
+
+          <label>
+            <span className={labelClass()}>Age</span>
+            <input
+              type="number"
+              min={0}
+              max={120}
+              value={settings.ageYears ?? ""}
+              onChange={(e) =>
+                setSettings((current) => ({
+                  ...current,
+                  ageYears: e.target.value ? Number(e.target.value) : null,
+                }))
+              }
+              placeholder="Optional"
+              className={inputClass()}
+              disabled={loading || saving}
+            />
+          </label>
+        </div>
+
+        <div className="rounded-lg border border-[#1e293b] bg-[#0a0f1e] px-4 py-3 text-sm text-slate-400">
+          `Lenient` lowers thresholds, `Strict` raises them. Age is used to interpret financial progress more fairly for students versus working adults.
+        </div>
+
+        {status && <StatusMsg type={status.type} message={status.message} />}
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={loading || saving}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {saving ? "Saving..." : "Save Scoring Settings"}
+        </button>
+      </div>
     </Section>
   );
 }
@@ -1018,6 +1160,7 @@ export default function SettingsPage() {
       <div className="space-y-5">
         <ProfileSection />
         <PasswordSection />
+        <ScoringSection />
         <WakeAlarmSection />
         <ReminderSection />
         <OllamaSection />

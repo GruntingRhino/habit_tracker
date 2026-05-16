@@ -113,7 +113,6 @@ export default async function DashboardPage() {
           { key: "discipline", title: "Discipline", score: latestScore.discipline ?? 0, prevScore: previousScore?.discipline ?? undefined },
           { key: "focus",      title: "Focus",      score: latestScore.focus      ?? 0, prevScore: previousScore?.focus      ?? undefined },
           { key: "mental",     title: "Mental",     score: latestScore.mental     ?? 0, prevScore: previousScore?.mental     ?? undefined },
-          { key: "appearance", title: "Appearance", score: latestScore.appearance ?? 0, prevScore: previousScore?.appearance ?? undefined },
           { key: "overall",    title: "Overall",    score: latestScore.overall    ?? 0, prevScore: previousScore?.overall    ?? undefined },
         ]
       : [],

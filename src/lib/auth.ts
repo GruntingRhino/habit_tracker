@@ -34,13 +34,9 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
-        // Support login by email OR username (name field)
-        const user = await prisma.user.findFirst({
+        const user = await prisma.user.findUnique({
           where: {
-            OR: [
-              { email: credentials.email },
-              { name: { equals: credentials.email, mode: "insensitive" } },
-            ],
+            email: credentials.email.toLowerCase().trim(),
           },
         });
 
@@ -78,6 +74,20 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email;
         token.name = user.name;
       }
+
+      if ((!token.id || !token.name) && token.email) {
+        const dbUser = await prisma.user.findUnique({
+          where: { email: String(token.email).toLowerCase() },
+          select: { id: true, email: true, name: true },
+        });
+
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.email = dbUser.email;
+          token.name = dbUser.name;
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {

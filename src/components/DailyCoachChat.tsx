@@ -15,9 +15,9 @@ const QUICK_PROMPTS = [
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
   physical: { bg: "bg-green-500/10", border: "border-green-500/20", text: "text-green-300" },
   financial: { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-300" },
+  discipline: { bg: "bg-rose-500/10", border: "border-rose-500/20", text: "text-rose-300" },
   focus: { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-300" },
   mental: { bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-300" },
-  appearance: { bg: "bg-amber-500/10", border: "border-amber-500/20", text: "text-amber-300" },
   general: { bg: "bg-slate-500/10", border: "border-slate-500/20", text: "text-slate-300" },
 };
 

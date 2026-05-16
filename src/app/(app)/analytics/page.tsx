@@ -26,7 +26,6 @@ import {
   RefreshCw,
   DollarSign,
   ClipboardCheck,
-  Star,
   TrendingUp,
   TrendingDown,
   Minus,
@@ -45,7 +44,6 @@ interface CategoryScore {
   discipline: number;
   focus: number;
   mental: number;
-  appearance: number;
   overall: number;
 }
 
@@ -77,7 +75,6 @@ interface Trends {
   discipline: string;
   focus: string;
   mental: string;
-  appearance: string;
   overall: string;
 }
 
@@ -100,7 +97,6 @@ const SCORE_META: {
   { key: "discipline", label: "Discipline", color: "#f59e0b", icon: RefreshCw },
   { key: "focus",      label: "Focus",      color: "#3b82f6", icon: Brain },
   { key: "mental",     label: "Mental",     color: "#a78bfa", icon: ClipboardCheck },
-  { key: "appearance", label: "Appearance", color: "#ec4899", icon: Star },
   { key: "overall",    label: "Overall",    color: "#14b8a6", icon: BarChart3 },
 ];
 
@@ -427,7 +423,6 @@ export default function AnalyticsPage() {
     discipline: s.discipline,
     focus:      s.focus,
     mental:     s.mental,
-    appearance: s.appearance,
     overall:    s.overall,
   }));
 
@@ -499,7 +494,7 @@ export default function AnalyticsPage() {
           <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">
             Current Scores
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {SCORE_META.map(({ key, label, color, icon: Icon }) => {
               const score = latest[key];
               const trend = trends[key as keyof Trends];

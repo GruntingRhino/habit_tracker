@@ -8,9 +8,9 @@ import { useCoachChat } from "@/hooks/useCoachChat";
 const CATEGORY_DOT_COLORS: Record<string, string> = {
   physical: "#22c55e",
   financial: "#10b981",
+  discipline: "#f43f5e",
   focus: "#3b82f6",
   mental: "#a855f7",
-  appearance: "#f59e0b",
   general: "#64748b",
 };
 

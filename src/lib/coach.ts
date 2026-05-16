@@ -9,6 +9,7 @@ import {
   OLLAMA_TIMEOUT_MS,
 } from "@/lib/ai-config";
 import prisma from "@/lib/prisma";
+import { normalizeHabitCategory as normalizeAppHabitCategory } from "@/lib/habit-category";
 import {
   type CoachAction,
   type CoachChatMessage,
@@ -23,6 +24,13 @@ import { assessWorkout } from "@/lib/workout";
 const VALID_DAY_CODES = new Set<WeekdayCode>(WEEKDAY_CODES);
 const VALID_PRIORITIES = new Set(["low", "medium", "high"] as const);
 const VALID_GOAL_STATUSES = new Set(["active", "completed", "paused"] as const);
+const ACTIVE_SCORE_KEYS = new Set([
+  "physical",
+  "financial",
+  "discipline",
+  "focus",
+  "mental",
+]);
 
 const HabitActionSchema = z.object({
   type: z.literal("add_habit"),
@@ -178,11 +186,7 @@ function normalizeGoalStatus(value: string | null | undefined): "active" | "comp
 }
 
 function normalizeHabitCategory(value: string | null | undefined): string {
-  const category = normalizeText(value);
-  if (!category) return "general";
-  if (category === "finance") return "financial";
-  if (category === "productivity") return "focus";
-  return category;
+  return normalizeAppHabitCategory(value);
 }
 
 function habitColorForCategory(category: string): string {
@@ -197,8 +201,6 @@ function habitColorForCategory(category: string): string {
       return "#3b82f6";
     case "financial":
       return "#10b981";
-    case "appearance":
-      return "#f59e0b";
     default:
       return "#64748b";
   }
@@ -397,7 +399,6 @@ async function buildCoachSnapshot(userId: string): Promise<CoachSnapshot> {
     "discipline",
     "focus",
     "mental",
-    "appearance",
     "overall",
   ] as const;
 
@@ -407,7 +408,6 @@ async function buildCoachSnapshot(userId: string): Promise<CoachSnapshot> {
     discipline: score.discipline ?? 0,
     focus: score.focus ?? 0,
     mental: score.mental ?? 0,
-    appearance: score.appearance ?? 0,
     overall: score.overall ?? 0,
   }));
 
@@ -548,7 +548,6 @@ async function buildCoachSnapshot(userId: string): Promise<CoachSnapshot> {
             discipline: latestScoreRecord.discipline ?? 0,
             focus: latestScoreRecord.focus ?? 0,
             mental: latestScoreRecord.mental ?? 0,
-            appearance: latestScoreRecord.appearance ?? 0,
             overall: latestScoreRecord.overall ?? 0,
           }
         : null,
@@ -1672,8 +1671,7 @@ function buildProjectRecommendationResponse(
 
 function buildFallbackCoachResponse(
   snapshot: CoachSnapshot,
-  userMessage: string | null,
-  instruction: string
+  userMessage: string | null
 ): z.infer<typeof CoachModelResponseSchema> {
   const intent = detectCoachIntent(userMessage);
   const inferredGoals = inferGoalsFromMessage(userMessage);
@@ -1693,7 +1691,9 @@ function buildFallbackCoachResponse(
   }
 
   const lowerScore = snapshot.scores.average30d
-    ? Object.entries(snapshot.scores.average30d).sort((left, right) => left[1] - right[1])[0]
+    ? Object.entries(snapshot.scores.average30d)
+        .filter(([key]) => ACTIVE_SCORE_KEYS.has(key))
+        .sort((left, right) => left[1] - right[1])[0]
     : null;
 
   const userAsksToAdd =
@@ -1859,7 +1859,7 @@ async function generateCoachResponse(
     shouldUseDeterministicUserDataResponse(userMessage)
   ) {
     return {
-      response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+      response: buildFallbackCoachResponse(snapshot, userMessage),
       usedFallback: true,
     };
   }
@@ -1875,7 +1875,7 @@ async function generateCoachResponse(
       rawText = await askOllamaForCoachResponse(prompt);
     } else {
       return {
-        response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+        response: buildFallbackCoachResponse(snapshot, userMessage),
         usedFallback: true,
       };
     }
@@ -1884,7 +1884,7 @@ async function generateCoachResponse(
     const parsed = CoachModelResponseSchema.parse(JSON.parse(jsonText));
     if (messageContainsUnsupportedPerformanceClaims(snapshot, parsed.message)) {
       return {
-        response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+        response: buildFallbackCoachResponse(snapshot, userMessage),
         usedFallback: true,
       };
     }
@@ -1892,7 +1892,7 @@ async function generateCoachResponse(
   } catch (error) {
     console.error("[coach] generateCoachResponse error:", error);
     return {
-      response: buildFallbackCoachResponse(snapshot, userMessage, instruction),
+      response: buildFallbackCoachResponse(snapshot, userMessage),
       usedFallback: true,
     };
   }

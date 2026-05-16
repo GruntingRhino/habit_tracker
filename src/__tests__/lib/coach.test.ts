@@ -216,4 +216,29 @@ describe("coach fallback behavior", () => {
       "Weekly Physical Activation"
     );
   });
+
+  it("does not treat overall as a weakest area when ranking saved category averages", () => {
+    const response = __testables.buildFallbackCoachResponse(
+      {
+        ...baseSnapshot,
+        goals: [],
+        scores: {
+          ...baseSnapshot.scores,
+          average30d: {
+            physical: 4,
+            financial: 6,
+            discipline: 5,
+            focus: 6,
+            mental: 7,
+            appearance: 0,
+            overall: 1,
+          },
+        },
+      } as never,
+      "How am I doing generally?"
+    );
+
+    expect(response.message).toContain("Your weakest 30-day area: physical at 4/10.");
+    expect(response.message).not.toContain("overall at 1/10");
+  });
 });

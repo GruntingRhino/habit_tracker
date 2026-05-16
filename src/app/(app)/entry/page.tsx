@@ -244,7 +244,6 @@ interface CategoryScores {
   discipline: number;
   financial: number;
   mental: number;
-  appearance: number;
   overall: number;
 }
 
@@ -279,7 +278,6 @@ const SCORE_ICONS: Record<keyof CategoryScores, LucideIcon> = {
   discipline: Sparkles,
   financial: DollarSign,
   mental: Sparkles,
-  appearance: Star,
   overall: Star,
 };
 
@@ -289,7 +287,6 @@ const SCORE_LABELS: Record<keyof CategoryScores, string> = {
   discipline: "Discipline",
   financial: "Financial",
   mental: "Mental",
-  appearance: "Appearance",
   overall: "Overall",
 };
 
@@ -324,7 +321,7 @@ const STEP_META: Record<
   movement: {
     title: "Movement",
     prompt: "How was movement and nutrition tracking?",
-    hint: "Steps and calorie awareness still feed appearance scoring.",
+    hint: "Physical score now comes directly from movement, training, sleep, and calorie awareness.",
     icon: Footprints,
   },
   focus: {
@@ -695,6 +692,10 @@ export default function EntryPage() {
   const [error, setError] = useState("");
   const [stepError, setStepError] = useState("");
   const [scores, setScores] = useState<CategoryScores | null>(null);
+  const [scoringSettings, setScoringSettings] = useState<{
+    strictness: "lenient" | "balanced" | "strict";
+    ageYears: number | null;
+  }>({ strictness: "balanced", ageYears: null });
   const [existingId, setExistingId] = useState<string | null>(null);
   const [routines, setRoutines] = useState<WeightRoutine[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -763,7 +764,6 @@ export default function EntryPage() {
               discipline: score.discipline,
               financial: score.financial,
               mental: score.mental,
-              appearance: score.appearance,
               overall: score.overall,
             });
           }
@@ -779,6 +779,15 @@ export default function EntryPage() {
   useEffect(() => {
     fetchTodayEntry();
   }, [fetchTodayEntry]);
+
+  useEffect(() => {
+    fetch("/api/scoring-settings", { credentials: "include", cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setScoringSettings(data);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!currentStepId) return;
@@ -1058,7 +1067,6 @@ export default function EntryPage() {
           discipline: data.scores.discipline,
           financial: data.scores.financial,
           mental: data.scores.mental,
-          appearance: data.scores.appearance,
           overall: data.scores.overall,
         });
       }
@@ -1304,7 +1312,7 @@ export default function EntryPage() {
               />
             </div>
             <div className="space-y-2">
-              <FieldLabel>Screen time: {getNumber("screenTimeHours")}h</FieldLabel>
+              <FieldLabel>Junk / social media time: {getNumber("screenTimeHours")}h</FieldLabel>
               <input
                 type="range"
                 min={0}
@@ -1348,7 +1356,7 @@ export default function EntryPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <FieldLabel>Task difficulty</FieldLabel>
+              <FieldLabel>Work quality / difficulty</FieldLabel>
               <RatingButtons
                 value={getNumber("taskDifficultyRating")}
                 onChange={(value) => setDraftField("taskDifficultyRating", value)}
@@ -1365,7 +1373,7 @@ export default function EntryPage() {
                 setDraftField("incomeActivity", !getBoolean("incomeActivity"))
               }
               title="Did something to make money today?"
-              description="Work, business, sales, or anything directly tied to income counts."
+              description="School effort, skill-building, business work, sales, client work, or anything that moves you toward earning counts."
             />
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -1496,6 +1504,14 @@ export default function EntryPage() {
           <p className="text-sm text-green-300">Entry saved successfully.</p>
         </div>
       )}
+
+      <div className="mb-5 rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+        Grading mode: <span className="font-semibold capitalize">{scoringSettings.strictness}</span>.
+        {" "}
+        {scoringSettings.ageYears !== null
+          ? `Financial scoring uses age ${scoringSettings.ageYears}.`
+          : "Add age in Settings if you want financial scoring to distinguish student-mode from adult income-mode."}
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
@@ -1629,10 +1645,10 @@ export default function EntryPage() {
               </p>
             </div>
             <div className="space-y-3 text-sm text-slate-400">
-              <p>Sleep peaks at 7.5-8.5 hours. Under 6 hours is heavily punished.</p>
-              <p>Workout credit now depends on structured activity, duration, and intensity.</p>
-              <p>Vague “other” workouts are capped unless you describe them clearly.</p>
-              <p>Extra conditioning is separate from the main workout and only counts if it was real training.</p>
+              <p>Current mode is <span className="font-semibold capitalize text-slate-200">{scoringSettings.strictness}</span>, so thresholds for sleep, deep work, steps, and training scale up or down from the balanced baseline.</p>
+              <p>Physical score comes directly from sleep, movement, training quality, and calorie awareness.</p>
+              <p>Discipline and focus combine the daily entry with habit completion and get penalized by overdue active projects.</p>
+              <p>Financial score is age-aware and treats income progress differently for students versus working adults.</p>
             </div>
           </div>
 

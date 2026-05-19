@@ -16,7 +16,7 @@ import {
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/entry",     label: "Daily Entry", icon: BookOpen },
-  { href: "/projects",  label: "Projects",    icon: FolderKanban },
+  { href: "/projects",  label: "Action Queue", icon: FolderKanban },
 ];
 
 interface SidebarProps {

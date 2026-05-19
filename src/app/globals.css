@@ -134,3 +134,23 @@ h1, h2 {
 .animate-fade-up {
   animation: fadeInUp 0.3s ease-out both;
 }
+
+@keyframes queueCompleteBurst {
+  0% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 0 rgba(16, 217, 160, 0);
+  }
+  38% {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow: 0 0 0 1px rgba(16, 217, 160, 0.18), 0 0 28px rgba(16, 217, 160, 0.18);
+  }
+  100% {
+    transform: translateY(10px) scale(0.985);
+    opacity: 0.15;
+    box-shadow: 0 0 0 rgba(16, 217, 160, 0);
+  }
+}
+
+.queue-complete-burst {
+  animation: queueCompleteBurst 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}

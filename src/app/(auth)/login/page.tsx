@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, Brain, Loader2, Lock, Mail, User } from "lucide-react";
 
 type AuthMode = "signin" | "signup";
@@ -31,6 +31,7 @@ export default function LoginPage() {
 
 function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [form, setForm] = useState<AuthFormState>(INITIAL_FORM);
@@ -42,6 +43,15 @@ function LoginPageContent() {
       router.replace("/dashboard");
     }
   }, [session, status, router]);
+
+  useEffect(() => {
+    const requestedMode = searchParams.get("mode");
+    if (requestedMode === "signup" || requestedMode === "signin") {
+      setMode(requestedMode);
+      setError("");
+      setLoading(false);
+    }
+  }, [searchParams]);
 
   function updateField<K extends keyof AuthFormState>(key: K, value: AuthFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -175,17 +185,17 @@ function LoginPageContent() {
           <h1
             className="text-3xl font-bold mb-1"
             style={{
-              fontFamily: "'Syne', sans-serif",
+              fontFamily: "var(--font-instrument-serif), Georgia, serif",
               background: "linear-gradient(135deg, #c8deff 0%, #93b8ff 60%, #7eb3ff 100%)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               backgroundClip: "text",
             }}
           >
-            Habit Intelligence
+            LiveImproved
           </h1>
           <p className="text-sm" style={{ color: "#2d4a6a" }}>
-            Track, score, and improve with one account system
+            Access your account and continue where you left off
           </p>
         </div>
 
@@ -238,7 +248,7 @@ function LoginPageContent() {
 
           <h2
             className="text-lg font-semibold mb-6"
-            style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}
+            style={{ color: "#c8deff", fontFamily: "var(--font-instrument-serif), Georgia, serif" }}
           >
             {mode === "signin" ? "Sign in with email" : "Create your account"}
           </h2>

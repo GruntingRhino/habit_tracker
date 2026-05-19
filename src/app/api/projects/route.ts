@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 const VALID_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 const VALID_STATUSES = ["active", "completed", "on_hold", "archived"] as const;
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
         deadline: parsed.data.deadline ? new Date(parsed.data.deadline) : undefined,
       },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(project, { status: 201 });
   } catch (error) {

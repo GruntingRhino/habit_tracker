@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { characterizeHabitCategory, normalizeHabitCategory } from "@/lib/habit-category";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -32,6 +33,9 @@ export async function POST() {
         })
       )
     );
+    if (updates.length > 0) {
+      await markCoachContextDirty(session.user.id);
+    }
 
     return NextResponse.json({
       updatedCount: updates.length,

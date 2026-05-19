@@ -3,10 +3,21 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { isProduction, secureCompare } from "@/lib/runtime-config";
+import { normalizeUsername, sanitizeUsernameCandidate, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/username";
 
 const provisionUserSchema = z.object({
   email: z.string().email(),
   name: z.string().trim().min(1).max(120),
+  username: z
+    .string()
+    .trim()
+    .min(USERNAME_MIN_LENGTH)
+    .max(USERNAME_MAX_LENGTH)
+    .transform((value) => normalizeUsername(value))
+    .refine((value) => USERNAME_PATTERN.test(value), {
+      message: "Invalid username",
+    })
+    .optional(),
   password: z.string().min(12).max(200),
 });
 
@@ -36,10 +47,15 @@ export async function POST(req: NextRequest) {
   }
 
   const { email, name, password } = parsedBody.data;
+  const username = parsedBody.data.username ?? sanitizeUsernameCandidate(name);
 
   const existing = await prisma.user.findFirst({
     where: {
-      OR: [{ email }, { name: { equals: name, mode: "insensitive" } }],
+      OR: [
+        { email },
+        { username },
+        { name: { equals: name, mode: "insensitive" } },
+      ],
     },
   });
 
@@ -51,6 +67,7 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.create({
     data: {
       email,
+      username,
       name,
       password: hashedPassword,
     },

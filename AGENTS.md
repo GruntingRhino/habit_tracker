@@ -1,28 +1,16 @@
 <claude-mem-context>
 # Memory Context
 
-# [habit_tracker] recent context, 2026-05-15 9:52pm EDT
+# [habit_tracker] recent context, 2026-05-19 2:57pm EDT
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (19,118t read) | 1,780,531t work | 99% savings
+Stats: 50 obs (18,957t read) | 704,787t work | 97% savings
 
 ### May 11, 2026
-355 2:05p 🚨 Seed Endpoint Creates User Account Without Authentication
-375 " 🔴 Production Build Fixed: "use server" on Non-Async Function
-376 " 🔴 CSS Build Warning Fixed: Google Fonts @import Order
-377 " ✅ Dependency Upgrades for Production Hardening
-378 " 🔵 npm audit Residual Findings After All Upgrades
-379 " ✅ Security Documentation Created: Threat Model and Production Readiness Audit
-380 " 🔵 Production Build Now Passes: 32 Pages Compiled Successfully
-381 " 🔵 habit_tracker Modified Files Summary After Security Hardening Pass
-356 2:24p 🔵 Habit Tracker Project Structure Audit
 357 3:01p 🔵 Zod Validation Gap: habits, meals, projects POST Routes Use Manual Checks
-358 " 🔵 Auth Has No Rate Limiting — Login Vulnerable to Brute Force
-359 " 🔵 iOS App Is a Bare Capacitor Shell — No AlarmKit Integration
-360 " 🔵 Weights API Routes Confirmed — Nested Dynamic Segments Exist
 361 " 🔵 Full Validation Gap Map: Weights and Project Tasks Routes Also Lack Zod
 362 " 🔵 Scoring Engine Is Pure, Deterministic — Ideal Unit Test Target
 363 3:02p 🟣 In-Memory Rate Limiter Implemented for Auth Brute-Force Protection
@@ -41,6 +29,7 @@ Stats: 50 obs (19,118t read) | 1,780,531t work | 99% savings
 393 9:08p ✅ Removed claude-mem agents and markdown files from pa.py project
 394 9:13p ✅ Cleanup of claude-mem agents and markdown config files for pa.py project
 395 " ✅ Uninstalled claude-mem plugin and deleted agent markdown files from RTB project
+S30 Redesign habit tracker Projects section: rename, simplify filters, auto-sort, hover checkmark completion with animation, new frontend design from Claude Design artifact, validate homepage for fake data (May 12 at 9:14 PM)
 S28 Remove claude-mem agents, CLAUDE.md, and other markdown instruction files from pa.py personal AI project, and uninstall claude-mem plugin (May 12 at 9:14 PM)
 ### May 13, 2026
 396 12:15p 🔵 Habit Tracker AI Architecture: Groq + Ollama Dual Backend
@@ -63,6 +52,20 @@ S28 Remove claude-mem agents, CLAUDE.md, and other markdown instruction files fr
 413 12:32p 🔵 Coach Fallback Path Triggers Incorrectly: shouldUseDeterministicNoDataPhysicalResponse Gates LLM
 414 " 🟣 Added CoachIntent Detection and Weak-Area Helper Functions to coach.ts
 415 " 🔴 Refactored buildFallbackCoachResponse with Intent-Routing and Specialized Response Builders
+### May 19, 2026
+464 1:15p 🟣 Projects Section Renamed and Redesigned as Priority-Sorted Task Manager
+465 " 🟣 New Frontend Design Implemented from Design File with Fake-Data Validation
+466 " 🔵 Habit Tracker Projects Page: Current State Before Redesign
+S29 Redesign habit tracker Projects section: rename section, simplify filters to Active/Completed, auto-sort by priority+due date, add hover checkmark completion with animation, implement new Claude Design frontend, and validate homepage for fake data (May 19 at 1:16 PM)
+467 1:17p 🔵 Claude Design Artifact is a tar.gz Archive, Not Inline HTML
+468 " 🔵 Full Projects Page and Task Detail UI Mapped — All Targets for Redesign Confirmed
+469 " 🔵 Prisma Schema: Project and ProjectTask Models Confirmed
+470 1:18p 🔵 Claude Design Bundle Contents Fully Mapped — Design Conflicts With User Requirements Identified
+471 " 🔵 Design Token System and CSS Architecture Extracted from Bundle
+472 " 🔵 Projects and Tasks API: Priority Supports "urgent" Level, markCoachContextDirty Called on All Mutations
+473 1:19p 🔵 All "Projects" Label Locations Mapped Across Codebase — Multiple Files Require Rename
+474 " ✅ projects/page.tsx Deleted in Preparation for Full Replacement
+475 " ⚖️ Session Reset: Switched to Implementing app.html Design Instead of index.html
 
-Access 1781k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 705k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

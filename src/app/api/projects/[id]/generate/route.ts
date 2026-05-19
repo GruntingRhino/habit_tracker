@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import {
   generateProjectChecklist,
   isAIAvailable,
@@ -120,6 +121,7 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
         })
       )
     );
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(
       {

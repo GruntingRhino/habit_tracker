@@ -9,14 +9,18 @@ type AuthMode = "signin" | "signup";
 
 interface AuthFormState {
   name: string;
+  username: string;
   email: string;
+  identifier: string;
   password: string;
   confirmPassword: string;
 }
 
 const INITIAL_FORM: AuthFormState = {
   name: "",
+  username: "",
   email: "",
+  identifier: "",
   password: "",
   confirmPassword: "",
 };
@@ -76,6 +80,7 @@ function LoginPageContent() {
           credentials: "include",
           body: JSON.stringify({
             name: form.name,
+            username: form.username,
             email: form.email,
             password: form.password,
             confirmPassword: form.confirmPassword,
@@ -93,17 +98,17 @@ function LoginPageContent() {
       }
 
       const result = await signIn("credentials", {
-        email: form.email,
+        identifier: mode === "signin" ? form.identifier : form.email,
         password: form.password,
         callbackUrl: "/dashboard",
         redirect: false,
       });
 
-      if (result?.error) {
-        setError(
+        if (result?.error) {
+          setError(
           mode === "signup"
             ? "Account created, but automatic sign in failed. Try signing in directly."
-            : "Invalid email or password. Please try again."
+            : "Invalid email, username, or password. Please try again."
         );
         return;
       }
@@ -250,7 +255,7 @@ function LoginPageContent() {
             className="text-lg font-semibold mb-6"
             style={{ color: "#c8deff", fontFamily: "var(--font-instrument-serif), Georgia, serif" }}
           >
-            {mode === "signin" ? "Sign in with email" : "Create your account"}
+            {mode === "signin" ? "Sign in with email or username" : "Create your account"}
           </h2>
 
           {error && (
@@ -270,7 +275,7 @@ function LoginPageContent() {
             {mode === "signup" && (
               <Field
                 id="name"
-                label="Name"
+                label="Display Name"
                 icon={User}
                 type="text"
                 autoComplete="name"
@@ -280,16 +285,42 @@ function LoginPageContent() {
               />
             )}
 
-            <Field
-              id="email"
-              label="Email"
-              icon={Mail}
-              type="email"
-              autoComplete="email"
-              value={form.email}
-              onChange={(value) => updateField("email", value)}
-              placeholder="you@example.com"
-            />
+            {mode === "signin" ? (
+              <Field
+                id="identifier"
+                label="Email or Username"
+                icon={User}
+                type="text"
+                autoComplete="username"
+                value={form.identifier}
+                onChange={(value) => updateField("identifier", value)}
+                placeholder="you@example.com or abhaysivaram"
+              />
+            ) : (
+              <>
+                <Field
+                  id="username"
+                  label="Username"
+                  icon={User}
+                  type="text"
+                  autoComplete="username"
+                  value={form.username}
+                  onChange={(value) => updateField("username", value)}
+                  placeholder="abhaysivaram"
+                />
+
+                <Field
+                  id="email"
+                  label="Email"
+                  icon={Mail}
+                  type="email"
+                  autoComplete="email"
+                  value={form.email}
+                  onChange={(value) => updateField("email", value)}
+                  placeholder="you@example.com"
+                />
+              </>
+            )}
 
             <Field
               id="password"
@@ -324,7 +355,7 @@ function LoginPageContent() {
                 boxShadow: "0 0 20px rgba(79,114,255,0.35), 0 2px 8px rgba(0,0,0,0.3)",
               }}
             >
-              {loading ? (
+            {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {mode === "signin" ? "Signing in..." : "Creating account..."}

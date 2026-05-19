@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { calculateScores } from "@/lib/scoring";
 import { subDays, startOfDay } from "date-fns";
 import { isProduction, secureCompare } from "@/lib/runtime-config";
+import { sanitizeUsernameCandidate } from "@/lib/username";
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,7 +42,12 @@ export async function POST(req: NextRequest) {
     if (!user) {
       const hashedPassword = await bcrypt.hash(password, 12);
       user = await prisma.user.create({
-        data: { email, password: hashedPassword, name: "Abhay" },
+        data: {
+          email,
+          username: sanitizeUsernameCandidate("Abhay"),
+          password: hashedPassword,
+          name: "Abhay",
+        },
       });
     }
 

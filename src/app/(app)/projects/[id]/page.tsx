@@ -11,16 +11,15 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Play,
   X,
   Calendar,
-  ChevronDown,
   Trash2,
   ClipboardList,
   TrendingUp,
   TrendingDown,
   Minus,
   BarChart2,
+  CircleDot,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
@@ -76,11 +75,20 @@ const PRIORITY_STYLES: Record<string, string> = {
   low: "text-green-400 bg-green-500/10 border-green-500/20",
 };
 
-const STATUS_COLUMNS: { key: string; label: string; color: string }[] = [
-  { key: "todo", label: "To Do", color: "text-slate-400" },
-  { key: "in_progress", label: "In Progress", color: "text-blue-400" },
-  { key: "completed", label: "Done", color: "text-green-400" },
-];
+const ACTIVE_TASK_STATUSES = new Set(["todo", "in_progress", "cancelled"]);
+
+const SECTION_META = {
+  active: {
+    label: "Active",
+    color: "text-[#c8deff]",
+    description: "Auto-sorted by priority and closest due date.",
+  },
+  completed: {
+    label: "Completed",
+    color: "text-emerald-300",
+    description: "Finished work drops here after the completion animation.",
+  },
+} as const;
 
 function formatMinutes(mins: number | null): string {
   if (!mins) return "—";
@@ -88,6 +96,50 @@ function formatMinutes(mins: number | null): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function priorityRank(priority: string): number {
+  switch (priority) {
+    case "urgent":
+      return 0;
+    case "high":
+      return 1;
+    case "medium":
+      return 2;
+    case "low":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function sortTasks(tasks: ProjectTask[]): ProjectTask[] {
+  return [...tasks].sort((left, right) => {
+    const leftIsCompleted = left.status === "completed";
+    const rightIsCompleted = right.status === "completed";
+
+    if (leftIsCompleted !== rightIsCompleted) {
+      return leftIsCompleted ? 1 : -1;
+    }
+
+    if (leftIsCompleted && rightIsCompleted) {
+      return (
+        new Date(right.completedAt ?? right.createdAt).getTime() -
+        new Date(left.completedAt ?? left.createdAt).getTime()
+      );
+    }
+
+    const priorityDelta = priorityRank(left.priority) - priorityRank(right.priority);
+    if (priorityDelta !== 0) return priorityDelta;
+
+    const leftDue = left.dueDate ? new Date(left.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    const rightDue = right.dueDate ? new Date(right.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+
+    if (left.order !== right.order) return left.order - right.order;
+
+    return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+  });
 }
 
 interface AddTaskFormProps {
@@ -208,12 +260,14 @@ interface TaskCardProps {
 
 function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: TaskCardProps) {
   const [updating, setUpdating] = useState(false);
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   const priorityStyle =
     PRIORITY_STYLES[task.priority] ?? PRIORITY_STYLES.medium;
 
-  async function updateTask(data: Partial<{ status: string; actualMinutes: number }>) {
+  async function updateTask(
+    data: Partial<{ status: string; actualMinutes: number; completedAt: string }>
+  ) {
     setUpdating(true);
     try {
       const res = await fetch(
@@ -232,7 +286,6 @@ function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: Task
       // ignore
     } finally {
       setUpdating(false);
-      setShowStatusMenu(false);
     }
   }
 
@@ -252,36 +305,74 @@ function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: Task
     }
   }
 
+  async function completeTask() {
+    if (updating || task.status === "completed") return;
+
+    setCompleting(true);
+    window.setTimeout(() => {
+      void updateTask({
+        status: "completed",
+        completedAt: new Date().toISOString(),
+      });
+    }, 420);
+  }
+
+  const isCompleted = task.status === "completed";
+  const isOverdue = !!task.dueDate && !isCompleted && new Date(task.dueDate) < new Date();
+
   return (
-    <div className="bg-[#0a0f1e] border border-[#1e293b] rounded-lg p-3 group">
-      <div className="flex items-start gap-2 mb-2">
-        <span className="flex-1 text-slate-100 text-sm leading-snug">
+    <div
+      className={`group rounded-[22px] border p-4 transition-all ${
+        completing ? "queue-complete-burst border-emerald-400/30 bg-emerald-500/8" : "bg-[#0a0f1e] border-[#1e293b]"
+      }`}
+    >
+      <div className="mb-2 flex items-start gap-2">
+        <span className={`flex-1 text-sm leading-snug ${isCompleted ? "text-slate-500 line-through" : "text-slate-100"}`}>
           {task.title}
         </span>
         {updating ? (
           <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin flex-shrink-0" />
         ) : (
-          <button
-            onClick={deleteTask}
-            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all flex-shrink-0"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1.5 opacity-0 transition-all group-hover:opacity-100">
+            {!isCompleted && (
+              <button
+                onClick={completeTask}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 transition-colors hover:bg-emerald-500/18"
+                title="Complete task"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              onClick={deleteTask}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 transition-colors hover:bg-red-500/18"
+              title="Delete task"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
 
       {task.description && (
-        <p className="text-slate-500 text-xs mb-2 leading-relaxed">
+        <p className="mb-3 text-xs leading-relaxed text-slate-500">
           {task.description}
         </p>
       )}
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2">
         <span
           className={`text-xs px-1.5 py-0.5 rounded border capitalize ${priorityStyle}`}
         >
           {task.priority}
         </span>
+
+        {!isCompleted && task.status === "in_progress" && (
+          <span className="inline-flex items-center gap-1 rounded border border-blue-500/20 bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-300">
+            <CircleDot className="h-3 w-3" />
+            In progress
+          </span>
+        )}
 
         {task.estimatedMinutes && (
           <span className="flex items-center gap-1 text-xs text-slate-500">
@@ -303,60 +394,20 @@ function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: Task
           </span>
         )}
 
-        {/* Status dropdown */}
-        <div className="relative ml-auto">
-          <button
-            onClick={() => setShowStatusMenu(!showStatusMenu)}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-100 bg-[#1e293b] px-2 py-1 rounded transition-colors"
-          >
-            <span className="capitalize">{task.status.replace("_", " ")}</span>
-            <ChevronDown className="w-3 h-3" />
-          </button>
-          {showStatusMenu && (
-            <div className="absolute right-0 top-full mt-1 bg-[#0f172a] border border-[#1e293b] rounded-lg overflow-hidden z-10 min-w-[120px]">
-              {STATUS_COLUMNS.map((col) => (
-                <button
-                  key={col.key}
-                  onClick={() => updateTask({ status: col.key })}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-[#1e293b] transition-colors ${
-                    task.status === col.key
-                      ? "text-blue-400"
-                      : "text-slate-400"
-                  }`}
-                >
-                  {col.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {task.dueDate && (
+          <span className={`ml-auto inline-flex items-center gap-1 text-xs ${isOverdue ? "text-rose-300" : "text-slate-500"}`}>
+            <Calendar className="h-3 w-3" />
+            {new Date(task.dueDate).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}
+          </span>
+        )}
       </div>
-
-      {/* Action buttons */}
-      {task.status === "todo" && (
-        <button
-          onClick={() => updateTask({ status: "in_progress" })}
-          disabled={updating}
-          className="mt-2 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-        >
-          <Play className="w-3 h-3" />
-          Start
-        </button>
-      )}
-      {task.status === "in_progress" && (
-        <button
-          onClick={() => updateTask({ status: "completed" })}
-          disabled={updating}
-          className="mt-2 flex items-center gap-1.5 text-xs text-green-400 hover:text-green-300 transition-colors"
-        >
-          <CheckCircle2 className="w-3 h-3" />
-          Complete
-        </button>
-      )}
 
       {/* Timestamps */}
       {task.startedAt && (
-        <p className="text-xs text-slate-600 mt-1">
+        <p className="mt-2 text-xs text-slate-600">
           Started: {new Date(task.startedAt).toLocaleDateString()}
         </p>
       )}
@@ -403,7 +454,10 @@ export default function ProjectDetailPage() {
       }
       if (res.ok) {
         const data = await res.json();
-        setProject(data);
+        setProject({
+          ...data,
+          tasks: sortTasks(data.tasks ?? []),
+        });
       } else {
         setError("Failed to load project");
       }
@@ -444,7 +498,7 @@ export default function ProjectDetailPage() {
   }, [fetchAnalysis]);
 
   useEffect(() => {
-    if (project?.notes) setListText(project.notes);
+    setListText(project?.notes ?? "");
   }, [project?.notes]);
 
   async function handleGenerate() {
@@ -611,7 +665,7 @@ export default function ProjectDetailPage() {
   }
 
   async function deleteProject() {
-    if (!confirm("Delete this project and all its tasks?")) return;
+    if (!confirm("Delete this queue item and all its tasks?")) return;
     try {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "DELETE",
@@ -636,7 +690,7 @@ export default function ProjectDetailPage() {
   if (error || !project) {
     return (
       <div className="p-6">
-        <p className="text-red-400">{error || "Project not found"}</p>
+        <p className="text-red-400">{error || "Queue item not found"}</p>
       </div>
     );
   }
@@ -651,15 +705,12 @@ export default function ProjectDetailPage() {
   const priorityStyle =
     PRIORITY_STYLES[project.priority] ?? PRIORITY_STYLES.medium;
 
-  const tasksByStatus: Record<string, ProjectTask[]> = {
-    todo: [],
-    in_progress: [],
-    completed: [],
-  };
-  for (const task of project.tasks) {
-    const col = task.status in tasksByStatus ? task.status : "todo";
-    tasksByStatus[col].push(task);
-  }
+  const activeTasks = sortTasks(
+    project.tasks.filter((task) => ACTIVE_TASK_STATUSES.has(task.status))
+  );
+  const completedTasksList = sortTasks(
+    project.tasks.filter((task) => task.status === "completed")
+  );
 
   return (
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto pb-20 lg:pb-6">
@@ -672,13 +723,16 @@ export default function ProjectDetailPage() {
         onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}
       >
         <ArrowLeft className="w-4 h-4" />
-        Projects
+        Action Queue
       </Link>
 
-      {/* Project header */}
+      {/* Queue item header */}
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 mb-6">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex-1">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Queue Item
+            </p>
             <h1 className="text-xl font-bold text-slate-100 mb-1">
               {project.title}
             </h1>
@@ -699,12 +753,11 @@ export default function ProjectDetailPage() {
             >
               <option value="active" className="bg-[#0f172a]">Active</option>
               <option value="completed" className="bg-[#0f172a]">Completed</option>
-              <option value="archived" className="bg-[#0f172a]">Archived</option>
             </select>
             <button
               onClick={deleteProject}
               className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
-              title="Delete project"
+              title="Delete item"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -786,12 +839,12 @@ export default function ProjectDetailPage() {
           {generating ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Analyzing project specs...
+              Analyzing brief...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              Generate AI Checklist
+              Generate AI Breakdown
             </>
           )}
         </button>
@@ -930,7 +983,7 @@ export default function ProjectDetailPage() {
         <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-5">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-slate-100 font-semibold text-sm">Project List</h3>
+              <h3 className="text-slate-100 font-semibold text-sm">Reference List</h3>
               <p className="text-slate-500 text-xs mt-0.5">
                 One item per line. Format:{" "}
                 <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item:tag:note</code>
@@ -1035,24 +1088,29 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* Task columns */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {STATUS_COLUMNS.map((col) => {
-          const colTasks = tasksByStatus[col.key] ?? [];
+      {/* Task sections */}
+      <div className="space-y-6">
+        {(["active", "completed"] as const).map((sectionKey) => {
+          const tasks = sectionKey === "active" ? activeTasks : completedTasksList;
+          const meta = SECTION_META[sectionKey];
+
           return (
-            <div key={col.key}>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className={`font-semibold text-sm ${col.color}`}>
-                  {col.label}
-                </h2>
-                <span className="text-slate-600 text-xs bg-[#1e293b] px-1.5 py-0.5 rounded-full">
-                  {colTasks.length}
-                </span>
+            <section key={sectionKey} className="rounded-2xl border border-[#1e293b] bg-[#0f172a] p-5">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className={`text-sm font-semibold ${meta.color}`}>{meta.label}</h2>
+                    <span className="rounded-full bg-[#1e293b] px-2 py-0.5 text-xs text-slate-500">
+                      {tasks.length}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">{meta.description}</p>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                {colTasks.map((task) => {
-                  const ta = analysis?.tasks.find((t) => t.taskId === task.id);
+              <div className="space-y-3">
+                {tasks.map((task) => {
+                  const ta = analysis?.tasks.find((item) => item.taskId === task.id);
                   return (
                     <TaskCard
                       key={task.id}
@@ -1066,13 +1124,16 @@ export default function ProjectDetailPage() {
                     />
                   );
                 })}
-                {colTasks.length === 0 && (
-                  <div className="border border-dashed border-[#1e293b] rounded-lg p-4 text-center">
-                    <p className="text-slate-600 text-xs">No tasks</p>
+
+                {tasks.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-[#1e293b] p-5 text-center">
+                    <p className="text-xs text-slate-600">
+                      {sectionKey === "active" ? "No active tasks." : "No completed tasks yet."}
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
+            </section>
           );
         })}
       </div>
@@ -1081,7 +1142,7 @@ export default function ProjectDetailPage() {
       {project.notes && (
         <div className="mt-6 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-100 text-sm">List</h2>
+            <h2 className="font-semibold text-slate-100 text-sm">Reference List</h2>
             <button
               onClick={() => { setShowListPanel(true); setShowPastePanel(false); setShowAddTask(false); }}
               className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
@@ -1111,7 +1172,7 @@ export default function ProjectDetailPage() {
       {project.specs && (
         <div className="mt-6 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
           <h2 className="font-semibold text-slate-100 mb-3 text-sm">
-            Project Specs
+            Item Brief
           </h2>
           <p className="text-slate-400 text-sm leading-relaxed whitespace-pre-wrap">
             {project.specs}

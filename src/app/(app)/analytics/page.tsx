@@ -666,11 +666,11 @@ export default function AnalyticsPage() {
         {/* Project pie chart */}
         <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
           <h2 className="font-semibold text-slate-100 mb-4">
-            Project Status
+            Action Queue Status
           </h2>
           {pieData.length === 0 ? (
             <div className="flex items-center justify-center h-48">
-              <p className="text-slate-500 text-sm">No projects yet</p>
+              <p className="text-slate-500 text-sm">No queue items yet</p>
             </div>
           ) : (
             <div className="flex items-center gap-6">
@@ -763,7 +763,7 @@ export default function AnalyticsPage() {
               </div>
               <div>
                 <p className="text-slate-300 text-sm font-medium">
-                  Project Tasks
+                    Queue Tasks
                 </p>
                 <p className="text-slate-400 text-xs">
                   {projectStats.completedTasks} of {projectStats.totalTasks}{" "}
@@ -803,10 +803,10 @@ export default function AnalyticsPage() {
                 </div>
                 <div>
                   <p className="text-slate-300 text-sm font-medium">
-                    Overdue Projects
+                    Overdue Queue Items
                   </p>
                   <p className="text-slate-400 text-xs">
-                    {projectStats.overdueCount} project
+                    {projectStats.overdueCount} queue item
                     {projectStats.overdueCount !== 1 ? "s" : ""} past deadline
                   </p>
                 </div>

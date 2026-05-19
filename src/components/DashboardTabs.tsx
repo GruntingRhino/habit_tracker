@@ -529,11 +529,11 @@ function AnalyticsTab() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Project pie */}
+        {/* Action queue pie */}
         <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
-          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Project Status</h2>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Action Queue Status</h2>
           {pieData.length === 0 ? (
-            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No projects yet</p></div>
+            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No queue items yet</p></div>
           ) : (
             <div className="flex items-center gap-6">
               <ResponsiveContainer width="50%" height={200}>
@@ -579,7 +579,7 @@ function AnalyticsTab() {
             <div className="flex gap-3 p-3 rounded-lg" style={{ background: "rgba(79,114,255,0.05)", border: "1px solid rgba(79,114,255,0.12)" }}>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(79,114,255,0.1)" }}><span className="text-base">📊</span></div>
               <div>
-                <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Project Tasks</p>
+                <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Queue Tasks</p>
                 <p className="text-xs" style={{ color: "#4a6a90" }}>{projectStats.completedTasks} of {projectStats.totalTasks} tasks completed ({projectStats.taskCompletionRate}%)</p>
               </div>
             </div>
@@ -810,10 +810,10 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                   )}
                 </section>
 
-                {/* Projects */}
+                {/* Action Queue */}
                 <section className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Active Projects</h2>
+                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Action Queue</h2>
                     <Link href="/projects" className="text-xs flex items-center gap-1 transition-colors" style={{ color: "#4f72ff" }}
                       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
                       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}>
@@ -822,8 +822,8 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                   </div>
                   {projects.length === 0 ? (
                     <div className="py-6 text-center">
-                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No active projects</p>
-                      <Link href="/projects" className="text-sm mt-1 inline-block transition-colors" style={{ color: "#4f72ff" }}>Create a project</Link>
+                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No active queue items</p>
+                      <Link href="/projects" className="text-sm mt-1 inline-block transition-colors" style={{ color: "#4f72ff" }}>Create an item</Link>
                     </div>
                   ) : (
                     <div className="space-y-4">

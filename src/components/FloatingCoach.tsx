@@ -263,7 +263,7 @@ function FloatingCoachPanel() {
               handleSend();
             }
           }}
-          placeholder="Ask about goals, habits, projects, or your logs..."
+          placeholder="Ask about goals, habits, queue items, or your logs..."
           disabled={loading}
           className="flex-1 rounded-xl text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none disabled:opacity-50 px-3 py-2"
           style={{

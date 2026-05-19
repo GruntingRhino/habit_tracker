@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import {
   DEFAULT_SCORING_SETTINGS,
   extractScoringSettings,
@@ -67,6 +68,7 @@ export async function PATCH(req: NextRequest) {
       },
       select: { preferences: true },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(extractScoringSettings(updated.preferences));
   } catch (error) {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 interface RouteParams { params: Promise<{ id: string }> }
 
@@ -52,6 +53,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         notes: body.notes !== undefined ? body.notes : meal.notes,
       },
     });
+    await markCoachContextDirty(session.user.id);
     return NextResponse.json(updated);
   } catch (error) {
     reportError({ context: "meals PATCH", error, userId: session.user.id });
@@ -67,6 +69,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     const meal = await ownsMeal(id, session.user.id);
     if (!meal) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await prisma.meal.delete({ where: { id } });
+    await markCoachContextDirty(session.user.id);
     return NextResponse.json({ message: "deleted" });
   } catch (error) {
     reportError({ context: "meals DELETE", error, userId: session.user.id });

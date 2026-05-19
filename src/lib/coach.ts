@@ -9,6 +9,11 @@ import {
   OLLAMA_TIMEOUT_MS,
 } from "@/lib/ai-config";
 import prisma from "@/lib/prisma";
+import {
+  mergePrivateCoachContextCache,
+  readPrivateCoachContextCache,
+  type PrivateCoachContextCache,
+} from "@/lib/coach-context-cache";
 import { normalizeHabitCategory as normalizeAppHabitCategory } from "@/lib/habit-category";
 import {
   type CoachAction,
@@ -31,6 +36,7 @@ const ACTIVE_SCORE_KEYS = new Set([
   "focus",
   "mental",
 ]);
+type ActiveScoreKey = "physical" | "financial" | "discipline" | "focus" | "mental";
 
 const HabitActionSchema = z.object({
   type: z.literal("add_habit"),
@@ -88,6 +94,7 @@ interface PersistedCoachMessage {
 
 interface CoachSnapshot {
   profileSummary: string | null;
+  privateCoachContextCache: PrivateCoachContextCache | null;
   goals: CoachGoalSummary[];
   dataAvailability: {
     dailyEntryCount30d: number;
@@ -153,6 +160,53 @@ interface CoachSnapshot {
   existingProjectTitles: string[];
 }
 
+interface CompactCoachContext {
+  profileSummary: string | null;
+  goals: Array<{
+    title: string;
+    description: string | null;
+    category: string;
+    timeframe: string | null;
+    priority: string;
+    status: string;
+  }>;
+  goalAlignment: ReturnType<typeof buildGoalAlignment>;
+  dataAvailability: CoachSnapshot["dataAvailability"];
+  today: CoachSnapshot["today"];
+  scores: CoachSnapshot["scores"];
+  weakestHabits: CoachSnapshot["weakestHabits"];
+  strongestHabits: CoachSnapshot["strongestHabits"];
+  habits: Array<{
+    name: string;
+    category: string;
+    targetDays: WeekdayCode[];
+    streak: number;
+    completionRate30d: number;
+  }>;
+  projects: Array<{
+    title: string;
+    priority: string;
+    status: string;
+    deadline: string | null;
+    completionPercentage: number;
+    openTasks: string[];
+  }>;
+  meals: {
+    total: number;
+    categories: Record<string, number>;
+    examples: string[];
+  };
+  routines: Array<{
+    name: string;
+    exercises: string[];
+    recentSessions: string[];
+  }>;
+  workoutSessions: CoachSnapshot["workoutSessions"];
+  recentEntries: Array<Record<string, unknown>>;
+  existingHabitNames: string[];
+  existingProjectTitles: string[];
+}
+
 function isGroqAvailable(): boolean {
   return Boolean(GROQ_API_KEY);
 }
@@ -201,6 +255,8 @@ function habitColorForCategory(category: string): string {
       return "#3b82f6";
     case "financial":
       return "#10b981";
+    case "discipline":
+      return "#f59e0b";
     default:
       return "#64748b";
   }
@@ -502,6 +558,9 @@ async function buildCoachSnapshot(userId: string): Promise<CoachSnapshot> {
 
   return {
     profileSummary: user?.coachProfile?.summary ?? null,
+    privateCoachContextCache: readPrivateCoachContextCache(
+      user?.coachProfile?.preferences ?? null
+    ),
     goals:
       user?.coachGoals.map((goal) => ({
         id: goal.id,
@@ -706,7 +765,7 @@ function buildGoalAlignment(snapshot: CoachSnapshot) {
   });
 }
 
-function buildCompactCoachContext(snapshot: CoachSnapshot) {
+function buildCompactCoachContext(snapshot: CoachSnapshot): CompactCoachContext {
   return {
     profileSummary: snapshot.profileSummary,
     goals: snapshot.goals.map((goal) => ({
@@ -768,8 +827,184 @@ function buildCompactCoachContext(snapshot: CoachSnapshot) {
   };
 }
 
+function buildPrivateCoachContextSummary(context: CompactCoachContext): string {
+  const lines: string[] = [];
+
+  if (context.profileSummary) {
+    lines.push(`Profile: ${context.profileSummary}`);
+  }
+
+  if (context.goals.length > 0) {
+    lines.push(
+      `Goals: ${context.goals
+        .map((goal) => `${goal.title} [${goal.category}, ${goal.priority}, ${goal.status}]`)
+        .join(" | ")}`
+    );
+  }
+
+  const weakGoals = context.goalAlignment
+    .filter((goal) => goal.needsAttention)
+    .slice(0, 4)
+    .map((goal) => {
+      const weakHabitText =
+        goal.weakSupportingHabits.length > 0
+          ? goal.weakSupportingHabits
+              .map((habit) => `${habit.name} ${Math.round(habit.completionRate30d * 100)}%`)
+              .join(", ")
+          : "no direct support habits";
+      return `${goal.goal}: avg habit support ${Math.round(goal.avgHabitCompletion30d * 100)}%, ${weakHabitText}`;
+    });
+  if (weakGoals.length > 0) {
+    lines.push(`Needs attention: ${weakGoals.join(" | ")}`);
+  }
+
+  if (context.today) {
+    lines.push(
+      `Today: sleep ${context.today.sleepHours ?? "n/a"}h, deep work ${context.today.deepWorkHours ?? "n/a"}h, steps ${context.today.steps ?? "n/a"}, tasks ${context.today.tasksCompleted ?? 0}/${context.today.tasksPlanned ?? 0}, calories ${context.today.caloriesEaten ?? "n/a"}, day rating ${context.today.overallDayRating ?? "n/a"}`
+    );
+  }
+
+  if (context.scores.average30d) {
+    lines.push(
+      `Scores 30d avg: physical ${context.scores.average30d.physical ?? 0}, financial ${context.scores.average30d.financial ?? 0}, discipline ${context.scores.average30d.discipline ?? 0}, focus ${context.scores.average30d.focus ?? 0}, mental ${context.scores.average30d.mental ?? 0}, overall ${context.scores.average30d.overall ?? 0}`
+    );
+  }
+
+  if (context.scores.trend7d) {
+    lines.push(
+      `Score trends 7d: physical ${context.scores.trend7d.physical ?? 0}, financial ${context.scores.trend7d.financial ?? 0}, discipline ${context.scores.trend7d.discipline ?? 0}, focus ${context.scores.trend7d.focus ?? 0}, mental ${context.scores.trend7d.mental ?? 0}, overall ${context.scores.trend7d.overall ?? 0}`
+    );
+  }
+
+  if (context.weakestHabits.length > 0) {
+    lines.push(
+      `Weakest habits: ${context.weakestHabits
+        .map((habit) => `${habit.name} ${Math.round(habit.completionRate30d * 100)}%`)
+        .join(" | ")}`
+    );
+  }
+
+  if (context.strongestHabits.length > 0) {
+    lines.push(
+      `Strongest habits: ${context.strongestHabits
+        .map((habit) => `${habit.name} ${Math.round(habit.completionRate30d * 100)}%`)
+        .join(" | ")}`
+    );
+  }
+
+  if (context.projects.length > 0) {
+    lines.push(
+      `Projects: ${context.projects
+        .map(
+          (project) =>
+            `${project.title} [${project.status}, ${project.priority}, ${project.completionPercentage}%${project.deadline ? `, due ${project.deadline}` : ""}]`
+        )
+        .join(" | ")}`
+    );
+  }
+
+  if (context.routines.length > 0) {
+    lines.push(
+      `Routines: ${context.routines
+        .map((routine) => `${routine.name} (${routine.exercises.join(", ")})`)
+        .join(" | ")}`
+    );
+  }
+
+  if (context.workoutSessions.length > 0) {
+    lines.push(
+      `Recent training: ${context.workoutSessions
+        .map((session) => `${session.date} ${session.routine} ${session.exerciseCount} exercises`)
+        .join(" | ")}`
+    );
+  }
+
+  if (context.meals.total > 0) {
+    lines.push(
+      `Meals: ${context.meals.total} tracked, examples ${context.meals.examples.join(", ")}`
+    );
+  }
+
+  if (context.recentEntries.length > 0) {
+    lines.push(
+      `Recent entries: ${context.recentEntries
+        .map(
+          (entry) =>
+            `${entry.date}: sleep ${entry.sleepHours ?? "n/a"}h, deep work ${entry.deepWorkHours ?? "n/a"}h, steps ${entry.steps ?? "n/a"}, tasks ${entry.tasksCompleted ?? 0}/${entry.tasksPlanned ?? 0}, calories ${entry.caloriesEaten ?? "n/a"}`
+        )
+        .join(" | ")}`
+    );
+  }
+
+  return lines.join("\n");
+}
+
+async function ensurePrivateCoachContextCache(
+  userId: string,
+  snapshot: CoachSnapshot
+): Promise<PrivateCoachContextCache> {
+  const compactContext = buildCompactCoachContext(snapshot);
+  const summary = buildPrivateCoachContextSummary(compactContext);
+  const existing = snapshot.privateCoachContextCache;
+
+  if (
+    existing &&
+    existing.status === "ready" &&
+    existing.summary === summary &&
+    JSON.stringify(existing.compactContext) === JSON.stringify(compactContext)
+  ) {
+    return existing;
+  }
+
+  const nextCache: PrivateCoachContextCache = {
+    version: 1,
+    status: "ready",
+    generatedAt: new Date().toISOString(),
+    summary,
+    compactContext: compactContext as unknown as Record<string, unknown>,
+  };
+
+  const existingProfile = await prisma.coachProfile.findUnique({
+    where: { userId },
+    select: { preferences: true },
+  });
+
+  await prisma.coachProfile.upsert({
+    where: { userId },
+    create: {
+      userId,
+      summary: snapshot.profileSummary ?? undefined,
+      preferences: mergePrivateCoachContextCache(existingProfile?.preferences, nextCache),
+    },
+    update: {
+      preferences: mergePrivateCoachContextCache(existingProfile?.preferences, nextCache),
+    },
+  });
+
+  return nextCache;
+}
+
+function buildPromptContextFromCache(
+  contextCache: PrivateCoachContextCache
+): Record<string, unknown> {
+  const context = contextCache.compactContext;
+
+  return {
+    goals: context.goals,
+    goalAlignment: context.goalAlignment,
+    dataAvailability: context.dataAvailability,
+    today: context.today,
+    scores: context.scores,
+    weakestHabits: context.weakestHabits,
+    strongestHabits: context.strongestHabits,
+    projects: context.projects,
+    routines: context.routines,
+    workoutSessions: context.workoutSessions,
+  };
+}
+
 function buildCoachPromptPayload(
-  snapshot: CoachSnapshot,
+  contextCache: PrivateCoachContextCache,
   conversation: Array<{ role: "user" | "assistant"; content: string }>,
   instruction: string
 ): string {
@@ -777,7 +1012,8 @@ function buildCoachPromptPayload(
     {
       instruction,
       conversation,
-      userContext: buildCompactCoachContext(snapshot),
+      privateUserContextSummary: contextCache.summary,
+      userContext: buildPromptContextFromCache(contextCache),
       scoringGuide: {
         habitQuality:
           "Good habits are concrete, measurable, sustainable, and clearly tied to a goal or a repeated failure pattern in the user's data.",
@@ -1065,12 +1301,16 @@ function formatNumericRange(low: number, high: number): string {
   return low === high ? `${low}` : `${low}-${high}`;
 }
 
-function getWeakestScoreArea(snapshot: CoachSnapshot): [string, number] | null {
+function isActiveScoreKey(value: string): value is ActiveScoreKey {
+  return ACTIVE_SCORE_KEYS.has(value);
+}
+
+function getWeakestScoreArea(snapshot: CoachSnapshot): [ActiveScoreKey, number] | null {
   const average30d = snapshot.scores.average30d;
   if (!average30d) return null;
 
   return Object.entries(average30d)
-    .filter(([key]) => key !== "overall")
+    .filter((entry): entry is [ActiveScoreKey, number] => isActiveScoreKey(entry[0]))
     .sort((left, right) => left[1] - right[1])[0] ?? null;
 }
 
@@ -1078,24 +1318,75 @@ function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-function buildWeakHabitProjectAction(snapshot: CoachSnapshot): z.infer<typeof CoachModelResponseSchema>["actions"] {
-  const weakHabits = snapshot.weakestHabits
-    .filter((habit) => habit.category === "physical")
-    .slice(0, 5);
+function getHabitsForCategory(
+  snapshot: CoachSnapshot,
+  category: ActiveScoreKey
+): CoachSnapshot["weakestHabits"] {
+  return snapshot.habits
+    .filter((habit) => normalizeHabitCategory(habit.category) === category)
+    .sort((left, right) => left.completionRate30d - right.completionRate30d)
+    .map((habit) => ({
+      name: habit.name,
+      category,
+      completionRate30d: habit.completionRate30d,
+      streak: habit.streak,
+    }));
+}
+
+function getWeakHabitsForCategory(
+  snapshot: CoachSnapshot,
+  category: ActiveScoreKey,
+  limit = 5
+): CoachSnapshot["weakestHabits"] {
+  const fromWeakest = snapshot.weakestHabits.filter(
+    (habit) => normalizeHabitCategory(habit.category) === category
+  );
+  const merged = [...fromWeakest];
+  const existing = new Set(fromWeakest.map((habit) => normalizeText(habit.name)));
+
+  for (const habit of getHabitsForCategory(snapshot, category)) {
+    const key = normalizeText(habit.name);
+    if (existing.has(key)) continue;
+    merged.push(habit);
+    existing.add(key);
+  }
+
+  return merged.slice(0, limit);
+}
+
+function buildWeakHabitProjectAction(
+  snapshot: CoachSnapshot,
+  category: ActiveScoreKey = "physical"
+): z.infer<typeof CoachModelResponseSchema>["actions"] {
+  const weakHabits = getWeakHabitsForCategory(snapshot, category, 5);
 
   if (weakHabits.length === 0) {
     return [];
   }
 
+  const projectTitleByCategory: Record<ActiveScoreKey, string> = {
+    physical: "Weekly Physical Activation",
+    financial: "Weekly Revenue Activation",
+    discipline: "Discipline Reset Week",
+    focus: "Deep Work Reset Week",
+    mental: "Mental Stability Reset",
+  };
+  const projectDescriptionByCategory: Record<ActiveScoreKey, string> = {
+    physical: "A one-week execution project built around the user's weakest physical habits in the app data.",
+    financial: "A one-week execution project built around the user's weakest financial habits in the app data.",
+    discipline: "A one-week execution project built around the user's weakest discipline habits in the app data.",
+    focus: "A one-week execution project built around the user's weakest focus habits in the app data.",
+    mental: "A one-week execution project built around the user's weakest mental habits in the app data.",
+  };
+
   return [
     {
       type: "add_project",
-      label: "Start Weekly Physical Activation",
-      reason: "Directly targets the user's weakest physical habits from their own completion data.",
+      label: `Start ${projectTitleByCategory[category]}`,
+      reason: `Directly targets the user's weakest ${category} habits from their own completion data.`,
       project: {
-        title: "Weekly Physical Activation",
-        description:
-          "A one-week execution project built around the lowest-completion physical habits in the app data.",
+        title: projectTitleByCategory[category],
+        description: projectDescriptionByCategory[category],
         specs: `Build seven days of tasks that force completion of these habits at least once: ${weakHabits
           .map((habit) => habit.name)
           .join(", ")}.`,
@@ -1598,18 +1889,19 @@ function buildWeakestAreaResponse(
   snapshot: CoachSnapshot
 ): z.infer<typeof CoachModelResponseSchema> {
   const weakestArea = getWeakestScoreArea(snapshot);
-  const weakestHabits = snapshot.weakestHabits.slice(0, 5);
+  const weakestHabits = weakestArea
+    ? getWeakHabitsForCategory(snapshot, weakestArea[0], 5)
+    : snapshot.weakestHabits.slice(0, 5);
   const weakHabitText =
     weakestHabits.length > 0
       ? weakestHabits
           .map((habit) => `${habit.name} (${formatPercent(habit.completionRate30d)})`)
           .join(", ")
-      : "no weak habits available";
+      : weakestArea
+        ? `no ${weakestArea[0]} habits are configured yet`
+        : "no weak habits available";
 
-  const actions =
-    weakestArea?.[0] === "physical" || weakestHabits.some((habit) => habit.category === "physical")
-      ? buildWeakHabitProjectAction(snapshot)
-      : [];
+  const actions = weakestArea ? buildWeakHabitProjectAction(snapshot, weakestArea[0]) : [];
 
   return {
     message: weakestArea
@@ -1621,21 +1913,151 @@ function buildWeakestAreaResponse(
   };
 }
 
+function buildSingleRecommendedHabitAction(
+  snapshot: CoachSnapshot,
+  category: ActiveScoreKey
+): z.infer<typeof CoachModelResponseSchema>["actions"][number] | null {
+  const existingHabits = new Set(snapshot.existingHabitNames.map(normalizeText));
+  const weakHabit = getWeakHabitsForCategory(snapshot, category, 1)[0];
+
+  if (weakHabit) {
+    const key = normalizeText(weakHabit.name);
+    if (!existingHabits.has(key)) {
+      return {
+        type: "add_habit",
+        label: `Add ${weakHabit.name} habit`,
+        reason: `It is the clearest missing ${category} execution lever in the user's own data.`,
+        habit: {
+          name: weakHabit.name,
+          description: snapshot.habits.find((habit) => normalizeText(habit.name) === key)?.description ?? null,
+          category,
+          targetDays:
+            snapshot.habits.find((habit) => normalizeText(habit.name) === key)?.targetDays ?? [...WEEKDAY_CODES],
+          color: habitColorForCategory(category),
+        },
+      };
+    }
+  }
+
+  const fallbackHabitByCategory: Record<ActiveScoreKey, z.infer<typeof HabitActionSchema>> = {
+    physical: {
+      type: "add_habit",
+      label: "Add Morning Bodyweight Check habit",
+      reason: "Body composition goals need objective weekly feedback.",
+      habit: {
+        name: "Morning Bodyweight Check",
+        description: "Weigh yourself after waking at least 4 mornings per week and track the weekly average.",
+        category: "physical",
+        targetDays: ["mon", "tue", "thu", "sat"],
+        color: habitColorForCategory("physical"),
+      },
+    },
+    financial: {
+      type: "add_habit",
+      label: "Add Daily Revenue Block habit",
+      reason: "Financial progress requires a protected income-producing block.",
+      habit: {
+        name: "Daily Revenue Block",
+        description: "Spend 60 minutes on the highest-probability income-producing task before distractions.",
+        category: "financial",
+        targetDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+        color: habitColorForCategory("financial"),
+      },
+    },
+    discipline: {
+      type: "add_habit",
+      label: "Add Daily Shutdown habit",
+      reason: "Discipline improves when the next day is planned before the day ends.",
+      habit: {
+        name: "Daily Shutdown Plan",
+        description: "Close the day by planning tomorrow's top 3 actions and preparing the environment.",
+        category: "discipline",
+        targetDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        color: habitColorForCategory("discipline"),
+      },
+    },
+    focus: {
+      type: "add_habit",
+      label: "Add 90-Minute Deep Work Block habit",
+      reason: "Focus scores do not improve without a protected distraction-free block.",
+      habit: {
+        name: "90-Minute Deep Work Block",
+        description: "Complete one protected 90-minute deep work block with phone off and no social feeds.",
+        category: "focus",
+        targetDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+        color: habitColorForCategory("focus"),
+      },
+    },
+    mental: {
+      type: "add_habit",
+      label: "Add 10-Minute Reflection habit",
+      reason: "Mental stability improves when recovery and reflection are made measurable.",
+      habit: {
+        name: "10-Minute Reflection",
+        description: "Spend 10 minutes journaling, breathing, or reflecting before bed with no phone.",
+        category: "mental",
+        targetDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        color: habitColorForCategory("mental"),
+      },
+    },
+  };
+
+  const fallback = fallbackHabitByCategory[category];
+  if (existingHabits.has(normalizeText(fallback.habit.name))) {
+    return null;
+  }
+  return fallback;
+}
+
+function buildProjectAndHabitRecommendationResponse(
+  snapshot: CoachSnapshot,
+  activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
+): z.infer<typeof CoachModelResponseSchema> {
+  const goalCategory = activeGoal ? normalizeHabitCategory(activeGoal.category) : null;
+  const targetCategory: ActiveScoreKey =
+    goalCategory && isActiveScoreKey(goalCategory)
+      ? goalCategory
+      : getWeakestScoreArea(snapshot)?.[0] ?? "discipline";
+  const weakHabits = getWeakHabitsForCategory(snapshot, targetCategory, 3);
+  const projectAction = buildWeakHabitProjectAction(snapshot, targetCategory)[0] ?? null;
+  const habitAction = buildSingleRecommendedHabitAction(snapshot, targetCategory);
+  const actionTypes = [projectAction, habitAction].filter(Boolean) as z.infer<typeof CoachModelResponseSchema>["actions"];
+  const weakHabitText =
+    weakHabits.length > 0
+      ? weakHabits.map((habit) => `${habit.name} (${formatPercent(habit.completionRate30d)})`).join(", ")
+      : `no ${targetCategory} habits are configured yet`;
+
+  return {
+    message: `The fastest improvement path is to attack ${targetCategory}. Your weakest ${targetCategory} execution signals are ${weakHabitText}.${activeGoal ? ` That also aligns with your active priority (${activeGoal.title}).` : ""} I returned one project to force execution and one habit to tighten the daily system.`,
+    profileSummary: snapshot.profileSummary,
+    goals: [],
+    actions: actionTypes,
+  };
+}
+
 function buildProjectRecommendationResponse(
   snapshot: CoachSnapshot,
   activeGoal: z.infer<typeof CoachModelResponseSchema>["goals"][number] | CoachGoalSummary | undefined
 ): z.infer<typeof CoachModelResponseSchema> {
-  const weakestHabits = snapshot.weakestHabits
-    .filter((habit) => habit.category === "physical")
-    .slice(0, 5);
+  const goalCategory = activeGoal ? normalizeHabitCategory(activeGoal.category) : null;
+  const targetCategory: ActiveScoreKey =
+    goalCategory && isActiveScoreKey(goalCategory)
+      ? goalCategory
+      : getWeakestScoreArea(snapshot)?.[0] ?? "discipline";
+  const weakestHabits = getWeakHabitsForCategory(snapshot, targetCategory, 5);
+  const activationProject = buildWeakHabitProjectAction(snapshot, targetCategory)[0];
+  const activationProjectTitle =
+    activationProject && activationProject.type === "add_project"
+      ? activationProject.project.title
+      : "";
   const hasExistingActivationProject = snapshot.projects.some(
-    (project) => normalizeText(project.title) === "weekly physical activation"
+    (project) => normalizeText(project.title) === normalizeText(activationProjectTitle)
   );
 
   if (weakestHabits.length > 0) {
-    const actions = hasExistingActivationProject ? [] : buildWeakHabitProjectAction(snapshot);
+    const actions = hasExistingActivationProject ? [] : buildWeakHabitProjectAction(snapshot, targetCategory);
     return {
-      message: `The best project for this week is a one-week physical activation sprint. It matches your active priority${activeGoal ? ` (${activeGoal.title})` : ""} and directly attacks the lowest-completion habits in your own data: ${weakestHabits.map((habit) => habit.name).join(", ")}.`,
+      message: `The best project for this week is a one-week ${targetCategory} activation sprint. It matches your active priority${activeGoal ? ` (${activeGoal.title})` : ""} and directly attacks the lowest-completion habits in your own data: ${weakestHabits.map((habit) => habit.name).join(", ")}.`,
       profileSummary: snapshot.profileSummary,
       goals: [],
       actions,
@@ -1682,6 +2104,9 @@ function buildFallbackCoachResponse(
   }
   if (intent.asksForCalories || intent.asksForProtein || parseGoalRequest(userMessage).isMuscleGain) {
     return buildPerformanceNutritionResponse(snapshot, userMessage, activeGoal);
+  }
+  if (intent.asksForProjectRecommendation && intent.asksForHabits) {
+    return buildProjectAndHabitRecommendationResponse(snapshot, activeGoal);
   }
   if (intent.asksForProjectRecommendation) {
     return buildProjectRecommendationResponse(snapshot, activeGoal);
@@ -1847,6 +2272,7 @@ function shouldUseDeterministicUserDataResponse(userMessage: string | null): boo
 
 async function generateCoachResponse(
   snapshot: CoachSnapshot,
+  contextCache: PrivateCoachContextCache,
   conversation: Array<{ role: "user" | "assistant"; content: string }>,
   userMessage: string | null,
   instruction: string
@@ -1864,7 +2290,7 @@ async function generateCoachResponse(
     };
   }
 
-  const prompt = buildCoachPromptPayload(snapshot, conversation, instruction);
+  const prompt = buildCoachPromptPayload(contextCache, conversation, instruction);
 
   try {
     let rawText = "";
@@ -2093,6 +2519,7 @@ export async function getCoachChatState(userId: string): Promise<{
   goals: CoachGoalSummary[];
 }> {
   const snapshot = await buildCoachSnapshot(userId);
+  const contextCache = await ensurePrivateCoachContextCache(userId, snapshot);
   const persisted = await loadPersistedMessages(userId);
 
   if (persisted.length > 0) {
@@ -2104,6 +2531,7 @@ export async function getCoachChatState(userId: string): Promise<{
 
   const { response, usedFallback } = await generateCoachResponse(
     snapshot,
+    contextCache,
     [],
     null,
     "Do a personalized goal audit. Focus ONLY on goals where needsAttention is true (avgHabitCompletion30d < 0.6 or hasNoSupportingHabits). For each such goal, state which supporting habits exist and their completion rate, and name the key habit that is missing or underperforming. Skip goals that are performing well. End with the single most urgent fix the user should focus on. Use line breaks and bullets to keep it scannable. Return actions: [] — this is an informational audit, not an add prompt. If no goals are saved yet, introduce yourself briefly and ask what their top priorities are."
@@ -2142,6 +2570,7 @@ export async function sendCoachMessage(
 
   const beforeResponseHistory = await loadPersistedMessages(userId);
   const snapshot = await buildCoachSnapshot(userId);
+  const contextCache = await ensurePrivateCoachContextCache(userId, snapshot);
   const conversation = beforeResponseHistory
     .slice(-12)
     .map((message) => ({
@@ -2151,6 +2580,7 @@ export async function sendCoachMessage(
 
   const { response, usedFallback } = await generateCoachResponse(
     snapshot,
+    contextCache,
     conversation,
     content,
     "Answer the user's message. Only reference goals from goalAlignment that are (1) topically relevant to what the user asked and (2) have needsAttention: true. Do not dump all goals into the response. Give specific, actionable advice grounded in their data. For the actions array: only populate it if the user explicitly asked to add a habit, create a project, or asked for actionable recommendations (e.g. 'what habits should I add', 'suggest something I can do', 'add this'). For audits, analysis, or general questions — return actions: []."

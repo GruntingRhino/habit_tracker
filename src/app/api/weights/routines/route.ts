@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 const routinePostSchema = z.object({
   name: z.string().trim().min(1, "name is required").max(100),
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
       },
       include: { exercises: true, sessions: { take: 1 }, _count: { select: { sessions: true } } },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(routine, { status: 201 });
   } catch (error) {

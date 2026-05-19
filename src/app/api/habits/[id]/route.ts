@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { normalizeHabitCategory } from "@/lib/habit-category";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -62,6 +63,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         isActive: body.isActive ?? undefined,
       },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -93,6 +95,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
       where: { id },
       data: { isActive: false },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(updated);
   } catch (error) {

@@ -8,22 +8,27 @@ import {
   extractClientIp,
   resetRateLimit,
 } from "@/lib/rate-limit";
+import { normalizeUsername } from "@/lib/username";
 
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        identifier: { label: "Email or Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, req) {
-        if (!credentials?.email || !credentials?.password) {
+        if (!credentials?.identifier || !credentials?.password) {
           return null;
         }
 
+        const rawIdentifier = credentials.identifier.trim();
+        const normalizedEmail = rawIdentifier.toLowerCase();
+        const normalizedUsername = normalizeUsername(rawIdentifier);
+
         const rateLimitKeys = buildAuthRateLimitKeys(
-          credentials.email,
+          normalizedEmail,
           extractClientIp(req?.headers)
         );
 
@@ -34,9 +39,12 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
-        const user = await prisma.user.findUnique({
+        const user = await prisma.user.findFirst({
           where: {
-            email: credentials.email.toLowerCase().trim(),
+            OR: [
+              { email: normalizedEmail },
+              { username: normalizedUsername },
+            ],
           },
         });
 
@@ -59,6 +67,7 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
+          username: user.username ?? undefined,
           name: user.name ?? undefined,
         };
       },
@@ -72,18 +81,23 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.email = user.email;
+        token.username =
+          "username" in user && typeof user.username === "string"
+            ? user.username
+            : token.username;
         token.name = user.name;
       }
 
-      if ((!token.id || !token.name) && token.email) {
+      if ((!token.id || !token.name || !token.username) && token.email) {
         const dbUser = await prisma.user.findUnique({
           where: { email: String(token.email).toLowerCase() },
-          select: { id: true, email: true, name: true },
+          select: { id: true, email: true, username: true, name: true },
         });
 
         if (dbUser) {
           token.id = dbUser.id;
           token.email = dbUser.email;
+          token.username = dbUser.username;
           token.name = dbUser.name;
         }
       }
@@ -94,6 +108,7 @@ export const authOptions: NextAuthOptions = {
       if (token && session.user) {
         session.user.id = token.id as string;
         session.user.email = token.email as string;
+        session.user.username = token.username as string | null | undefined;
         session.user.name = token.name as string | null | undefined;
       }
       return session;
@@ -115,6 +130,7 @@ declare module "next-auth" {
     user: {
       id: string;
       email: string;
+      username?: string | null;
       name?: string | null;
     };
   }
@@ -123,5 +139,6 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     id: string;
+    username?: string | null;
   }
 }

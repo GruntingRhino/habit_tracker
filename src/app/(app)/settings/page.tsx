@@ -151,6 +151,7 @@ function SubmitButton({
 function ProfileSection() {
   const { data: session, update } = useSession();
   const [name, setName] = useState(session?.user?.name ?? "");
+  const [username, setUsername] = useState(session?.user?.username ?? "");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{
     type: "success" | "error";
@@ -166,13 +167,19 @@ function ProfileSection() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, username }),
       });
-      if (!res.ok) throw new Error("Failed to update profile");
-      await update({ name });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to update profile");
+      }
+      await update({ name, username });
       setStatus({ type: "success", message: "Profile updated successfully" });
-    } catch {
-      setStatus({ type: "error", message: "Failed to update profile" });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to update profile",
+      });
     } finally {
       setLoading(false);
     }
@@ -200,6 +207,20 @@ function ProfileSection() {
             placeholder="Your name"
             className={inputClass()}
           />
+        </div>
+        <div>
+          <label className={labelClass()}>Username</label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="abhaysivaram"
+            autoComplete="username"
+            className={inputClass()}
+          />
+          <p className="text-slate-600 text-xs mt-1">
+            Use 3-32 lowercase letters, numbers, dots, underscores, or hyphens.
+          </p>
         </div>
         {status && (
           <StatusMsg type={status.type} message={status.message} />

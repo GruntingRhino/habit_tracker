@@ -531,9 +531,9 @@ function AnalyticsTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Action queue pie */}
         <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
-          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Action Queue Status</h2>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Plans Status</h2>
           {pieData.length === 0 ? (
-            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No queue items yet</p></div>
+            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No plans yet</p></div>
           ) : (
             <div className="flex items-center gap-6">
               <ResponsiveContainer width="50%" height={200}>
@@ -810,10 +810,10 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                   )}
                 </section>
 
-                {/* Action Queue */}
+                {/* Plans */}
                 <section className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Action Queue</h2>
+                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Plans</h2>
                     <Link href="/projects" className="text-xs flex items-center gap-1 transition-colors" style={{ color: "#4f72ff" }}
                       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
                       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}>
@@ -822,7 +822,7 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                   </div>
                   {projects.length === 0 ? (
                     <div className="py-6 text-center">
-                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No active queue items</p>
+                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No active plans</p>
                       <Link href="/projects" className="text-sm mt-1 inline-block transition-colors" style={{ color: "#4f72ff" }}>Create an item</Link>
                     </div>
                   ) : (

@@ -156,7 +156,7 @@ export default function DailyCoachChat() {
                 handleSend();
               }
             }}
-            placeholder="Ask about goals, habits, queue items, or today..."
+            placeholder="Ask about goals, habits, plans, or today..."
             disabled={loading}
             className="flex-1 rounded-xl border border-[#334155] bg-[#111827] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40 disabled:opacity-50"
           />

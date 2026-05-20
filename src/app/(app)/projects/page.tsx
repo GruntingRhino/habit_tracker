@@ -58,7 +58,7 @@ const FILTER_META: Record<
     label: "Active",
     icon: Zap,
     emptyTitle: "Nothing active",
-    emptyDescription: "Add a new queue item to start tracking what needs attention now.",
+    emptyDescription: "Add a new plan to start tracking what needs attention now.",
   },
   completed: {
     label: "Completed",
@@ -145,6 +145,19 @@ function NewQueueItemModal({ onClose, onSaved }: NewQueueItemModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  function applyDeadlinePreset(mode: "today" | "tomorrow" | "week") {
+    const next = new Date();
+    next.setHours(0, 0, 0, 0);
+
+    if (mode === "tomorrow") {
+      next.setDate(next.getDate() + 1);
+    } else if (mode === "week") {
+      next.setDate(next.getDate() + 7);
+    }
+
+    setDeadline(next.toISOString().slice(0, 10));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) {
@@ -184,15 +197,18 @@ function NewQueueItemModal({ onClose, onSaved }: NewQueueItemModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)]">
+      <div className="w-full max-w-4xl rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)]">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">
-              Action Queue
+              Plans
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-              New queue item
+              New plan
             </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+              Capture what needs to happen, what good looks like, and the details that matter before work starts.
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -209,92 +225,169 @@ function NewQueueItemModal({ onClose, onSaved }: NewQueueItemModalProps) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-              Title
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="What needs to get done?"
-              className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-            />
+        <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-5">
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Core Info
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Define the item clearly enough that future-you can act without re-deciding what it means.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    What needs to happen?
+                  </label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Ship onboarding redesign"
+                    className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    Desired outcome
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                    placeholder="What should be true when this item is done?"
+                    className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Important Details
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Put requirements, constraints, links, notes, or AI context here.
+                </p>
+              </div>
+              <textarea
+                value={specs}
+                onChange={(e) => setSpecs(e.target.value)}
+                rows={8}
+                placeholder={"- Must work on mobile\n- Keep existing auth flow\n- Use current design system\n- Deadline is for review-ready version"}
+                className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+              />
+            </section>
           </div>
 
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="Short context for the work item"
-              className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-            />
-          </div>
+          <div className="space-y-5">
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Priority
+                </p>
+              </div>
+              <div className="space-y-3">
+                {[
+                  ["urgent", "Urgent", "Time-sensitive and cannot slip."],
+                  ["high", "High", "Important and should move soon."],
+                  ["medium", "Medium", "Useful, but not the first fire."],
+                  ["low", "Low", "Nice to have or can wait."],
+                ].map(([value, label, body]) => {
+                  const active = priority === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setPriority(value)}
+                      className={`w-full rounded-2xl border px-4 py-4 text-left transition-all ${
+                        active
+                          ? `${PRIORITY_STYLES[value]}`
+                          : "border-white/8 bg-white/[0.02] text-[var(--text-secondary)] hover:border-white/14 hover:text-white"
+                      }`}
+                    >
+                      <div className="text-sm font-semibold">{label}</div>
+                      <div className="mt-1 text-xs leading-5 text-inherit/80">{body}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
 
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-              Brief
-            </label>
-            <textarea
-              value={specs}
-              onChange={(e) => setSpecs(e.target.value)}
-              rows={5}
-              placeholder="Requirements, constraints, notes, AI context"
-              className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                Priority
-              </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
-              >
-                <option value="urgent">Urgent</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                Due date
-              </label>
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Due Date
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" onClick={() => applyDeadlinePreset("today")} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:text-white">
+                  Today
+                </button>
+                <button type="button" onClick={() => applyDeadlinePreset("tomorrow")} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:text-white">
+                  Tomorrow
+                </button>
+                <button type="button" onClick={() => applyDeadlinePreset("week")} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:text-white">
+                  +7 days
+                </button>
+              </div>
               <input
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
+                className="mt-3 w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
               />
-            </div>
-          </div>
+            </section>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_40px_-18px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Create item
-            </button>
+            <section className="rounded-[24px] border border-white/8 bg-[#101826] p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                Preview
+              </p>
+              <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-white">
+                      {title.trim() || "Your plan title"}
+                    </div>
+                    <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {PRIORITY_LABELS[priority]}{deadline ? ` · Due ${deadline}` : " · No due date yet"}
+                    </div>
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${PRIORITY_STYLES[priority]}`}>
+                    {PRIORITY_LABELS[priority]}
+                  </span>
+                </div>
+                <div className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                  {description.trim() || "The outcome summary will show here."}
+                </div>
+                <div className="mt-3 text-xs leading-5 text-[var(--text-muted)] whitespace-pre-wrap">
+                  {specs.trim() || "Important details will show here."}
+                </div>
+              </div>
+            </section>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_40px_-18px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create item
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -325,7 +418,7 @@ export default function ProjectsPage() {
   }, [fetchItems]);
 
   async function deleteItem(id: string) {
-    if (!confirm("Delete this queue item and all of its tasks?")) return;
+    if (!confirm("Delete this plan and all of its tasks?")) return;
 
     setDeletingId(id);
     try {
@@ -375,7 +468,7 @@ export default function ProjectsPage() {
         <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
-              Action Queue
+              Plans
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-[var(--text-primary)] md:text-4xl">
               Prioritized work, not clutter.

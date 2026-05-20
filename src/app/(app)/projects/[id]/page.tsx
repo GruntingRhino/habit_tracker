@@ -150,6 +150,7 @@ interface AddTaskFormProps {
 
 function AddTaskForm({ projectId, onSaved, onCancel }: AddTaskFormProps) {
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -170,6 +171,7 @@ function AddTaskForm({ projectId, onSaved, onCancel }: AddTaskFormProps) {
         credentials: "include",
         body: JSON.stringify({
           title: title.trim(),
+          description: description.trim() || undefined,
           priority,
           estimatedMinutes: estimatedMinutes
             ? parseInt(estimatedMinutes)
@@ -191,52 +193,124 @@ function AddTaskForm({ projectId, onSaved, onCancel }: AddTaskFormProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-[#0a0f1e] border border-[#334155] rounded-lg p-3 mt-2"
+      className="rounded-[24px] border border-white/8 bg-[#0f172a] p-5"
     >
       {error && (
-        <p className="text-red-400 text-xs mb-2">{error}</p>
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+          {error}
+        </div>
       )}
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Task title..."
-        autoFocus
-        className="w-full bg-transparent text-slate-100 placeholder-slate-600 text-sm outline-none mb-2"
-      />
-      <div className="flex items-center gap-2">
-        <select
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
-          className="bg-[#1e293b] border border-[#334155] text-slate-400 rounded px-2 py-1 text-xs focus:outline-none"
-        >
-          <option value="high" className="bg-[#0f172a]">High</option>
-          <option value="medium" className="bg-[#0f172a]">Medium</option>
-          <option value="low" className="bg-[#0f172a]">Low</option>
-        </select>
-        <input
-          type="number"
-          value={estimatedMinutes}
-          onChange={(e) => setEstimatedMinutes(e.target.value)}
-          placeholder="Est. mins"
-          min={1}
-          className="bg-[#1e293b] border border-[#334155] text-slate-400 rounded px-2 py-1 text-xs focus:outline-none w-24 placeholder-slate-600"
-        />
-        <div className="flex gap-1.5 ml-auto">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
-          >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
-          </button>
+      <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-5">
+          <section className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Task Info
+              </p>
+              <p className="mt-1 text-sm text-slate-400">
+                Make the task concrete enough that it can be completed without ambiguity.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Task name
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Draft onboarding wireframes"
+                  autoFocus
+                  className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-blue-500/60"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Notes
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={4}
+                  placeholder="Optional details, acceptance criteria, or reminders."
+                  className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-blue-500/60"
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-5">
+          <section className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Priority
+              </p>
+            </div>
+            <div className="space-y-3">
+              {[
+                ["high", "High", "Needs attention soon."],
+                ["medium", "Medium", "Normal execution priority."],
+                ["low", "Low", "Can wait without much risk."],
+              ].map(([value, label, body]) => {
+                const active = priority === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setPriority(value)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                      active
+                        ? PRIORITY_STYLES[value]
+                        : "border-white/8 bg-white/[0.02] text-slate-400 hover:border-white/14 hover:text-white"
+                    }`}
+                  >
+                    <div className="text-sm font-semibold">{label}</div>
+                    <div className="mt-1 text-xs leading-5 text-inherit/80">{body}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Estimated time
+            </label>
+            <input
+              type="number"
+              value={estimatedMinutes}
+              onChange={(e) => setEstimatedMinutes(e.target.value)}
+              placeholder="45"
+              min={1}
+              className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-blue-500/60"
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              Minutes. Leave blank if you do not want to estimate it yet.
+            </p>
+          </section>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-400 transition-colors hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_40px_-18px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create task
+            </button>
+          </div>
         </div>
       </div>
     </form>
@@ -665,7 +739,7 @@ export default function ProjectDetailPage() {
   }
 
   async function deleteProject() {
-    if (!confirm("Delete this queue item and all its tasks?")) return;
+    if (!confirm("Delete this plan and all its tasks?")) return;
     try {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "DELETE",
@@ -723,15 +797,15 @@ export default function ProjectDetailPage() {
         onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}
       >
         <ArrowLeft className="w-4 h-4" />
-        Action Queue
+        Plans
       </Link>
 
-      {/* Queue item header */}
+      {/* Plan header */}
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 mb-6">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex-1">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Queue Item
+              Plan
             </p>
             <h1 className="text-xl font-bold text-slate-100 mb-1">
               {project.title}
@@ -873,17 +947,18 @@ export default function ProjectDetailPage() {
 
       {/* Paste List panel */}
       {showPastePanel && (
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-5">
+        <div className="mb-5 rounded-[24px] border border-white/8 bg-[#0f172a] p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-slate-100 font-semibold text-sm">Paste Task List</h3>
+              <h3 className="text-slate-100 font-semibold text-sm">Import Task List</h3>
               <p className="text-slate-500 text-xs mt-0.5">
-                One task per line. Format:{" "}
-                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name:priority</code>
-                {" "}or{" "}
-                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name:30m</code>
-                {" "}or just{" "}
-                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name</code>
+                Paste one task per line. Use plain text or add quick metadata like
+                {" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task:high</code>
+                {" "}
+                or
+                {" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task:30m</code>.
               </p>
             </div>
             <button
@@ -894,21 +969,26 @@ export default function ProjectDetailPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.15fr_0.85fr]">
             {/* Input */}
-            <div>
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <div className="mb-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Paste Tasks
+                </p>
+              </div>
               <textarea
                 value={pasteText}
                 onChange={(e) => { setPasteText(e.target.value); setPasteError(""); }}
                 placeholder={"Write business plan:high\nMarket research:2h\nBuild MVP:medium\nLaunch campaign"}
                 rows={8}
-                className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-emerald-500/50 resize-none font-mono"
+                className="w-full rounded-2xl border border-white/10 bg-[#0a0f1e] px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 resize-none font-mono"
               />
             </div>
 
             {/* Live preview */}
-            <div>
-              <p className="text-slate-500 text-xs mb-2">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 mb-3">
                 Preview — {parsedPreview.length} task{parsedPreview.length !== 1 ? "s" : ""} detected
               </p>
               <div className="space-y-1.5 max-h-[196px] overflow-y-auto">
@@ -916,10 +996,7 @@ export default function ProjectDetailPage() {
                   <p className="text-slate-600 text-xs italic">Start typing to see preview…</p>
                 ) : (
                   parsedPreview.map((t, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 bg-[#0a0f1e] border border-[#1e293b] rounded-lg px-3 py-2"
-                    >
+                    <div key={i} className="flex items-center gap-2 bg-[#0a0f1e] border border-[#1e293b] rounded-xl px-3 py-2.5">
                       <span className="flex-1 text-slate-200 text-xs truncate">{t.title}</span>
                       <span
                         className={`text-xs px-1.5 py-0.5 rounded border flex-shrink-0 ${
@@ -950,13 +1027,13 @@ export default function ProjectDetailPage() {
           </div>
 
           {pasteError && (
-            <div className="flex items-center gap-2 mt-3 text-red-400 text-xs">
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
               <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
               {pasteError}
             </div>
           )}
           {pasteSuccess && (
-            <div className="flex items-center gap-2 mt-3 text-emerald-400 text-xs">
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
               <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
               {pasteSuccess}
             </div>
@@ -980,12 +1057,14 @@ export default function ProjectDetailPage() {
 
       {/* List panel */}
       {showListPanel && (
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-5">
+        <div className="mb-5 rounded-[24px] border border-white/8 bg-[#0f172a] p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-slate-100 font-semibold text-sm">Reference List</h3>
+              <h3 className="text-slate-100 font-semibold text-sm">Reference List Editor</h3>
               <p className="text-slate-500 text-xs mt-0.5">
-                One item per line. Format:{" "}
+                Keep rules, notes, constraints, or reminders in a lightweight structured list.
+                Format:
+                {" "}
                 <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item:tag:note</code>
                 {" "}or{" "}
                 <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item:tag</code>
@@ -1001,18 +1080,21 @@ export default function ProjectDetailPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Edit List
+              </p>
               <textarea
                 value={listText}
                 onChange={(e) => setListText(e.target.value)}
                 placeholder={"No external deps:rule:critical\nWrite tests first:rule\nValidate all input:security:high priority\nKeep it simple"}
                 rows={8}
-                className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-slate-500/50 resize-none font-mono"
+                className="w-full rounded-2xl border border-white/10 bg-[#0a0f1e] px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-slate-500/50 resize-none font-mono"
               />
             </div>
-            <div>
-              <p className="text-slate-500 text-xs mb-2">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 mb-3">
                 Preview — {listPreview.length} item{listPreview.length !== 1 ? "s" : ""} detected
               </p>
               <div className="space-y-1.5 max-h-[196px] overflow-y-auto">

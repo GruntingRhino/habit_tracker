@@ -1,5 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import {
@@ -8,24 +9,21 @@ import {
   extractClientIp,
   resetRateLimit,
 } from "@/lib/rate-limit";
-import { normalizeUsername } from "@/lib/username";
 
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
-      name: "Credentials",
+      name: "Email",
       credentials: {
-        identifier: { label: "Email or Username", type: "text" },
+        email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, req) {
-        if (!credentials?.identifier || !credentials?.password) {
+        if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
-        const rawIdentifier = credentials.identifier.trim();
-        const normalizedEmail = rawIdentifier.toLowerCase();
-        const normalizedUsername = normalizeUsername(rawIdentifier);
+        const normalizedEmail = credentials.email.trim().toLowerCase();
 
         const rateLimitKeys = buildAuthRateLimitKeys(
           normalizedEmail,
@@ -41,10 +39,7 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findFirst({
           where: {
-            OR: [
-              { email: normalizedEmail },
-              { username: normalizedUsername },
-            ],
+            email: normalizedEmail,
           },
         });
 
@@ -72,11 +67,51 @@ export const authOptions: NextAuthOptions = {
         };
       },
     }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      allowDangerousEmailAccountLinking: true,
+    }),
   ],
   session: {
     strategy: "jwt",
   },
   callbacks: {
+    async signIn({ user, account, profile }) {
+      if (account?.provider !== "google") {
+        return true;
+      }
+
+      const email = user.email?.trim().toLowerCase();
+      if (!email) {
+        return false;
+      }
+
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, name: true },
+      });
+
+      if (!existingUser) {
+        const generatedPassword = await bcrypt.hash(crypto.randomUUID(), 12);
+        await prisma.user.create({
+          data: {
+            email,
+            password: generatedPassword,
+            name:
+              user.name?.trim() ||
+              (typeof profile?.name === "string" ? profile.name : null),
+          },
+        });
+      } else if (!existingUser.name && user.name?.trim()) {
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { name: user.name.trim() },
+        });
+      }
+
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

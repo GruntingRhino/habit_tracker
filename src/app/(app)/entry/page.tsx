@@ -1647,7 +1647,7 @@ export default function EntryPage() {
             <div className="space-y-3 text-sm text-slate-400">
               <p>Current mode is <span className="font-semibold capitalize text-slate-200">{scoringSettings.strictness}</span>, so thresholds for sleep, deep work, steps, and training scale up or down from the balanced baseline.</p>
               <p>Physical score comes directly from sleep, movement, training quality, and calorie awareness.</p>
-              <p>Discipline and focus combine the daily entry with habit completion and get penalized by overdue active queue items.</p>
+              <p>Discipline and focus combine the daily entry with habit completion and get penalized by overdue active plans.</p>
               <p>Financial score is age-aware and treats income progress differently for students versus working adults.</p>
             </div>
           </div>

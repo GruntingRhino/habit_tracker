@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   BookOpen,
   FolderKanban,
+  StickyNote,
   Settings,
   Brain,
   LogOut,
@@ -16,7 +17,8 @@ import {
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/entry",     label: "Daily Entry", icon: BookOpen },
-  { href: "/projects",  label: "Action Queue", icon: FolderKanban },
+  { href: "/projects",  label: "Plans", icon: FolderKanban },
+  { href: "/notes",     label: "Notes", icon: StickyNote },
 ];
 
 interface SidebarProps {

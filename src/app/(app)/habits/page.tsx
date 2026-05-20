@@ -64,6 +64,33 @@ const COLORS = [
   "#f97316",
 ];
 
+const HABIT_CATEGORY_META: Record<string, { title: string; description: string }> = {
+  general: {
+    title: "General",
+    description: "Anything useful that does not belong to a tighter lane.",
+  },
+  physical: {
+    title: "Physical",
+    description: "Training, recovery, sleep, steps, nutrition, body upkeep.",
+  },
+  financial: {
+    title: "Financial",
+    description: "Money tracking, income work, saving, budgeting, spending control.",
+  },
+  discipline: {
+    title: "Discipline",
+    description: "Consistency, restraint, routines, and keeping promises.",
+  },
+  focus: {
+    title: "Focus",
+    description: "Study, deep work, reading, and high-value mental output.",
+  },
+  mental: {
+    title: "Mental",
+    description: "Reflection, journaling, calm, gratitude, emotional hygiene.",
+  },
+};
+
 function getLast7Days(): Date[] {
   const days: Date[] = [];
   for (let i = 6; i >= 0; i--) {
@@ -331,6 +358,32 @@ function AddHabitModal({ onClose, onSaved }: AddHabitModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const everyDaySelected = targetDays.length === DAY_KEYS.length;
+  const weekdaysSelected =
+    targetDays.length === 5 &&
+    DAY_KEYS.slice(0, 5).every((day) => targetDays.includes(day));
+  const scheduleMode = everyDaySelected
+    ? "daily"
+    : weekdaysSelected
+      ? "weekdays"
+      : "custom";
+
+  function applySchedule(mode: "daily" | "weekdays" | "custom") {
+    if (mode === "daily") {
+      setTargetDays([...DAY_KEYS]);
+      return;
+    }
+
+    if (mode === "weekdays") {
+      setTargetDays([...DAY_KEYS.slice(0, 5)]);
+      return;
+    }
+
+    if (targetDays.length === 0) {
+      setTargetDays(["mon", "wed", "fri"]);
+    }
+  }
+
   function toggleDay(day: string) {
     setTargetDays((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
@@ -365,133 +418,248 @@ function AddHabitModal({ onClose, onSaved }: AddHabitModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="bg-[#0f172a] border border-[#1e293b] rounded-2xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-slate-100">Add Habit</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-3xl rounded-[30px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)]">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">
+              Habit Setup
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+              Create a habit
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
+              Define what counts as done, where it belongs, and when you expect to hit it.
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-100 transition-colors"
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
           >
-            <X className="w-5 h-5" />
+            Close
           </button>
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-4">
-            <AlertCircle className="w-4 h-4 text-red-400" />
-            <p className="text-red-400 text-sm">{error}</p>
+          <div className="mb-4 flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
+            <AlertCircle className="h-4 w-4 text-red-300" />
+            <p className="text-sm text-red-200">{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-              Name *
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Morning Run"
-              className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-            />
+        <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-5">
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Core Info
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Keep the name specific and the success rule easy to judge.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    Habit name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Morning run"
+                    className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    What counts as done?
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Example: Run for at least 20 minutes outside or on the treadmill."
+                    className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Category
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  This controls which life lane the habit contributes to.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {CATEGORIES.map((option) => {
+                  const meta = HABIT_CATEGORY_META[option];
+                  const active = category === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setCategory(option)}
+                      className={`rounded-2xl border px-4 py-4 text-left transition-all ${
+                        active
+                          ? "border-[#4f72ff]/45 bg-[#4f72ff]/12 text-white"
+                          : "border-white/8 bg-white/[0.02] text-[var(--text-secondary)] hover:border-white/14 hover:text-white"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">
+                            {meta?.title ?? option}
+                          </div>
+                          <div className="mt-1 text-xs leading-5 text-inherit/80">
+                            {meta?.description}
+                          </div>
+                        </div>
+                        {active ? (
+                          <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-[#93b4ff]" />
+                        ) : (
+                          <Circle className="h-4 w-4 flex-shrink-0 text-white/30" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Schedule
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Start with a pattern, then fine-tune exact days below.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  ["daily", "Every day", "Use this for habits you want all seven days."],
+                  ["weekdays", "Weekdays", "Good for work, school, and routine-driven habits."],
+                  ["custom", "Custom", "Pick only the days that make sense."],
+                ].map(([key, title, body]) => {
+                  const active = scheduleMode === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => applySchedule(key as "daily" | "weekdays" | "custom")}
+                      className={`rounded-2xl border px-4 py-4 text-left transition-all ${
+                        active
+                          ? "border-[#4f72ff]/45 bg-[#4f72ff]/12 text-white"
+                          : "border-white/8 bg-white/[0.02] text-[var(--text-secondary)] hover:border-white/14 hover:text-white"
+                      }`}
+                    >
+                      <div className="text-sm font-semibold">{title}</div>
+                      <div className="mt-1 text-xs leading-5 text-inherit/80">{body}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex gap-1.5">
+                {DAYS.map((day, i) => {
+                  const key = DAY_KEYS[i];
+                  const active = targetDays.includes(key);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDay(key)}
+                      className={`flex-1 rounded-xl py-2 text-xs font-semibold transition-colors ${
+                        active
+                          ? "bg-[#4f72ff] text-white"
+                          : "bg-[#182132] text-[var(--text-secondary)] hover:bg-[#22314d] hover:text-white"
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              placeholder="Optional description"
-              className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none"
-            />
-          </div>
+          <div className="space-y-5">
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Color
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Used in cards, charts, and quick visual scanning.
+                </p>
+              </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-              Category
-            </label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c} className="bg-[#0f172a] capitalize">
-                  {c.charAt(0).toUpperCase() + c.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-              Color
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-7 h-7 rounded-full border-2 transition-all ${
-                    color === c ? "border-white scale-110" : "border-transparent"
-                  }`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-              Target Days
-            </label>
-            <div className="flex gap-1.5">
-              {DAYS.map((day, i) => {
-                const key = DAY_KEYS[i];
-                const active = targetDays.includes(key);
-                return (
+              <div className="flex flex-wrap gap-2">
+                {COLORS.map((c) => (
                   <button
-                    key={day}
+                    key={c}
                     type="button"
-                    onClick={() => toggleDay(key)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      active
-                        ? "bg-blue-600 text-white"
-                        : "bg-[#1e293b] text-slate-400 hover:bg-[#334155]"
+                    onClick={() => setColor(c)}
+                    className={`h-9 w-9 rounded-full border-2 transition-all ${
+                      color === c ? "scale-110 border-white" : "border-transparent"
                     }`}
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </section>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-sm font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                "Add Habit"
-              )}
-            </button>
+            <section className="rounded-[24px] border border-white/8 bg-[#101826] p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                Preview
+              </p>
+              <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-white">
+                      {name.trim() || "Your habit name"}
+                    </div>
+                    <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {(HABIT_CATEGORY_META[category]?.title ?? category)} ·{" "}
+                      {targetDays.length === 7
+                        ? "7 days a week"
+                        : `${targetDays.length} day${targetDays.length === 1 ? "" : "s"} selected`}
+                    </div>
+                    <div className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                      {description.trim() || "A short success rule will show here."}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_40px_-18px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create habit
+              </button>
+            </div>
           </div>
         </form>
       </div>

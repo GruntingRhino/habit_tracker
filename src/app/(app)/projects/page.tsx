@@ -401,6 +401,7 @@ export default function ProjectsPage() {
   const [filter, setFilter] = useState<QueueFilter>("active");
   const [showModal, setShowModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -432,6 +433,32 @@ export default function ProjectsPage() {
     } finally {
       setDeletingId(null);
     }
+  }
+
+  async function completeItem(id: string) {
+    if (completingId || deletingId) return;
+
+    setCompletingId(id);
+
+    window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/projects/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            status: "completed",
+            completedAt: new Date().toISOString(),
+          }),
+        });
+
+        if (res.ok) {
+          await fetchItems();
+        }
+      } finally {
+        setCompletingId(null);
+      }
+    }, 420);
   }
 
   const filteredItems = useMemo(
@@ -558,12 +585,17 @@ export default function ProjectsPage() {
             const deadline = formatDeadline(item.deadline);
             const priorityStyle = PRIORITY_STYLES[item.priority] ?? PRIORITY_STYLES.medium;
             const priorityLabel = PRIORITY_LABELS[item.priority] ?? "Medium";
+            const isCompleting = completingId === item.id;
+            const isDeleting = deletingId === item.id;
+            const isCompleted = getEffectiveStatus(item.status) === "completed";
 
             return (
               <div key={item.id} className="group relative">
                 <Link
                   href={`/projects/${item.id}`}
-                  className="block rounded-[28px] border border-[rgba(120,145,220,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0)),#0f1525] p-5 transition-all hover:border-[rgba(79,114,255,0.28)] hover:shadow-[0_24px_60px_-36px_rgba(79,114,255,0.65)] md:p-6"
+                  className={`block rounded-[28px] border border-[rgba(120,145,220,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0)),#0f1525] p-5 transition-all hover:border-[rgba(79,114,255,0.28)] hover:shadow-[0_24px_60px_-36px_rgba(79,114,255,0.65)] md:p-6 ${
+                    isCompleting ? "queue-complete-burst border-emerald-400/30 bg-emerald-500/8" : ""
+                  }`}
                 >
                   <div className="pr-12">
                     <div className="flex flex-wrap items-center gap-2">
@@ -627,22 +659,42 @@ export default function ProjectsPage() {
                   </div>
                 </Link>
 
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    void deleteItem(item.id);
-                  }}
-                  disabled={deletingId === item.id}
-                  className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-300 opacity-0 transition-all hover:bg-rose-500/20 group-hover:opacity-100 disabled:opacity-50"
-                  title="Delete item"
-                >
-                  {deletingId === item.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
+                <div className="absolute right-4 top-4 flex items-center gap-2 opacity-0 transition-all group-hover:opacity-100">
+                  {!isCompleted && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void completeItem(item.id);
+                      }}
+                      disabled={isCompleting || isDeleting}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 transition-all hover:bg-emerald-500/20 disabled:opacity-50"
+                      title="Complete plan"
+                    >
+                      {isCompleting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                    </button>
                   )}
-                </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void deleteItem(item.id);
+                    }}
+                    disabled={isDeleting || isCompleting}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-300 transition-all hover:bg-rose-500/20 disabled:opacity-50"
+                    title="Delete item"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             );
           })

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
 import {
   ArrowRight,
   Brain,
@@ -11,7 +10,6 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { authOptions } from "@/lib/auth";
 import HomepageEffects from "@/components/HomepageEffects";
 
 const laneCards = [
@@ -93,7 +91,7 @@ function DemoPhone() {
 
         <div className="mt-6 rounded-2xl border border-white/6 bg-white/[0.03] p-4">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-medium text-white">Action Queue</p>
+            <p className="text-sm font-medium text-white">Plans</p>
             <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-200">
               1 overdue
             </span>
@@ -122,9 +120,6 @@ function DemoPhone() {
 }
 
 export default async function RootPage() {
-  const session = await getServerSession(authOptions);
-  const isAuthenticated = !!session?.user?.id;
-
   return (
     <div className="homepage-shell min-h-screen overflow-x-hidden bg-[#0b1018] text-[var(--text-primary)]">
       <HomepageEffects />
@@ -159,31 +154,19 @@ export default async function RootPage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            {isAuthenticated ? (
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-2 rounded-full border border-[#4f72ff]/20 bg-[#152033] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_40px_-18px_rgba(0,0,0,0.8)] transition-all hover:border-[#4f72ff]/40 hover:bg-[#18253b]"
-              >
-                Open dashboard
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            ) : (
-              <>
-                <Link
-                  href="/login?mode=signin"
-                  className="hidden rounded-full border border-white/10 px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-white md:inline-flex"
-                >
-                  Sign in
-                </Link>
-                <Link
-                  href="/login?mode=signup"
-                  className="inline-flex items-center gap-2 rounded-full border border-[#4f72ff]/20 bg-[#152033] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_40px_-18px_rgba(0,0,0,0.8)] transition-all hover:border-[#4f72ff]/40 hover:bg-[#18253b]"
-                >
-                  Create account
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </>
-            )}
+            <Link
+              href="/login?mode=signin"
+              className="hidden rounded-full border border-white/10 px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-white md:inline-flex"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/login?mode=signup"
+              className="inline-flex items-center gap-2 rounded-full border border-[#4f72ff]/20 bg-[#152033] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_40px_-18px_rgba(0,0,0,0.8)] transition-all hover:border-[#4f72ff]/40 hover:bg-[#18253b]"
+            >
+              Create account
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </header>
@@ -207,37 +190,25 @@ export default async function RootPage() {
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
-                {isAuthenticated ? (
-                  <Link
-                    href="/dashboard"
-                    className="inline-flex items-center gap-2 rounded-full border border-[#4f72ff]/20 bg-[#152033] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_-20px_rgba(0,0,0,0.85)] transition-all hover:translate-y-[-1px] hover:border-[#4f72ff]/40 hover:bg-[#18253b]"
-                  >
-                    Open the app
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                ) : (
-                  <>
-                    <Link
-                      href="/login?mode=signup"
-                      className="inline-flex items-center gap-2 rounded-full border border-[#4f72ff]/20 bg-[#152033] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_-20px_rgba(0,0,0,0.85)] transition-all hover:translate-y-[-1px] hover:border-[#4f72ff]/40 hover:bg-[#18253b]"
-                    >
-                      Create account
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                    <Link
-                      href="/login?mode=signin"
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-6 py-3.5 text-sm font-medium text-[var(--text-primary)]"
-                    >
-                      Sign in
-                    </Link>
-                  </>
-                )}
+                <Link
+                  href="/login?mode=signup"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#4f72ff]/20 bg-[#152033] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_18px_50px_-20px_rgba(0,0,0,0.85)] transition-all hover:translate-y-[-1px] hover:border-[#4f72ff]/40 hover:bg-[#18253b]"
+                >
+                  Create account
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="/login?mode=signin"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-6 py-3.5 text-sm font-medium text-[var(--text-primary)]"
+                >
+                  Sign in
+                </Link>
               </div>
 
               <div className="mt-12 grid gap-4 sm:grid-cols-3">
                 {[
                   ["Real categories", "Physical, Mental, Discipline, Focus, Financial"],
-                  ["Task execution", "Active queue items auto-sort by urgency and due date"],
+                  ["Task execution", "Active plans auto-sort by urgency and due date"],
                   ["Scoring model", "Daily inputs roll into one honest operating score"],
                 ].map(([title, body], index) => (
                   <div
@@ -315,7 +286,7 @@ export default async function RootPage() {
                 {
                   step: "Step 03",
                   title: "Work the queue",
-                  body: "Action Queue items carry real deadlines and task progress. Overdue active work stays visible and affects execution pressure.",
+                  body: "Plans carry real deadlines and task progress. Overdue active work stays visible and affects execution pressure.",
                 },
                 {
                   step: "Step 04",
@@ -438,31 +409,19 @@ export default async function RootPage() {
               Create an account, sign in, and start logging. The system becomes useful as soon as the first real day is entered.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
-              {isAuthenticated ? (
-                <Link
-                  href="/dashboard"
-                  className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#2cb6ff_100%)] px-6 py-3.5 text-sm font-semibold text-white"
-                >
-                  Open dashboard
-                  <ChevronRight className="h-4 w-4" />
-                </Link>
-              ) : (
-                <>
-                  <Link
-                    href="/login?mode=signup"
-                    className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#2cb6ff_100%)] px-6 py-3.5 text-sm font-semibold text-white"
-                  >
-                    Create account
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href="/login?mode=signin"
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-6 py-3.5 text-sm font-medium text-white"
-                  >
-                    Sign in
-                  </Link>
-                </>
-              )}
+              <Link
+                href="/login?mode=signup"
+                className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#2cb6ff_100%)] px-6 py-3.5 text-sm font-semibold text-white"
+              >
+                Create account
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/login?mode=signin"
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-6 py-3.5 text-sm font-medium text-white"
+              >
+                Sign in
+              </Link>
             </div>
           </div>
         </section>

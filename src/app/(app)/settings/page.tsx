@@ -1065,7 +1065,7 @@ function DangerZone() {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to reset data");
-      setStatus({ type: "success", message: "Tracking data cleared. Your habits, projects, meals, and routines are untouched." });
+      setStatus({ type: "success", message: "Tracking data cleared. Your habits, plans, notes, meals, and routines are untouched." });
       setConfirming(false);
     } catch {
       setStatus({ type: "error", message: "Failed to reset data. Please try again." });
@@ -1108,7 +1108,7 @@ function DangerZone() {
             <div className="rounded-lg p-3" style={{ background: "rgba(16,217,160,0.06)", border: "1px solid rgba(16,217,160,0.15)" }}>
               <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#10d9a0" }}>Kept</p>
               <ul className="space-y-1">
-                {["Your account", "Habits", "Projects & tasks", "Meals", "Routines & exercises"].map((item) => (
+                {["Your account", "Habits", "Plans & tasks", "Notes", "Meals", "Routines & exercises"].map((item) => (
                   <li key={item} className="flex items-center gap-2 text-xs" style={{ color: "#4a7a6a" }}>
                     <span style={{ color: "#10d9a0" }}>✓</span> {item}
                   </li>

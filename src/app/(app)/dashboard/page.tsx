@@ -201,7 +201,7 @@ export default async function DashboardPage() {
             className="btn-primary-glow flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-lg"
           >
             <PlusCircle className="w-4 h-4" />
-            {todayEntry ? "Update Entry" : "Log Today"}
+            {todayEntry ? "Open Daily Work" : "Start Daily Work"}
           </Link>
         </div>
       </div>

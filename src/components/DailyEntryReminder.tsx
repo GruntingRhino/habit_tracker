@@ -82,8 +82,8 @@ export default function DailyEntryReminder() {
 
       if (hasTodayEntry) return;
 
-      const notification = new Notification("Daily entry due", {
-        body: "You have not filled out today's daily entry yet.",
+      const notification = new Notification("Daily work due", {
+        body: "You have not filled out today's daily work yet.",
         tag: `daily-entry-${today}`,
       });
 

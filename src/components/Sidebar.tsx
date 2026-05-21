@@ -16,7 +16,7 @@ import {
 
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/entry",     label: "Daily Entry", icon: BookOpen },
+  { href: "/entry",     label: "Daily Work", icon: BookOpen },
   { href: "/projects",  label: "Plans", icon: FolderKanban },
   { href: "/notes",     label: "Notes", icon: StickyNote },
 ];

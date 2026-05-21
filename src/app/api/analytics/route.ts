@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { calcStreak } from "@/lib/utils";
+import { normalizeHabitCategory } from "@/lib/habit-category";
 import { subDays } from "date-fns";
 
 type TrendDirection = "improving" | "declining" | "stable";
@@ -67,7 +68,6 @@ export async function GET() {
       discipline: calcTrend(categoryScores.map((s) => s.discipline)),
       focus:      calcTrend(categoryScores.map((s) => s.focus)),
       mental:     calcTrend(categoryScores.map((s) => s.mental)),
-      appearance: calcTrend(categoryScores.map((s) => s.appearance)),
       overall:    calcTrend(categoryScores.map((s) => s.overall)),
     };
 
@@ -95,7 +95,7 @@ export async function GET() {
       return {
         id: habit.id,
         name: habit.name,
-        category: habit.category,
+        category: normalizeHabitCategory(habit.category),
         color: habit.color,
         completionRate: Math.round(completionRate * 100) / 100,
         completedCount: completedLogs,

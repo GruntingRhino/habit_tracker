@@ -187,6 +187,63 @@ describe("coach fallback behavior", () => {
     expect(response.actions[0]?.type).toBe("add_project");
   });
 
+  it("keeps weakest-area explanations inside the weakest scored category", () => {
+    const response = __testables.buildFallbackCoachResponse(
+      {
+        ...baseSnapshot,
+        scores: {
+          ...baseSnapshot.scores,
+          average30d: {
+            physical: 7,
+            financial: 3.8,
+            discipline: 5,
+            focus: 6,
+            mental: 7,
+            appearance: 0,
+            overall: 5.8,
+          },
+        },
+        weakestHabits: [
+          {
+            name: "Steps / Movement 10,000",
+            category: "physical",
+            completionRate30d: 0,
+            streak: 0,
+          },
+          {
+            name: "Revenue Block",
+            category: "financial",
+            completionRate30d: 0.1,
+            streak: 0,
+          },
+        ],
+        habits: [
+          ...baseSnapshot.habits,
+          {
+            name: "Revenue Block",
+            category: "financial",
+            description: "Work on the highest-probability income activity.",
+            targetDays: ["mon", "tue", "wed", "thu", "fri"],
+            streak: 0,
+            completionRate30d: 0.1,
+            last14: "00000000000001",
+          },
+        ],
+      } as never,
+      "What is my weakest area right now, based on my actual data?",
+      "Answer the user"
+    );
+
+    expect(response.message).toContain("financial at 3.8/10");
+    expect(response.message).toContain("Revenue Block");
+    expect(response.message).not.toContain("Steps / Movement 10,000");
+    expect(
+      response.actions[0] && response.actions[0].type === "add_project"
+        ? response.actions[0].project.title
+        : null
+    ).toBe("Weekly Revenue Activation");
+  });
+
   it("answers muscle-gain calorie prompts without generic fallback habits", () => {
     const response = __testables.buildFallbackCoachResponse(
       baseSnapshot as never,
@@ -215,5 +272,44 @@ describe("coach fallback behavior", () => {
     expect(firstAction && firstAction.type === "add_project" ? firstAction.project.title : null).toBe(
       "Weekly Physical Activation"
     );
+  });
+
+  it("returns one project and one habit when the user explicitly asks for both", () => {
+    const response = __testables.buildFallbackCoachResponse(
+      baseSnapshot as never,
+      "Give me one project and one habit to add that would improve me fastest.",
+      "Answer the user"
+    );
+
+    expect(response.message).toContain("one project");
+    expect(response.message).toContain("one habit");
+    expect(response.actions).toHaveLength(2);
+    expect(response.actions[0]?.type).toBe("add_project");
+    expect(response.actions[1]?.type).toBe("add_habit");
+  });
+
+  it("does not treat overall as a weakest area when ranking saved category averages", () => {
+    const response = __testables.buildFallbackCoachResponse(
+      {
+        ...baseSnapshot,
+        goals: [],
+        scores: {
+          ...baseSnapshot.scores,
+          average30d: {
+            physical: 4,
+            financial: 6,
+            discipline: 5,
+            focus: 6,
+            mental: 7,
+            appearance: 0,
+            overall: 1,
+          },
+        },
+      } as never,
+      "How am I doing generally?"
+    );
+
+    expect(response.message).toContain("Your weakest 30-day area: physical at 4/10.");
+    expect(response.message).not.toContain("overall at 1/10");
   });
 });

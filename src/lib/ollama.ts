@@ -142,7 +142,6 @@ Current Scores (out of 10):
 - Discipline: ${scores.discipline}
 - Focus: ${scores.focus}
 - Mental: ${scores.mental}
-- Appearance: ${scores.appearance}
 - Overall: ${scores.overall}
 
 Recent Daily Entries (last 7 days):

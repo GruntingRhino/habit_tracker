@@ -28,6 +28,20 @@ const CATEGORIES = [
   { key: "snack",     label: "Snacks",    icon: Cookie,  color: "text-green-400",  bg: "bg-green-500/10",  border: "border-green-500/20" },
 ] as const;
 
+function buildRecipe(ingredients: string, instructions: string): string {
+  const sections: string[] = [];
+
+  if (ingredients.trim()) {
+    sections.push(`Ingredients:\n${ingredients.trim()}`);
+  }
+
+  if (instructions.trim()) {
+    sections.push(`Instructions:\n${instructions.trim()}`);
+  }
+
+  return sections.join("\n\n");
+}
+
 // ─── Add Meal Modal ───────────────────────────────────────────────────────────
 
 function AddMealModal({
@@ -41,7 +55,8 @@ function AddMealModal({
 }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState(defaultCategory ?? "breakfast");
-  const [recipe, setRecipe] = useState("");
+  const [ingredients, setIngredients] = useState("");
+  const [instructions, setInstructions] = useState("");
   const [calories, setCalories] = useState("");
   const [servings, setServings] = useState("1");
   const [notes, setNotes] = useState("");
@@ -61,7 +76,7 @@ function AddMealModal({
         body: JSON.stringify({
           name: name.trim(),
           category,
-          recipe:   recipe   || undefined,
+          recipe: buildRecipe(ingredients, instructions) || undefined,
           calories: calories ? parseInt(calories) : undefined,
           servings: servings ? parseInt(servings) : 1,
           notes:    notes    || undefined,
@@ -77,122 +92,246 @@ function AddMealModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="bg-[#0f172a] border border-[#1e293b] rounded-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-slate-100">Add Meal</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-100 transition-colors">
-            <X className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-4xl rounded-[30px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)] max-h-[92vh] overflow-y-auto">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">
+              Meal Entry
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
+              Create a meal
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+              Capture the meal clearly: what it is, when you eat it, what goes in it, and how to make it.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+          >
+            Close
           </button>
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-4">
-            <AlertCircle className="w-4 h-4 text-red-400" />
-            <p className="text-red-400 text-sm">{error}</p>
+          <div className="mb-4 flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
+            <AlertCircle className="h-4 w-4 text-red-300" />
+            <p className="text-sm text-red-200">{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-                Meal Name *
-              </label>
+        <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
+          <div className="space-y-5">
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Meal Info
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Start with the name and when you usually eat it.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    Meal name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Greek yogurt bowl"
+                    className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {CATEGORIES.map((option) => {
+                    const Icon = option.icon;
+                    const active = category === option.key;
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => setCategory(option.key)}
+                        className={`rounded-2xl border px-4 py-4 text-left transition-all ${
+                          active
+                            ? `${option.border} ${option.bg} text-white`
+                            : "border-white/8 bg-white/[0.02] text-[var(--text-secondary)] hover:border-white/14 hover:text-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${option.bg}`}>
+                            <Icon className={`h-4 w-4 ${option.color}`} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold">{option.label}</div>
+                            <div className="text-xs text-inherit/80">
+                              {option.key === "snack" ? "Smaller quick option" : `${option.label} entry`}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Ingredients and Instructions
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Split the meal into what goes in it and how to make it.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    Ingredients
+                  </label>
+                  <textarea
+                    value={ingredients}
+                    onChange={(e) => setIngredients(e.target.value)}
+                    rows={6}
+                    placeholder={"- 200g Greek yogurt\n- 1 cup mixed berries\n- 30g granola\n- 1 tbsp honey"}
+                    className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    Instructions
+                  </label>
+                  <textarea
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    rows={6}
+                    placeholder={"1. Add yogurt to bowl\n2. Top with berries and granola\n3. Drizzle honey"}
+                    className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-5">
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Nutrition
+                </p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Add quick numbers if you know them.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    Calories
+                  </label>
+                  <input
+                    type="number"
+                    value={calories}
+                    onChange={(e) => setCalories(e.target.value)}
+                    placeholder="450"
+                    className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                    Servings
+                  </label>
+                  <input
+                    type="number"
+                    value={servings}
+                    onChange={(e) => setServings(e.target.value)}
+                    placeholder="1"
+                    min="1"
+                    className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                  Useful Notes
+                </p>
+              </div>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Greek Yogurt Bowl"
-                className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                autoFocus
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Prep tips, swaps, reminders, storage notes"
+                className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-                Category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+            </section>
+
+            <section className="rounded-[24px] border border-white/8 bg-[#101826] p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                Preview
+              </p>
+              <div className="mt-4 rounded-[22px] border border-white/8 bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-white">
+                      {name.trim() || "Your meal name"}
+                    </div>
+                    <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {CATEGORIES.find((item) => item.key === category)?.label ?? "Meal"} ·{" "}
+                      {calories.trim() ? `${calories} kcal` : "Calories optional"}
+                    </div>
+                  </div>
+                  <div className="rounded-full bg-white/6 px-3 py-1 text-xs text-[var(--text-secondary)]">
+                    {servings || "1"} serving{servings === "1" ? "" : "s"}
+                  </div>
+                </div>
+                <div className="mt-4 space-y-3 text-sm text-[var(--text-secondary)]">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      Ingredients
+                    </div>
+                    <div className="mt-1 line-clamp-4 whitespace-pre-wrap">
+                      {ingredients.trim() || "Ingredient list will show here."}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      Instructions
+                    </div>
+                    <div className="mt-1 line-clamp-4 whitespace-pre-wrap">
+                      {instructions.trim() || "Instructions will show here."}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
               >
-                {CATEGORIES.map((c) => (
-                  <option key={c.key} value={c.key} className="bg-[#0f172a] capitalize">{c.label}</option>
-                ))}
-              </select>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_40px_-18px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create meal"}
+              </button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-                Calories (approx)
-              </label>
-              <input
-                type="number"
-                value={calories}
-                onChange={(e) => setCalories(e.target.value)}
-                placeholder="450"
-                className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-                Servings
-              </label>
-              <input
-                type="number"
-                value={servings}
-                onChange={(e) => setServings(e.target.value)}
-                placeholder="1"
-                min="1"
-                className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-              Recipe / Ingredients
-            </label>
-            <textarea
-              value={recipe}
-              onChange={(e) => setRecipe(e.target.value)}
-              rows={5}
-              placeholder={"Ingredients:\n- 200g Greek yogurt\n- 1 cup mixed berries\n- 1 tbsp honey\n- 30g granola\n\nSteps:\n1. Add yogurt to bowl\n2. Top with berries and granola\n3. Drizzle honey"}
-              className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-              Notes
-            </label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Prep tips, substitutions, etc."
-              className="w-full bg-[#1e293b] border border-[#334155] text-slate-100 placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-sm font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Meal"}
-            </button>
           </div>
         </form>
       </div>

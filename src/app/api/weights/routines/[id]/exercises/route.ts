@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 interface RouteParams { params: Promise<{ id: string }> }
 
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         order: (last?.order ?? -1) + 1,
       },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(exercise, { status: 201 });
   } catch (error) {
@@ -106,6 +108,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       where: { routineId },
       orderBy: { order: "asc" },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ exercises, count: exercises.length });
   } catch (error) {
@@ -132,6 +135,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     }
 
     await prisma.weightExercise.delete({ where: { id: exerciseId } });
+    await markCoachContextDirty(session.user.id);
     return NextResponse.json({ message: "deleted" });
   } catch (error) {
     reportError({ context: "exercises DELETE", error, userId: session.user.id });

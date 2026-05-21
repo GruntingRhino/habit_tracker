@@ -11,16 +11,15 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Play,
   X,
   Calendar,
-  ChevronDown,
   Trash2,
   ClipboardList,
   TrendingUp,
   TrendingDown,
   Minus,
   BarChart2,
+  CircleDot,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
@@ -76,11 +75,20 @@ const PRIORITY_STYLES: Record<string, string> = {
   low: "text-green-400 bg-green-500/10 border-green-500/20",
 };
 
-const STATUS_COLUMNS: { key: string; label: string; color: string }[] = [
-  { key: "todo", label: "To Do", color: "text-slate-400" },
-  { key: "in_progress", label: "In Progress", color: "text-blue-400" },
-  { key: "completed", label: "Done", color: "text-green-400" },
-];
+const ACTIVE_TASK_STATUSES = new Set(["todo", "in_progress", "cancelled"]);
+
+const SECTION_META = {
+  active: {
+    label: "Active",
+    color: "text-[#c8deff]",
+    description: "Auto-sorted by priority and closest due date.",
+  },
+  completed: {
+    label: "Completed",
+    color: "text-emerald-300",
+    description: "Finished work drops here after the completion animation.",
+  },
+} as const;
 
 function formatMinutes(mins: number | null): string {
   if (!mins) return "—";
@@ -88,6 +96,50 @@ function formatMinutes(mins: number | null): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function priorityRank(priority: string): number {
+  switch (priority) {
+    case "urgent":
+      return 0;
+    case "high":
+      return 1;
+    case "medium":
+      return 2;
+    case "low":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function sortTasks(tasks: ProjectTask[]): ProjectTask[] {
+  return [...tasks].sort((left, right) => {
+    const leftIsCompleted = left.status === "completed";
+    const rightIsCompleted = right.status === "completed";
+
+    if (leftIsCompleted !== rightIsCompleted) {
+      return leftIsCompleted ? 1 : -1;
+    }
+
+    if (leftIsCompleted && rightIsCompleted) {
+      return (
+        new Date(right.completedAt ?? right.createdAt).getTime() -
+        new Date(left.completedAt ?? left.createdAt).getTime()
+      );
+    }
+
+    const priorityDelta = priorityRank(left.priority) - priorityRank(right.priority);
+    if (priorityDelta !== 0) return priorityDelta;
+
+    const leftDue = left.dueDate ? new Date(left.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    const rightDue = right.dueDate ? new Date(right.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+
+    if (left.order !== right.order) return left.order - right.order;
+
+    return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+  });
 }
 
 interface AddTaskFormProps {
@@ -98,6 +150,7 @@ interface AddTaskFormProps {
 
 function AddTaskForm({ projectId, onSaved, onCancel }: AddTaskFormProps) {
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -118,6 +171,7 @@ function AddTaskForm({ projectId, onSaved, onCancel }: AddTaskFormProps) {
         credentials: "include",
         body: JSON.stringify({
           title: title.trim(),
+          description: description.trim() || undefined,
           priority,
           estimatedMinutes: estimatedMinutes
             ? parseInt(estimatedMinutes)
@@ -139,52 +193,124 @@ function AddTaskForm({ projectId, onSaved, onCancel }: AddTaskFormProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-[#0a0f1e] border border-[#334155] rounded-lg p-3 mt-2"
+      className="rounded-[24px] border border-white/8 bg-[#0f172a] p-5"
     >
       {error && (
-        <p className="text-red-400 text-xs mb-2">{error}</p>
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+          {error}
+        </div>
       )}
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Task title..."
-        autoFocus
-        className="w-full bg-transparent text-slate-100 placeholder-slate-600 text-sm outline-none mb-2"
-      />
-      <div className="flex items-center gap-2">
-        <select
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
-          className="bg-[#1e293b] border border-[#334155] text-slate-400 rounded px-2 py-1 text-xs focus:outline-none"
-        >
-          <option value="high" className="bg-[#0f172a]">High</option>
-          <option value="medium" className="bg-[#0f172a]">Medium</option>
-          <option value="low" className="bg-[#0f172a]">Low</option>
-        </select>
-        <input
-          type="number"
-          value={estimatedMinutes}
-          onChange={(e) => setEstimatedMinutes(e.target.value)}
-          placeholder="Est. mins"
-          min={1}
-          className="bg-[#1e293b] border border-[#334155] text-slate-400 rounded px-2 py-1 text-xs focus:outline-none w-24 placeholder-slate-600"
-        />
-        <div className="flex gap-1.5 ml-auto">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
-          >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
-          </button>
+      <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-5">
+          <section className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Task Info
+              </p>
+              <p className="mt-1 text-sm text-slate-400">
+                Make the task concrete enough that it can be completed without ambiguity.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Task name
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Draft onboarding wireframes"
+                  autoFocus
+                  className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-blue-500/60"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Notes
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={4}
+                  placeholder="Optional details, acceptance criteria, or reminders."
+                  className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-blue-500/60"
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-5">
+          <section className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Priority
+              </p>
+            </div>
+            <div className="space-y-3">
+              {[
+                ["high", "High", "Needs attention soon."],
+                ["medium", "Medium", "Normal execution priority."],
+                ["low", "Low", "Can wait without much risk."],
+              ].map(([value, label, body]) => {
+                const active = priority === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setPriority(value)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                      active
+                        ? PRIORITY_STYLES[value]
+                        : "border-white/8 bg-white/[0.02] text-slate-400 hover:border-white/14 hover:text-white"
+                    }`}
+                  >
+                    <div className="text-sm font-semibold">{label}</div>
+                    <div className="mt-1 text-xs leading-5 text-inherit/80">{body}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Estimated time
+            </label>
+            <input
+              type="number"
+              value={estimatedMinutes}
+              onChange={(e) => setEstimatedMinutes(e.target.value)}
+              placeholder="45"
+              min={1}
+              className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-blue-500/60"
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              Minutes. Leave blank if you do not want to estimate it yet.
+            </p>
+          </section>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-400 transition-colors hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_40px_-18px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create task
+            </button>
+          </div>
         </div>
       </div>
     </form>
@@ -208,12 +334,14 @@ interface TaskCardProps {
 
 function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: TaskCardProps) {
   const [updating, setUpdating] = useState(false);
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   const priorityStyle =
     PRIORITY_STYLES[task.priority] ?? PRIORITY_STYLES.medium;
 
-  async function updateTask(data: Partial<{ status: string; actualMinutes: number }>) {
+  async function updateTask(
+    data: Partial<{ status: string; actualMinutes: number; completedAt: string }>
+  ) {
     setUpdating(true);
     try {
       const res = await fetch(
@@ -232,7 +360,6 @@ function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: Task
       // ignore
     } finally {
       setUpdating(false);
-      setShowStatusMenu(false);
     }
   }
 
@@ -252,36 +379,74 @@ function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: Task
     }
   }
 
+  async function completeTask() {
+    if (updating || task.status === "completed") return;
+
+    setCompleting(true);
+    window.setTimeout(() => {
+      void updateTask({
+        status: "completed",
+        completedAt: new Date().toISOString(),
+      });
+    }, 420);
+  }
+
+  const isCompleted = task.status === "completed";
+  const isOverdue = !!task.dueDate && !isCompleted && new Date(task.dueDate) < new Date();
+
   return (
-    <div className="bg-[#0a0f1e] border border-[#1e293b] rounded-lg p-3 group">
-      <div className="flex items-start gap-2 mb-2">
-        <span className="flex-1 text-slate-100 text-sm leading-snug">
+    <div
+      className={`group rounded-[22px] border p-4 transition-all ${
+        completing ? "queue-complete-burst border-emerald-400/30 bg-emerald-500/8" : "bg-[#0a0f1e] border-[#1e293b]"
+      }`}
+    >
+      <div className="mb-2 flex items-start gap-2">
+        <span className={`flex-1 text-sm leading-snug ${isCompleted ? "text-slate-500 line-through" : "text-slate-100"}`}>
           {task.title}
         </span>
         {updating ? (
           <Loader2 className="w-3.5 h-3.5 text-slate-400 animate-spin flex-shrink-0" />
         ) : (
-          <button
-            onClick={deleteTask}
-            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all flex-shrink-0"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1.5 opacity-0 transition-all group-hover:opacity-100">
+            {!isCompleted && (
+              <button
+                onClick={completeTask}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 transition-colors hover:bg-emerald-500/18"
+                title="Complete task"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              onClick={deleteTask}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 transition-colors hover:bg-red-500/18"
+              title="Delete task"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
 
       {task.description && (
-        <p className="text-slate-500 text-xs mb-2 leading-relaxed">
+        <p className="mb-3 text-xs leading-relaxed text-slate-500">
           {task.description}
         </p>
       )}
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2">
         <span
           className={`text-xs px-1.5 py-0.5 rounded border capitalize ${priorityStyle}`}
         >
           {task.priority}
         </span>
+
+        {!isCompleted && task.status === "in_progress" && (
+          <span className="inline-flex items-center gap-1 rounded border border-blue-500/20 bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-300">
+            <CircleDot className="h-3 w-3" />
+            In progress
+          </span>
+        )}
 
         {task.estimatedMinutes && (
           <span className="flex items-center gap-1 text-xs text-slate-500">
@@ -303,60 +468,20 @@ function TaskCard({ task, projectId, onUpdated, effortHours, effortLabel }: Task
           </span>
         )}
 
-        {/* Status dropdown */}
-        <div className="relative ml-auto">
-          <button
-            onClick={() => setShowStatusMenu(!showStatusMenu)}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-100 bg-[#1e293b] px-2 py-1 rounded transition-colors"
-          >
-            <span className="capitalize">{task.status.replace("_", " ")}</span>
-            <ChevronDown className="w-3 h-3" />
-          </button>
-          {showStatusMenu && (
-            <div className="absolute right-0 top-full mt-1 bg-[#0f172a] border border-[#1e293b] rounded-lg overflow-hidden z-10 min-w-[120px]">
-              {STATUS_COLUMNS.map((col) => (
-                <button
-                  key={col.key}
-                  onClick={() => updateTask({ status: col.key })}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-[#1e293b] transition-colors ${
-                    task.status === col.key
-                      ? "text-blue-400"
-                      : "text-slate-400"
-                  }`}
-                >
-                  {col.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {task.dueDate && (
+          <span className={`ml-auto inline-flex items-center gap-1 text-xs ${isOverdue ? "text-rose-300" : "text-slate-500"}`}>
+            <Calendar className="h-3 w-3" />
+            {new Date(task.dueDate).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}
+          </span>
+        )}
       </div>
-
-      {/* Action buttons */}
-      {task.status === "todo" && (
-        <button
-          onClick={() => updateTask({ status: "in_progress" })}
-          disabled={updating}
-          className="mt-2 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-        >
-          <Play className="w-3 h-3" />
-          Start
-        </button>
-      )}
-      {task.status === "in_progress" && (
-        <button
-          onClick={() => updateTask({ status: "completed" })}
-          disabled={updating}
-          className="mt-2 flex items-center gap-1.5 text-xs text-green-400 hover:text-green-300 transition-colors"
-        >
-          <CheckCircle2 className="w-3 h-3" />
-          Complete
-        </button>
-      )}
 
       {/* Timestamps */}
       {task.startedAt && (
-        <p className="text-xs text-slate-600 mt-1">
+        <p className="mt-2 text-xs text-slate-600">
           Started: {new Date(task.startedAt).toLocaleDateString()}
         </p>
       )}
@@ -403,7 +528,10 @@ export default function ProjectDetailPage() {
       }
       if (res.ok) {
         const data = await res.json();
-        setProject(data);
+        setProject({
+          ...data,
+          tasks: sortTasks(data.tasks ?? []),
+        });
       } else {
         setError("Failed to load project");
       }
@@ -444,7 +572,7 @@ export default function ProjectDetailPage() {
   }, [fetchAnalysis]);
 
   useEffect(() => {
-    if (project?.notes) setListText(project.notes);
+    setListText(project?.notes ?? "");
   }, [project?.notes]);
 
   async function handleGenerate() {
@@ -611,7 +739,7 @@ export default function ProjectDetailPage() {
   }
 
   async function deleteProject() {
-    if (!confirm("Delete this project and all its tasks?")) return;
+    if (!confirm("Delete this plan and all its tasks?")) return;
     try {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "DELETE",
@@ -636,7 +764,7 @@ export default function ProjectDetailPage() {
   if (error || !project) {
     return (
       <div className="p-6">
-        <p className="text-red-400">{error || "Project not found"}</p>
+        <p className="text-red-400">{error || "Queue item not found"}</p>
       </div>
     );
   }
@@ -651,15 +779,12 @@ export default function ProjectDetailPage() {
   const priorityStyle =
     PRIORITY_STYLES[project.priority] ?? PRIORITY_STYLES.medium;
 
-  const tasksByStatus: Record<string, ProjectTask[]> = {
-    todo: [],
-    in_progress: [],
-    completed: [],
-  };
-  for (const task of project.tasks) {
-    const col = task.status in tasksByStatus ? task.status : "todo";
-    tasksByStatus[col].push(task);
-  }
+  const activeTasks = sortTasks(
+    project.tasks.filter((task) => ACTIVE_TASK_STATUSES.has(task.status))
+  );
+  const completedTasksList = sortTasks(
+    project.tasks.filter((task) => task.status === "completed")
+  );
 
   return (
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto pb-20 lg:pb-6">
@@ -672,13 +797,16 @@ export default function ProjectDetailPage() {
         onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}
       >
         <ArrowLeft className="w-4 h-4" />
-        Projects
+        Plans
       </Link>
 
-      {/* Project header */}
+      {/* Plan header */}
       <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 mb-6">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex-1">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Plan
+            </p>
             <h1 className="text-xl font-bold text-slate-100 mb-1">
               {project.title}
             </h1>
@@ -699,12 +827,11 @@ export default function ProjectDetailPage() {
             >
               <option value="active" className="bg-[#0f172a]">Active</option>
               <option value="completed" className="bg-[#0f172a]">Completed</option>
-              <option value="archived" className="bg-[#0f172a]">Archived</option>
             </select>
             <button
               onClick={deleteProject}
               className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
-              title="Delete project"
+              title="Delete item"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -786,12 +913,12 @@ export default function ProjectDetailPage() {
           {generating ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Analyzing project specs...
+              Analyzing brief...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              Generate AI Checklist
+              Generate AI Breakdown
             </>
           )}
         </button>
@@ -820,17 +947,18 @@ export default function ProjectDetailPage() {
 
       {/* Paste List panel */}
       {showPastePanel && (
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-5">
+        <div className="mb-5 rounded-[24px] border border-white/8 bg-[#0f172a] p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-slate-100 font-semibold text-sm">Paste Task List</h3>
+              <h3 className="text-slate-100 font-semibold text-sm">Import Task List</h3>
               <p className="text-slate-500 text-xs mt-0.5">
-                One task per line. Format:{" "}
-                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name:priority</code>
-                {" "}or{" "}
-                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name:30m</code>
-                {" "}or just{" "}
-                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task Name</code>
+                Paste one task per line. Use plain text or add quick metadata like
+                {" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task:high</code>
+                {" "}
+                or
+                {" "}
+                <code className="text-emerald-400 bg-emerald-500/10 px-1 rounded">Task:30m</code>.
               </p>
             </div>
             <button
@@ -841,21 +969,26 @@ export default function ProjectDetailPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.15fr_0.85fr]">
             {/* Input */}
-            <div>
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <div className="mb-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Paste Tasks
+                </p>
+              </div>
               <textarea
                 value={pasteText}
                 onChange={(e) => { setPasteText(e.target.value); setPasteError(""); }}
                 placeholder={"Write business plan:high\nMarket research:2h\nBuild MVP:medium\nLaunch campaign"}
                 rows={8}
-                className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-emerald-500/50 resize-none font-mono"
+                className="w-full rounded-2xl border border-white/10 bg-[#0a0f1e] px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 resize-none font-mono"
               />
             </div>
 
             {/* Live preview */}
-            <div>
-              <p className="text-slate-500 text-xs mb-2">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 mb-3">
                 Preview — {parsedPreview.length} task{parsedPreview.length !== 1 ? "s" : ""} detected
               </p>
               <div className="space-y-1.5 max-h-[196px] overflow-y-auto">
@@ -863,10 +996,7 @@ export default function ProjectDetailPage() {
                   <p className="text-slate-600 text-xs italic">Start typing to see preview…</p>
                 ) : (
                   parsedPreview.map((t, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 bg-[#0a0f1e] border border-[#1e293b] rounded-lg px-3 py-2"
-                    >
+                    <div key={i} className="flex items-center gap-2 bg-[#0a0f1e] border border-[#1e293b] rounded-xl px-3 py-2.5">
                       <span className="flex-1 text-slate-200 text-xs truncate">{t.title}</span>
                       <span
                         className={`text-xs px-1.5 py-0.5 rounded border flex-shrink-0 ${
@@ -897,13 +1027,13 @@ export default function ProjectDetailPage() {
           </div>
 
           {pasteError && (
-            <div className="flex items-center gap-2 mt-3 text-red-400 text-xs">
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
               <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
               {pasteError}
             </div>
           )}
           {pasteSuccess && (
-            <div className="flex items-center gap-2 mt-3 text-emerald-400 text-xs">
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
               <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
               {pasteSuccess}
             </div>
@@ -927,12 +1057,14 @@ export default function ProjectDetailPage() {
 
       {/* List panel */}
       {showListPanel && (
-        <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-5">
+        <div className="mb-5 rounded-[24px] border border-white/8 bg-[#0f172a] p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-slate-100 font-semibold text-sm">Project List</h3>
+              <h3 className="text-slate-100 font-semibold text-sm">Reference List Editor</h3>
               <p className="text-slate-500 text-xs mt-0.5">
-                One item per line. Format:{" "}
+                Keep rules, notes, constraints, or reminders in a lightweight structured list.
+                Format:
+                {" "}
                 <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item:tag:note</code>
                 {" "}or{" "}
                 <code className="text-slate-300 bg-slate-500/10 px-1 rounded">Item:tag</code>
@@ -948,18 +1080,21 @@ export default function ProjectDetailPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Edit List
+              </p>
               <textarea
                 value={listText}
                 onChange={(e) => setListText(e.target.value)}
                 placeholder={"No external deps:rule:critical\nWrite tests first:rule\nValidate all input:security:high priority\nKeep it simple"}
                 rows={8}
-                className="w-full bg-[#0a0f1e] border border-[#334155] text-slate-100 placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-slate-500/50 resize-none font-mono"
+                className="w-full rounded-2xl border border-white/10 bg-[#0a0f1e] px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-slate-500/50 resize-none font-mono"
               />
             </div>
-            <div>
-              <p className="text-slate-500 text-xs mb-2">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 mb-3">
                 Preview — {listPreview.length} item{listPreview.length !== 1 ? "s" : ""} detected
               </p>
               <div className="space-y-1.5 max-h-[196px] overflow-y-auto">
@@ -1035,24 +1170,29 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* Task columns */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {STATUS_COLUMNS.map((col) => {
-          const colTasks = tasksByStatus[col.key] ?? [];
+      {/* Task sections */}
+      <div className="space-y-6">
+        {(["active", "completed"] as const).map((sectionKey) => {
+          const tasks = sectionKey === "active" ? activeTasks : completedTasksList;
+          const meta = SECTION_META[sectionKey];
+
           return (
-            <div key={col.key}>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className={`font-semibold text-sm ${col.color}`}>
-                  {col.label}
-                </h2>
-                <span className="text-slate-600 text-xs bg-[#1e293b] px-1.5 py-0.5 rounded-full">
-                  {colTasks.length}
-                </span>
+            <section key={sectionKey} className="rounded-2xl border border-[#1e293b] bg-[#0f172a] p-5">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className={`text-sm font-semibold ${meta.color}`}>{meta.label}</h2>
+                    <span className="rounded-full bg-[#1e293b] px-2 py-0.5 text-xs text-slate-500">
+                      {tasks.length}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">{meta.description}</p>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                {colTasks.map((task) => {
-                  const ta = analysis?.tasks.find((t) => t.taskId === task.id);
+              <div className="space-y-3">
+                {tasks.map((task) => {
+                  const ta = analysis?.tasks.find((item) => item.taskId === task.id);
                   return (
                     <TaskCard
                       key={task.id}
@@ -1066,13 +1206,16 @@ export default function ProjectDetailPage() {
                     />
                   );
                 })}
-                {colTasks.length === 0 && (
-                  <div className="border border-dashed border-[#1e293b] rounded-lg p-4 text-center">
-                    <p className="text-slate-600 text-xs">No tasks</p>
+
+                {tasks.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-[#1e293b] p-5 text-center">
+                    <p className="text-xs text-slate-600">
+                      {sectionKey === "active" ? "No active tasks." : "No completed tasks yet."}
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
+            </section>
           );
         })}
       </div>
@@ -1081,7 +1224,7 @@ export default function ProjectDetailPage() {
       {project.notes && (
         <div className="mt-6 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-100 text-sm">List</h2>
+            <h2 className="font-semibold text-slate-100 text-sm">Reference List</h2>
             <button
               onClick={() => { setShowListPanel(true); setShowPastePanel(false); setShowAddTask(false); }}
               className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
@@ -1111,7 +1254,7 @@ export default function ProjectDetailPage() {
       {project.specs && (
         <div className="mt-6 bg-[#0f172a] border border-[#1e293b] rounded-xl p-5">
           <h2 className="font-semibold text-slate-100 mb-3 text-sm">
-            Project Specs
+            Item Brief
           </h2>
           <p className="text-slate-400 text-sm leading-relaxed whitespace-pre-wrap">
             {project.specs}

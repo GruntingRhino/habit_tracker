@@ -29,7 +29,7 @@ export default function CoachActionButtons({
         const isHabit = action.type === "add_habit";
         const Icon = applied ? CheckCircle2 : isHabit ? PlusCircle : FolderPlus;
         const label = applied
-          ? isHabit ? "Added to habits" : "Added to projects"
+          ? isHabit ? "Added to habits" : "Added to plans"
           : action.label;
 
         return (

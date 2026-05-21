@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 const exerciseLogSchema = z.object({
   exerciseId: z.string().cuid().optional(),
@@ -87,6 +88,7 @@ export async function POST(req: NextRequest) {
         exerciseLogs: true,
       },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(workoutSession, { status: 201 });
   } catch (error) {
@@ -109,6 +111,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     await prisma.workoutSession.delete({ where: { id: sessionId } });
+    await markCoachContextDirty(session.user.id);
     return NextResponse.json({ message: "deleted" });
   } catch (error) {
     reportError({ context: "sessions DELETE", error, userId: session.user.id });

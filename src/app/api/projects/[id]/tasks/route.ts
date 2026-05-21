@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : undefined,
       },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(task, { status: 201 });
   } catch (error) {
@@ -162,6 +164,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         })
       )
     );
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ tasks: created, count: created.length }, { status: 201 });
   } catch (error) {
@@ -209,6 +212,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         prisma.projectTask.update({ where: { id: t.id }, data: { order: t.order } })
       )
     );
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ message: "reordered", count: updates.length });
   } catch (error) {

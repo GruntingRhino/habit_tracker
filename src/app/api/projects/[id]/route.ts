@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -97,6 +98,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
             : undefined,
       },
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -123,6 +125,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     }
 
     await prisma.project.delete({ where: { id } });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ message: "deleted" });
   } catch (error) {

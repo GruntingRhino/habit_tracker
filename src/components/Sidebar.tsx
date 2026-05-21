@@ -31,7 +31,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   return (
     <aside
-      className="flex flex-col h-screen w-64 flex-shrink-0 relative"
+      className="relative flex h-screen w-full flex-shrink-0 flex-col"
       style={{
         background: "linear-gradient(180deg, #060e20 0%, #070d1d 100%)",
         borderRight: "1px solid rgba(40, 76, 140, 0.25)",

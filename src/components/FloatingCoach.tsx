@@ -45,7 +45,7 @@ function FloatingCoachPanel() {
 
   return (
     <div
-      className="fixed bottom-20 right-5 z-50 flex flex-col rounded-2xl overflow-hidden w-[340px] sm:w-[380px] lg:right-6 lg:bottom-24"
+      className="fixed bottom-20 right-3 z-50 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl sm:right-5 sm:w-[380px] lg:bottom-24 lg:right-6"
       style={{
         height: "min(560px, calc(100vh - 140px))",
         background: "linear-gradient(180deg, #060e20 0%, #070d1d 100%)",
@@ -295,7 +295,7 @@ export default function FloatingCoach() {
       <button
         onClick={() => setOpen((value) => !value)}
         aria-label={open ? "Close AI Coach" : "Open AI Coach"}
-        className="fixed bottom-5 right-5 z-50 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 lg:bottom-6 lg:right-6"
+        className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full flex items-center justify-center transition-all duration-200 sm:bottom-5 sm:right-5 lg:bottom-6 lg:right-6"
         style={{
           background: open
             ? "linear-gradient(135deg, #1e3050, #334d6e)"

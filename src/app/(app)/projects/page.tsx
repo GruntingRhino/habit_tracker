@@ -597,7 +597,7 @@ export default function ProjectsPage() {
                     isCompleting ? "queue-complete-burst border-emerald-400/30 bg-emerald-500/8" : ""
                   }`}
                 >
-                  <div className="pr-12">
+                  <div className="sm:pr-12">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityStyle}`}>
                         {priorityLabel}
@@ -611,7 +611,7 @@ export default function ProjectsPage() {
 
                     <div className="mt-4 flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
-                        <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--text-primary)]">
+                        <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-primary)] sm:text-xl">
                           {item.title}
                         </h2>
                         {item.description && (
@@ -659,7 +659,7 @@ export default function ProjectsPage() {
                   </div>
                 </Link>
 
-                <div className="absolute right-4 top-4 flex items-center gap-2 opacity-0 transition-all group-hover:opacity-100">
+                <div className="mt-3 flex items-center justify-end gap-2 sm:absolute sm:right-4 sm:top-4 sm:mt-0 sm:justify-start sm:opacity-0 sm:transition-all sm:group-hover:opacity-100">
                   {!isCompleted && (
                     <button
                       onClick={(e) => {

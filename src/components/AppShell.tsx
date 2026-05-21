@@ -32,7 +32,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile sidebar (slides in from left) ── */}
       <div
-        className="fixed inset-y-0 left-0 z-50 lg:hidden transition-transform duration-300 ease-out"
+        className="fixed inset-y-0 left-0 z-50 w-[min(86vw,18rem)] lg:hidden transition-transform duration-300 ease-out"
         style={{ transform: open ? "translateX(0)" : "translateX(-100%)" }}
       >
         <Sidebar onClose={() => setOpenPath(null)} />
@@ -52,7 +52,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           setOpenPath((current) => (current === pathname ? null : pathname))
         }
         aria-label={open ? "Close menu" : "Open menu"}
-        className="fixed bottom-5 left-5 z-50 lg:hidden w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
+        className="fixed bottom-4 left-4 z-50 lg:hidden h-12 w-12 rounded-full flex items-center justify-center transition-all duration-200 sm:bottom-5 sm:left-5"
         style={{
           background: open
             ? "linear-gradient(135deg, #334d6e, #1e3050)"

@@ -84,7 +84,7 @@ function NoteCard({
 
   return (
     <article className="rounded-[22px] border border-white/8 bg-[rgba(8,14,28,0.82)] p-4 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.9)]">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
             <TypeIcon className="h-4 w-4 text-[var(--accent)]" />
@@ -108,7 +108,7 @@ function NoteCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           {isTodo && (
             <button
               onClick={() => onToggleComplete(note)}
@@ -322,7 +322,7 @@ export default function NotesPage() {
 
       <form
         onSubmit={handleCreate}
-        className="mb-6 grid gap-5 rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)] lg:grid-cols-[1.2fr_0.8fr]"
+        className="mb-6 grid gap-5 rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-4 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)] sm:p-6 lg:grid-cols-[1.2fr_0.8fr]"
       >
         <div className="space-y-5">
           <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
@@ -442,7 +442,7 @@ export default function NotesPage() {
       ) : (
         <div className="space-y-8">
           <section>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">Active To-dos</h2>
                 <p className="text-sm text-[var(--text-secondary)]">Short execution items that still need to move.</p>
@@ -472,7 +472,7 @@ export default function NotesPage() {
           </section>
 
           <section>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">Notes</h2>
                 <p className="text-sm text-[var(--text-secondary)]">Reference material, reminders, and loose context.</p>
@@ -502,7 +502,7 @@ export default function NotesPage() {
           </section>
 
           <section>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">Completed To-dos</h2>
                 <p className="text-sm text-[var(--text-secondary)]">Finished small items stay here until you clear them out.</p>

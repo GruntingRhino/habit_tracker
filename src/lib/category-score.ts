@@ -1,43 +1,33 @@
 import { Prisma, type DailyEntry } from "@/generated/prisma";
 import prisma from "@/lib/prisma";
-import { calculateScores, type CategoryScores, type DailyEntryInput } from "@/lib/scoring";
+import {
+  calculateOverallScore,
+  calculateScores,
+  type CategoryScores,
+  type DailyEntryInput,
+} from "@/lib/scoring";
+import { extractScoringSettings } from "@/lib/scoring-settings";
+import { normalizeHabitCategory } from "@/lib/habit-category";
 import { getStartOfDay } from "@/lib/utils";
 import { subDays } from "date-fns";
 
-const SCORE_KEYS = [
-  "physical",
-  "financial",
-  "discipline",
-  "focus",
-  "mental",
-  "appearance",
-] as const;
-
-const MAX_DISCIPLINE_HABIT_BONUS = 2;
-const MAX_CATEGORY_HABIT_BONUS = 1.5;
-
-type ScoreKey = (typeof SCORE_KEYS)[number];
+type ScoreKey = "physical" | "financial" | "discipline" | "focus" | "mental";
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 // Habit categories are broader than score categories, so unmapped buckets
 // fall back to discipline-only and the closest score dimension gets the bump.
 const HABIT_CATEGORY_MAP: Record<string, ScoreKey | null> = {
-  appearance: "appearance",
   discipline: "discipline",
   finance: "financial",
   financial: "financial",
   focus: "focus",
-  general: null,
+  general: "discipline",
   health: "physical",
   mental: "mental",
   physical: "physical",
   productivity: "focus",
   social: "mental",
 };
-
-function clampScore(value: number): number {
-  return Math.max(0, Math.min(10, value));
-}
 
 function roundScore(value: number): number {
   return Math.round(value * 10) / 10;
@@ -80,19 +70,7 @@ function mapDailyEntryToInput(entry: DailyEntry): DailyEntryInput {
 }
 
 function mapHabitCategoryToScoreKey(category: string | null | undefined): ScoreKey | null {
-  if (!category) return null;
-  return HABIT_CATEGORY_MAP[category.toLowerCase()] ?? null;
-}
-
-function calculateOverall(scores: Omit<CategoryScores, "overall">): number {
-  return clampScore(
-    scores.physical * 0.20 +
-      scores.financial * 0.15 +
-      scores.discipline * 0.20 +
-      scores.focus * 0.20 +
-      scores.mental * 0.15 +
-      scores.appearance * 0.10
-  );
+  return HABIT_CATEGORY_MAP[normalizeHabitCategory(category)] ?? null;
 }
 
 function calcRecentStreak(logs: { date: Date; completed: boolean }[]): number {
@@ -132,50 +110,6 @@ function calcRecentStreak(logs: { date: Date; completed: boolean }[]): number {
   return streak;
 }
 
-function applyHabitBonuses(params: {
-  baseScores: CategoryScores;
-  totalHabits: number;
-  completedHabits: number;
-  categoryRates: Partial<Record<ScoreKey, number>>;
-}): CategoryScores {
-  const { baseScores, totalHabits, completedHabits, categoryRates } = params;
-
-  const nextScores: Omit<CategoryScores, "overall"> = {
-    physical: baseScores.physical,
-    financial: baseScores.financial,
-    discipline: baseScores.discipline,
-    focus: baseScores.focus,
-    mental: baseScores.mental,
-    appearance: baseScores.appearance,
-  };
-
-  if (totalHabits > 0) {
-    nextScores.discipline = clampScore(
-      nextScores.discipline +
-        (completedHabits / totalHabits) * MAX_DISCIPLINE_HABIT_BONUS
-    );
-  }
-
-  for (const key of SCORE_KEYS) {
-    const rate = categoryRates[key];
-    if (!rate) continue;
-
-    nextScores[key] = clampScore(
-      nextScores[key] + rate * MAX_CATEGORY_HABIT_BONUS
-    );
-  }
-
-  return {
-    physical: roundScore(nextScores.physical),
-    financial: roundScore(nextScores.financial),
-    discipline: roundScore(nextScores.discipline),
-    focus: roundScore(nextScores.focus),
-    mental: roundScore(nextScores.mental),
-    appearance: roundScore(nextScores.appearance),
-    overall: roundScore(calculateOverall(nextScores)),
-  };
-}
-
 export async function recomputeCategoryScoreForDate(
   userId: string,
   date: Date,
@@ -183,7 +117,7 @@ export async function recomputeCategoryScoreForDate(
 ) {
   const scoreDate = getStartOfDay(date);
 
-  const [entry, activeHabits, allLogs, completedThisWeek, overdueCount, totalActive] =
+  const [entry, activeHabits, allLogs, completedThisWeek, overdueCount, totalActive, coachProfile] =
     await Promise.all([
       db.dailyEntry.findFirst({
         where: { userId, date: scoreDate },
@@ -223,6 +157,10 @@ export async function recomputeCategoryScoreForDate(
       db.project.count({
         where: { userId, status: "active" },
       }),
+      db.coachProfile.findUnique({
+        where: { userId },
+        select: { preferences: true },
+      }),
     ]);
 
   let completedHabits = 0;
@@ -254,22 +192,27 @@ export async function recomputeCategoryScoreForDate(
         habitCompletionRate,
         projectStats: { completedThisWeek, overdueCount, totalActive },
         recentStreak,
+        scoringSettings: extractScoringSettings(coachProfile?.preferences),
+        categoryHabitRates: Object.fromEntries(
+          Object.entries(categoryStats).map(([key, stats]) => [
+            key,
+            stats.total > 0 ? stats.completed / stats.total : 0,
+          ])
+        ) as Partial<Record<ScoreKey, number>>,
       })
     : zeroScores();
-
-  const categoryRates = Object.fromEntries(
-    Object.entries(categoryStats).map(([key, stats]) => [
-      key,
-      stats.total > 0 ? stats.completed / stats.total : 0,
-    ])
-  ) as Partial<Record<ScoreKey, number>>;
-
-  const nextScores = applyHabitBonuses({
-    baseScores,
-    totalHabits,
-    completedHabits,
-    categoryRates,
-  });
+  const nextScores = {
+    ...baseScores,
+    overall: roundScore(
+      calculateOverallScore({
+        physical: baseScores.physical,
+        financial: baseScores.financial,
+        discipline: baseScores.discipline,
+        focus: baseScores.focus,
+        mental: baseScores.mental,
+      })
+    ),
+  };
 
   const existing = await db.categoryScore.findFirst({
     where: { userId, date: scoreDate },
@@ -285,7 +228,7 @@ export async function recomputeCategoryScoreForDate(
         discipline: nextScores.discipline,
         focus: nextScores.focus,
         mental: nextScores.mental,
-        appearance: nextScores.appearance,
+        appearance: 0,
         overall: nextScores.overall,
       },
     });
@@ -301,7 +244,7 @@ export async function recomputeCategoryScoreForDate(
       discipline: nextScores.discipline,
       focus: nextScores.focus,
       mental: nextScores.mental,
-      appearance: nextScores.appearance,
+      appearance: 0,
       overall: nextScores.overall,
     },
   });

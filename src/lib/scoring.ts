@@ -1,4 +1,10 @@
 import { assessWorkout, calcTrainingLoadPoints } from "@/lib/workout";
+import {
+  DEFAULT_SCORING_SETTINGS,
+  SCORE_CATEGORY_KEYS,
+  type ScoreCategoryKey,
+  type ScoringSettings,
+} from "@/lib/scoring-settings";
 
 export interface DailyEntryInput {
   sleepHours?: number | null;
@@ -30,9 +36,11 @@ export interface ProjectStats {
 
 export interface ScoreParams {
   entry: DailyEntryInput;
-  habitCompletionRate: number; // 0–1
+  habitCompletionRate: number;
   projectStats: ProjectStats;
-  recentStreak: number; // days
+  recentStreak: number;
+  scoringSettings?: ScoringSettings;
+  categoryHabitRates?: Partial<Record<ScoreCategoryKey, number>>;
 }
 
 export interface CategoryScores {
@@ -49,220 +57,224 @@ function clamp(value: number, min = 0, max = 10): number {
   return Math.max(min, Math.min(max, value));
 }
 
-// Physical: strict sleep windows, requires real training for high scores
-function calcPhysical(entry: DailyEntryInput): number {
-  let score = 0;
-  const sleep = entry.sleepHours ?? 0;
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function ratio(value: number, target: number): number {
+  if (target <= 0) return 0;
+  return clamp(value / target, 0, 1);
+}
+
+function getStrictnessFactor(settings: ScoringSettings): number {
+  switch (settings.strictness) {
+    case "lenient":
+      return 0.9;
+    case "strict":
+      return 1.12;
+    default:
+      return 1;
+  }
+}
+
+function getAdjustedTarget(target: number, settings: ScoringSettings): number {
+  return target * getStrictnessFactor(settings);
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function weightedAverage(parts: Array<{ value: number; weight: number }>): number {
+  const totalWeight = parts.reduce((sum, part) => sum + part.weight, 0);
+  if (totalWeight <= 0) return 0;
+
+  return parts.reduce((sum, part) => sum + part.value * part.weight, 0) / totalWeight;
+}
+
+function getTaskCompletionRatio(entry: DailyEntryInput): number {
+  const planned = entry.tasksPlanned ?? 0;
+  const completed = entry.tasksCompleted ?? 0;
+  if (planned <= 0) return completed > 0 ? 1 : 0;
+  return clamp(completed / planned, 0, 1.2);
+}
+
+function getOverduePenalty(projectStats: ProjectStats, perProject: number, maxPenalty: number): number {
+  return Math.min(projectStats.overdueCount * perProject, maxPenalty);
+}
+
+function calcPhysical(entry: DailyEntryInput, settings: ScoringSettings): number {
   const workout = assessWorkout(entry);
+  const sleepHours = entry.sleepHours ?? 0;
+  const steps = entry.steps ?? 0;
+  const trainingLoadMinutes = workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0);
 
-  // Sleep scoring — strict window, <6h = 0
-  if (sleep >= 7.5 && sleep <= 8.5) score += 4;
-  else if (sleep >= 6.5 && sleep < 7.5) score += 2.5;
-  else if (sleep > 8.5 && sleep <= 9.5) score += 2.5;
-  else if (sleep >= 6 && sleep < 6.5) score += 1;
-  else if (sleep > 9.5) score += 1;
-  // sleep < 6 = 0 pts (no sleep, no score)
+  const sleepTarget = getAdjustedTarget(8, settings);
+  const stepTarget = getAdjustedTarget(10000, settings);
 
-  // Workout quality is earned from structured, sufficient training.
-  score += workout.qualityPoints;
+  const sleepScore = clamp(10 - Math.abs(sleepHours - sleepTarget) * 2.2, 0, 10);
+  const movementScore = ratio(steps, stepTarget) * 10;
+  const trainingScore = clamp(workout.qualityPoints + calcTrainingLoadPoints(trainingLoadMinutes), 0, 10);
+  const calorieAwareness = entry.caloriesEaten && entry.caloriesEaten > 0 ? 7 : 4;
 
-  // Total training load still matters for full physical points.
-  const trainingLoadMinutes =
-    workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0);
-  score += calcTrainingLoadPoints(trainingLoadMinutes);
-
-  return clamp(score);
+  return clamp(
+    weightedAverage([
+      { value: trainingScore, weight: 0.45 },
+      { value: movementScore, weight: 0.25 },
+      { value: sleepScore, weight: 0.2 },
+      { value: calorieAwareness, weight: 0.1 },
+    ])
+  );
 }
 
-// Financial: income activity is the primary driver — missing it is a hard cap
-function calcFinancial(entry: DailyEntryInput): number {
-  let score = 0;
+function calcFinancial(entry: DailyEntryInput, settings: ScoringSettings): number {
+  const ageYears = settings.ageYears;
+  const incomeSignal = entry.incomeActivity ? 10 : 0;
+  const savingsSignal = entry.moneySaved && entry.moneySaved > 0 ? 8 : 4;
+  const disciplineSignal =
+    ageYears !== null && ageYears <= 22
+      ? average([
+          ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(4, settings)) * 10,
+          clamp(getTaskCompletionRatio(entry) * 10, 0, 10),
+        ])
+      : savingsSignal;
 
-  // Did you do something to make money today? This is THE question.
-  // Without it you're just spending, not building — caps effective score at ~5
-  if (entry.incomeActivity) {
-    score += 4;
-  }
-
-  const spent = entry.moneySpent ?? 0;
-  const saved = entry.moneySaved ?? 0;
-
-  if (spent === 0 && saved === 0) {
-    // No financial data — base 2pts if income activity done, else 1pt
-    score += entry.incomeActivity ? 2 : 1;
-  } else {
-    const total = spent + saved;
-    const ratio = total > 0 ? saved / total : 0;
-    // Savings ratio: up to 4pts
-    score += clamp(ratio * 4, 0, 4);
-    // Bonus: actually saved money (not just zero spend)
-    if (saved > 0) score += clamp((saved / 100) * 2, 0, 2);
-  }
-
-  return clamp(score);
+  return clamp(
+    weightedAverage([
+      { value: incomeSignal, weight: ageYears !== null && ageYears <= 22 ? 0.45 : 0.65 },
+      { value: disciplineSignal, weight: ageYears !== null && ageYears <= 22 ? 0.35 : 0.2 },
+      { value: savingsSignal, weight: 0.2 },
+    ])
+  );
 }
 
-// Discipline: derived from habits, daily self-control signals, and consistency
 function calcDiscipline(
   entry: DailyEntryInput,
   habitCompletionRate: number,
-  recentStreak: number
+  recentStreak: number,
+  projectStats: ProjectStats,
+  settings: ScoringSettings,
+  categoryHabitRates?: Partial<Record<ScoreCategoryKey, number>>
 ): number {
-  let score = 0;
+  const taskRatio = getTaskCompletionRatio(entry);
+  const habitRate = average([
+    habitCompletionRate,
+    categoryHabitRates?.discipline ?? 0,
+  ]);
+  const streakScore = ratio(recentStreak, settings.strictness === "strict" ? 21 : 14) * 10;
+  const entryScore = average([
+    clamp(taskRatio * 10, 0, 10),
+    ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(4, settings)) * 10,
+    clamp(10 - (entry.screenTimeHours ?? 0) * 1.4, 0, 10),
+  ]);
 
-  // Habit completion — strict thresholds (4pts max)
-  if (habitCompletionRate >= 0.9) score += 4;
-  else if (habitCompletionRate >= 0.75) score += 3;
-  else if (habitCompletionRate >= 0.5) score += 1.5;
-  else score += 0; // below 50% = zero — no participation trophy
-
-  // Streak: consistency over time (2pts max)
-  if (recentStreak >= 30) score += 2;
-  else if (recentStreak >= 14) score += 1.5;
-  else if (recentStreak >= 7) score += 1;
-  else if (recentStreak >= 3) score += 0.5;
-
-  // Task completion: did you do what you planned? (2pts max)
-  const planned = entry.tasksPlanned ?? 0;
-  const completed = entry.tasksCompleted ?? 0;
-  if (planned > 0) {
-    const ratio = completed / planned;
-    if (ratio >= 1) score += 2;
-    else if (ratio >= 0.75) score += 1.5;
-    else if (ratio >= 0.5) score += 0.75;
-    // below 50% = 0 pts
-  }
-
-  // Screen time discipline: low screen time = self-control (1pt max, -0.5 penalty)
-  const screen = entry.screenTimeHours;
-  if (screen != null) {
-    if (screen <= 2) score += 1;
-    else if (screen <= 4) score += 0.5;
-    else if (screen > 5) score -= 0.5; // active penalty for excessive screen time
-  }
-
-  // Sleep discipline: staying in healthy window shows body regulation (0.5pt)
-  const sleep = entry.sleepHours ?? 0;
-  if (sleep >= 7 && sleep <= 9) score += 0.5;
-
-  // Spiritual discipline: rightWithGod check (0.5pt)
-  if (entry.rightWithGod) score += 0.5;
-
-  return clamp(score);
+  return clamp(
+    weightedAverage([
+      { value: entryScore, weight: 0.45 },
+      { value: habitRate * 10, weight: 0.4 },
+      { value: streakScore, weight: 0.15 },
+    ]) - getOverduePenalty(projectStats, 0.8, 2.5)
+  );
 }
 
-// Focus: requires substantial deep work, penalizes high screen time
-function calcFocus(entry: DailyEntryInput): number {
-  let score = 0;
-  const dw = entry.deepWorkHours ?? 0;
+function calcFocus(
+  entry: DailyEntryInput,
+  projectStats: ProjectStats,
+  settings: ScoringSettings,
+  categoryHabitRates?: Partial<Record<ScoreCategoryKey, number>>
+): number {
+  const deepWorkScore = ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(5, settings)) * 10;
+  const taskScore = clamp(getTaskCompletionRatio(entry) * 10, 0, 10);
+  const junkPenaltyBase = entry.screenTimeHours ?? 0;
+  const screenScore = clamp(10 - junkPenaltyBase * (settings.strictness === "strict" ? 2.1 : 1.7), 0, 10);
+  const habitScore = average([
+    categoryHabitRates?.focus ?? 0,
+    categoryHabitRates?.discipline ?? 0,
+  ]) * 10;
 
-  // Deep work — 6h = max, steep curve
-  if (dw >= 6) score += 6;
-  else if (dw >= 4) score += 4.5;
-  else if (dw >= 2) score += 3;
-  else if (dw >= 1) score += 1.5;
-  else score += 0; // no deep work = 0 from this dimension
-
-  const screen = entry.screenTimeHours ?? 0;
-  // Screen time penalty/bonus
-  if (screen <= 2) score += 2;
-  else if (screen <= 4) score += 1;
-  else if (screen <= 5) score += 0.5;
-  else if (screen > 5) score -= 1; // active penalty for excessive screen time
-
-  const planned = entry.tasksPlanned ?? 0;
-  const completed = entry.tasksCompleted ?? 0;
-  if (planned > 0) score += clamp((completed / planned) * 2, 0, 2);
-
-  return clamp(score);
+  return clamp(
+    weightedAverage([
+      { value: deepWorkScore, weight: 0.4 },
+      { value: taskScore, weight: 0.3 },
+      { value: screenScore, weight: 0.2 },
+      { value: habitScore, weight: 0.1 },
+    ]) - getOverduePenalty(projectStats, 0.7, 2)
+  );
 }
 
-// Mental: uses objective data — sleep quality, day rating, screen balance
-function calcMental(entry: DailyEntryInput): number {
-  let score = 0;
+function calcMental(
+  entry: DailyEntryInput,
+  settings: ScoringSettings,
+  categoryHabitRates?: Partial<Record<ScoreCategoryKey, number>>
+): number {
+  const sleepScore = clamp(10 - Math.abs((entry.sleepHours ?? 0) - getAdjustedTarget(8, settings)) * 1.8, 0, 10);
+  const reflectionScore = entry.overallDayRating ? entry.overallDayRating : 5;
+  const deepWorkScore = ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(4, settings)) * 10;
+  const screenBalanceScore = clamp(10 - (entry.screenTimeHours ?? 0) * 1.3, 0, 10);
+  const habitScore = (categoryHabitRates?.mental ?? 0) * 10;
 
-  // Day rating (1-10 scale) — strict
-  const rating = entry.overallDayRating ?? 0;
-  if (rating >= 9) score += 5;
-  else if (rating >= 7) score += 3.5;
-  else if (rating >= 5) score += 2;
-  else if (rating >= 3) score += 1;
-  else if (rating > 0) score += 0.5;
-  else score += 2.5; // not rated → neutral
-
-  // Sleep — must be in quality range for mental recovery
-  const sleep = entry.sleepHours ?? 0;
-  if (sleep >= 7.5 && sleep <= 8.5) score += 3;
-  else if (sleep >= 6.5) score += 1.5;
-  else if (sleep >= 6) score += 0.5;
-  // below 6 = no mental recovery points
-
-  // Screen time impact on mental clarity
-  const screen = entry.screenTimeHours ?? 0;
-  if (screen <= 2) score += 2;
-  else if (screen <= 4) score += 1;
-  // above 4h = 0 mental pts from screen
-
-  return clamp(score);
+  return clamp(
+    weightedAverage([
+      { value: reflectionScore, weight: 0.3 },
+      { value: sleepScore, weight: 0.25 },
+      { value: deepWorkScore, weight: 0.15 },
+      { value: screenBalanceScore, weight: 0.15 },
+      { value: habitScore, weight: 0.15 },
+    ])
+  );
 }
 
-// Appearance: requires workout + training + movement + sleep all good for 10/10
-function calcAppearance(entry: DailyEntryInput): number {
-  let score = 0;
-  const workout = assessWorkout(entry);
-  const trainingLoadMinutes =
-    workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0);
-
-  score += workout.qualityPoints;
-
-  if (trainingLoadMinutes >= 60) score += 2;
-  else if (trainingLoadMinutes >= 30) score += 1;
-
-  const steps = entry.steps ?? 0;
-  if (steps >= 10000) score += 2;
-  else if (steps >= 7000) score += 1.5;
-  else if (steps >= 5000) score += 1;
-  else if (steps > 0) score += 0.5;
-
-  const sleep = entry.sleepHours ?? 0;
-  if (sleep >= 7.5 && sleep <= 8.5) score += 2;
-  else if (sleep >= 6.5) score += 1;
-
-  // Calorie awareness bonus (tracking counts, reasonable range = 1pt)
-  const cal = entry.caloriesEaten ?? 0;
-  if (cal >= 1400 && cal <= 3000) score += 1;
-
-  return clamp(score);
+export function calculateOverallScore(scores: Pick<CategoryScores, "physical" | "financial" | "discipline" | "focus" | "mental">): number {
+  return clamp(
+    scores.physical * 0.25 +
+      scores.financial * 0.15 +
+      scores.discipline * 0.2 +
+      scores.focus * 0.2 +
+      scores.mental * 0.2
+  );
 }
 
 export function calculateScores(params: ScoreParams): CategoryScores {
-  const { entry, habitCompletionRate, projectStats, recentStreak } = params;
-  void projectStats;
+  const {
+    entry,
+    habitCompletionRate,
+    projectStats,
+    recentStreak,
+    categoryHabitRates,
+    scoringSettings = DEFAULT_SCORING_SETTINGS,
+  } = params;
 
-  const physical   = calcPhysical(entry);
-  const financial  = calcFinancial(entry);
-  const discipline = calcDiscipline(entry, habitCompletionRate, recentStreak);
-  const focus      = calcFocus(entry);
-  const mental     = calcMental(entry);
-  const appearance = calcAppearance(entry);
-
-  const overall = clamp(
-    physical   * 0.20 +
-    financial  * 0.15 +
-    discipline * 0.20 +
-    focus      * 0.20 +
-    mental     * 0.15 +
-    appearance * 0.10
+  const physical = calcPhysical(entry, scoringSettings);
+  const financial = calcFinancial(entry, scoringSettings);
+  const discipline = calcDiscipline(
+    entry,
+    habitCompletionRate,
+    recentStreak,
+    projectStats,
+    scoringSettings,
+    categoryHabitRates
   );
+  const focus = calcFocus(entry, projectStats, scoringSettings, categoryHabitRates);
+  const mental = calcMental(entry, scoringSettings, categoryHabitRates);
 
-  const r = (v: number) => Math.round(v * 10) / 10;
+  const overall = calculateOverallScore({
+    physical,
+    financial,
+    discipline,
+    focus,
+    mental,
+  });
+
   return {
-    physical:   r(physical),
-    financial:  r(financial),
-    discipline: r(discipline),
-    focus:      r(focus),
-    mental:     r(mental),
-    appearance: r(appearance),
-    overall:    r(overall),
+    physical: round1(physical),
+    financial: round1(financial),
+    discipline: round1(discipline),
+    focus: round1(focus),
+    mental: round1(mental),
+    appearance: 0,
+    overall: round1(overall),
   };
 }
+
+export const SCORE_CATEGORIES = SCORE_CATEGORY_KEYS;

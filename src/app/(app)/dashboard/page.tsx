@@ -8,6 +8,21 @@ import { format } from "date-fns";
 import DashboardTabs from "@/components/DashboardTabs";
 import type { DashboardTabsProps } from "@/components/DashboardTabs";
 
+function priorityRank(priority: string): number {
+  switch (priority) {
+    case "urgent":
+      return 0;
+    case "high":
+      return 1;
+    case "medium":
+      return 2;
+    case "low":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
@@ -69,8 +84,18 @@ export default async function DashboardPage() {
     include: {
       tasks: { select: { id: true, status: true } },
     },
-    orderBy: { createdAt: "desc" },
-    take: 3,
+    orderBy: { createdAt: "asc" },
+  });
+
+  const sortedProjects = [...projects].sort((left, right) => {
+    const priorityDelta = priorityRank(left.priority) - priorityRank(right.priority);
+    if (priorityDelta !== 0) return priorityDelta;
+
+    const leftDeadline = left.deadline ? new Date(left.deadline).getTime() : Number.POSITIVE_INFINITY;
+    const rightDeadline = right.deadline ? new Date(right.deadline).getTime() : Number.POSITIVE_INFINITY;
+    if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
+
+    return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
   });
 
   // Streak: count consecutive days with habit completions
@@ -113,7 +138,6 @@ export default async function DashboardPage() {
           { key: "discipline", title: "Discipline", score: latestScore.discipline ?? 0, prevScore: previousScore?.discipline ?? undefined },
           { key: "focus",      title: "Focus",      score: latestScore.focus      ?? 0, prevScore: previousScore?.focus      ?? undefined },
           { key: "mental",     title: "Mental",     score: latestScore.mental     ?? 0, prevScore: previousScore?.mental     ?? undefined },
-          { key: "appearance", title: "Appearance", score: latestScore.appearance ?? 0, prevScore: previousScore?.appearance ?? undefined },
           { key: "overall",    title: "Overall",    score: latestScore.overall    ?? 0, prevScore: previousScore?.overall    ?? undefined },
         ]
       : [],
@@ -125,7 +149,7 @@ export default async function DashboardPage() {
       color: h.color,
       completed: h.logs[0]?.completed === true,
     })),
-    projects: projects.map((p) => ({
+    projects: sortedProjects.slice(0, 3).map((p) => ({
       id: p.id,
       title: p.title,
       priority: p.priority,

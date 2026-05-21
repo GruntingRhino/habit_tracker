@@ -14,10 +14,6 @@ import {
   RefreshCw,
   DollarSign,
   ClipboardCheck,
-  Star,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   Utensils,
   Flame,
   ChevronRight,
@@ -44,7 +40,6 @@ import {
 import DashboardScores from "@/components/DashboardScores";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
-import type { ScoreData } from "@/components/DashboardScores";
 import { type LucideIcon } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -95,7 +90,6 @@ interface CategoryScore {
   discipline: number;
   focus: number;
   mental: number;
-  appearance: number;
   overall: number;
 }
 
@@ -123,7 +117,6 @@ interface Trends {
   discipline: string;
   focus: string;
   mental: string;
-  appearance: string;
   overall: string;
 }
 
@@ -160,20 +153,11 @@ const SCORE_META: {
   { key: "overall",    label: "Overall",    color: "#14b8a6", icon: BarChart3 },
   { key: "focus",      label: "Focus",      color: "#3b82f6", icon: Brain },
   { key: "mental",     label: "Mental",     color: "#a78bfa", icon: ClipboardCheck },
-  { key: "appearance", label: "Appearance", color: "#ec4899", icon: Star },
 ];
 
 const PIE_COLORS = ["#3b82f6", "#1e293b", "#ef4444"];
 
 // ── Small shared components ───────────────────────────────────────────────────
-
-function TrendBadge({ trend }: { trend: string }) {
-  if (trend === "improving")
-    return <span className="flex items-center gap-1 text-green-400 text-xs"><TrendingUp className="w-3.5 h-3.5" />Improving</span>;
-  if (trend === "declining")
-    return <span className="flex items-center gap-1 text-red-400 text-xs"><TrendingDown className="w-3.5 h-3.5" />Declining</span>;
-  return <span className="flex items-center gap-1 text-xs" style={{ color: "#334d6e" }}><Minus className="w-3.5 h-3.5" />Stable</span>;
-}
 
 function getScoreColor(score: number) {
   if (score > 7) return "text-green-400";
@@ -342,6 +326,7 @@ interface Routine {
 function RoutinesPreview() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [todayMs] = useState(() => Date.now());
 
   useEffect(() => {
     fetch("/api/weights/routines", { credentials: "include" })
@@ -396,7 +381,7 @@ function RoutinesPreview() {
             {routines.map((routine) => {
               const lastSession = routine.sessions[0];
               const daysSince = lastSession
-                ? Math.floor((Date.now() - new Date(lastSession.date).getTime()) / 86400000)
+                ? Math.floor((todayMs - new Date(lastSession.date).getTime()) / 86400000)
                 : null;
               return (
                 <div key={routine.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(6,13,28,0.5)" }}>
@@ -447,7 +432,7 @@ function AnalyticsTab() {
   const lineData = categoryScores.map((s) => ({
     date: new Date(s.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     physical: s.physical, financial: s.financial, discipline: s.discipline,
-    focus: s.focus, mental: s.mental, appearance: s.appearance, overall: s.overall,
+    focus: s.focus, mental: s.mental, overall: s.overall,
   }));
   const radarData = SCORE_META.filter((m) => m.key !== "overall").map(({ key, label }) => {
     const last7 = categoryScores.slice(-7);
@@ -544,11 +529,11 @@ function AnalyticsTab() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Project pie */}
+        {/* Action queue pie */}
         <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
-          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Project Status</h2>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Plans Status</h2>
           {pieData.length === 0 ? (
-            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No projects yet</p></div>
+            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No plans yet</p></div>
           ) : (
             <div className="flex items-center gap-6">
               <ResponsiveContainer width="50%" height={200}>
@@ -594,7 +579,7 @@ function AnalyticsTab() {
             <div className="flex gap-3 p-3 rounded-lg" style={{ background: "rgba(79,114,255,0.05)", border: "1px solid rgba(79,114,255,0.12)" }}>
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(79,114,255,0.1)" }}><span className="text-base">📊</span></div>
               <div>
-                <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Project Tasks</p>
+                <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Queue Tasks</p>
                 <p className="text-xs" style={{ color: "#4a6a90" }}>{projectStats.completedTasks} of {projectStats.totalTasks} tasks completed ({projectStats.taskCompletionRate}%)</p>
               </div>
             </div>
@@ -730,7 +715,7 @@ type Tab = "dashboard" | "analytics" | "progression";
 
 export default function DashboardTabs(props: DashboardTabsProps) {
   const {
-    scores, latestScoreDate, habits, projects,
+    habits, projects,
     entryNotes, entryDate,
   } = props;
 
@@ -825,10 +810,10 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                   )}
                 </section>
 
-                {/* Projects */}
+                {/* Plans */}
                 <section className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Active Projects</h2>
+                    <h2 className="font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Plans</h2>
                     <Link href="/projects" className="text-xs flex items-center gap-1 transition-colors" style={{ color: "#4f72ff" }}
                       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
                       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}>
@@ -837,8 +822,8 @@ export default function DashboardTabs(props: DashboardTabsProps) {
                   </div>
                   {projects.length === 0 ? (
                     <div className="py-6 text-center">
-                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No active projects</p>
-                      <Link href="/projects" className="text-sm mt-1 inline-block transition-colors" style={{ color: "#4f72ff" }}>Create a project</Link>
+                      <p className="text-sm" style={{ color: "#2d4a6a" }}>No active plans</p>
+                      <Link href="/projects" className="text-sm mt-1 inline-block transition-colors" style={{ color: "#4f72ff" }}>Create an item</Link>
                     </div>
                   ) : (
                     <div className="space-y-4">

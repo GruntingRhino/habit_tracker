@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import {
   dailyEntryPayloadSchema,
   normalizeDailyEntryPayload,
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
     }
 
     const savedScores = await recomputeCategoryScoreForDate(userId, entryDate);
+    await markCoachContextDirty(userId);
 
     return NextResponse.json(
       { entry, scores: savedScores },

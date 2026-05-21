@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
+import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { getStartOfDay } from "@/lib/utils";
 import { reportError } from "@/lib/monitoring";
 
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
       return { log: nextLog, scores: nextScores };
     });
+    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ log, scores }, { status: 201 });
   } catch (error) {

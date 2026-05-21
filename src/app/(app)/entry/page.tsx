@@ -27,6 +27,7 @@ import { type LucideIcon } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ScoreCard from "@/components/ScoreCard";
 import DailyCoachChat from "@/components/DailyCoachChat";
+import DailyWorkPlanner from "@/components/DailyWorkPlanner";
 import { getLocalDateKey } from "@/lib/utils";
 import {
   assessWorkout,
@@ -683,6 +684,7 @@ function summarizeAnswer(
 }
 
 export default function EntryPage() {
+  const [mode, setMode] = useState<"entry" | "planner">("entry");
   const [form, setForm] = useState<DailyEntryForm>({ ...defaultForm });
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
@@ -1457,54 +1459,84 @@ export default function EntryPage() {
       <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.2em] text-slate-500">
-            Daily Check-In
+            Daily Work
           </p>
           <h1 className="mt-2 text-3xl font-bold text-slate-100">
-            Guided entry, strict scoring
+            {mode === "entry" ? "Log the day honestly" : "Plan today before it drifts"}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            This flow asks one block at a time, lets you log structured or custom
-            workouts, and grades training quality based on what you actually did.
+            {mode === "entry"
+              ? "This flow asks one block at a time, lets you log structured or custom workouts, and grades training quality based on what you actually did."
+              : "Use AI to build a realistic day plan from your current meals, plans, notes, habits, and latest operating context."}
           </p>
         </div>
 
-        <div className="min-w-[260px] rounded-3xl border border-[#1f2937] bg-[#0f172a] px-5 py-4">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Progress
-            </p>
-            <p className="text-sm font-semibold text-slate-100">{progress}%</p>
+        <div className="space-y-3">
+          <div className="inline-flex rounded-2xl border border-[#1f2937] bg-[#0f172a] p-1">
+            {[
+              ["entry", "Daily Entry"],
+              ["planner", "Plan Today"],
+            ].map(([value, label]) => {
+              const active = mode === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value as "entry" | "planner")}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                    active
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-400 hover:text-slate-100"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-[#111827]">
-            <div
-              className="h-full rounded-full bg-blue-500 transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="mt-3 text-sm text-slate-400">
-            {flowComplete
-              ? existingId
-                ? "Entry loaded and ready to update."
-                : "Review the transcript, then save."
-              : `Step ${currentStepIndex + 1} of ${STEP_ORDER.length}`}
-          </p>
+
+          {mode === "entry" && (
+            <div className="min-w-[260px] rounded-3xl border border-[#1f2937] bg-[#0f172a] px-5 py-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Progress
+                </p>
+                <p className="text-sm font-semibold text-slate-100">{progress}%</p>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-[#111827]">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="mt-3 text-sm text-slate-400">
+                {flowComplete
+                  ? existingId
+                    ? "Entry loaded and ready to update."
+                    : "Review the transcript, then save."
+                  : `Step ${currentStepIndex + 1} of ${STEP_ORDER.length}`}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {error && (
+      {mode === "entry" && error && (
         <div className="mb-5 flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
           <AlertCircle className="h-4 w-4 text-red-400" />
           <p className="text-sm text-red-300">{error}</p>
         </div>
       )}
 
-      {saved && (
+      {mode === "entry" && saved && (
         <div className="mb-5 flex items-center gap-2 rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3">
           <CheckCircle2 className="h-4 w-4 text-green-400" />
           <p className="text-sm text-green-300">Entry saved successfully.</p>
         </div>
       )}
 
+      {mode === "entry" ? (
+      <>
       <div className="mb-5 rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
         Grading mode: <span className="font-semibold capitalize">{scoringSettings.strictness}</span>.
         {" "}
@@ -1691,6 +1723,10 @@ export default function EntryPage() {
       )}
 
       {chatReady && <DailyCoachChat />}
+      </>
+      ) : (
+        <DailyWorkPlanner />
+      )}
     </div>
   );
 }

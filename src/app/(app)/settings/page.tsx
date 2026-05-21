@@ -851,7 +851,7 @@ function ReminderSection() {
       setPermission("granted");
       setStatus({
         type: "success",
-        message: "9:30 PM daily entry reminder enabled.",
+        message: "9:30 PM daily work reminder enabled.",
       });
       return;
     }
@@ -871,7 +871,7 @@ function ReminderSection() {
     syncEnabled(true);
     setStatus({
       type: "success",
-      message: "9:30 PM daily entry reminder enabled.",
+      message: "9:30 PM daily work reminder enabled.",
     });
   }
 
@@ -888,12 +888,12 @@ function ReminderSection() {
 
   return (
     <Section
-      title="Daily Entry Reminder"
+      title="Daily Work Reminder"
       icon={<Bell className="w-4 h-4 text-blue-400" />}
     >
       <div className="space-y-4">
         <p className="text-slate-400 text-sm">
-          Sends a reminder at {reminderTimeLabel} if today&apos;s entry is still missing.
+          Sends a reminder at {reminderTimeLabel} if today&apos;s daily work is still missing.
         </p>
 
         <div className="rounded-lg border border-[#1e293b] bg-[#0a0f1e] px-4 py-3 text-sm text-slate-300">

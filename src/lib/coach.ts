@@ -15,6 +15,7 @@ import {
   type PrivateCoachContextCache,
 } from "@/lib/coach-context-cache";
 import { normalizeHabitCategory as normalizeAppHabitCategory } from "@/lib/habit-category";
+import { extractUserContextSettings } from "@/lib/user-context-settings";
 import {
   type CoachAction,
   type CoachChatMessage,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/coach-types";
 import { calcStreak } from "@/lib/utils";
 import { assessWorkout } from "@/lib/workout";
+import { reportError } from "@/lib/monitoring";
 
 const VALID_DAY_CODES = new Set<WeekdayCode>(WEEKDAY_CODES);
 const VALID_PRIORITIES = new Set(["low", "medium", "high"] as const);
@@ -37,6 +39,22 @@ const ACTIVE_SCORE_KEYS = new Set([
   "mental",
 ]);
 type ActiveScoreKey = "physical" | "financial" | "discipline" | "focus" | "mental";
+
+function mergeProfileSummaryWithSettingsContext(
+  profileSummary: string | null | undefined,
+  personalContext: string | null | undefined
+): string | null {
+  const summary = profileSummary?.trim() ?? "";
+  const context = personalContext?.trim() ?? "";
+
+  if (summary && context) {
+    return `${summary}\nValues and constraints from Settings: ${context}`;
+  }
+  if (context) {
+    return `Values and constraints from Settings: ${context}`;
+  }
+  return summary || null;
+}
 
 const HabitActionSchema = z.object({
   type: z.literal("add_habit"),
@@ -556,8 +574,13 @@ async function buildCoachSnapshot(userId: string): Promise<CoachSnapshot> {
       };
     });
 
+  const userContext = extractUserContextSettings(user?.coachProfile?.preferences ?? null);
+
   return {
-    profileSummary: user?.coachProfile?.summary ?? null,
+    profileSummary: mergeProfileSummaryWithSettingsContext(
+      user?.coachProfile?.summary ?? null,
+      userContext.personalContext
+    ),
     privateCoachContextCache: readPrivateCoachContextCache(
       user?.coachProfile?.preferences ?? null
     ),
@@ -2316,7 +2339,7 @@ async function generateCoachResponse(
     }
     return { response: parsed, usedFallback: false };
   } catch (error) {
-    console.error("[coach] generateCoachResponse error:", error);
+    reportError({ context: "coach generateCoachResponse", error });
     return {
       response: buildFallbackCoachResponse(snapshot, userMessage),
       usedFallback: true,

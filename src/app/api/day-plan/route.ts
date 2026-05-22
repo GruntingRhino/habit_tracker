@@ -5,6 +5,13 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { extractUserContextSettings } from "@/lib/user-context-settings";
+import {
+  buildScopedRateLimitKeys,
+  checkRateLimit,
+  extractClientIp,
+  resetRateLimit,
+} from "@/lib/rate-limit";
 import {
   GROQ_API_KEY,
   GROQ_MODEL,
@@ -25,6 +32,7 @@ const requestSchema = z.object({
 const responseSchema = z.object({
   headline: z.string().min(1).max(200),
   summary: z.string().min(1).max(1200),
+  contextNotices: z.array(z.string().min(1).max(240)).max(10).optional().default([]),
   priorityOrder: z.array(z.string().min(1).max(240)).min(2).max(6),
   scheduleBlocks: z.array(
     z.object({
@@ -77,13 +85,15 @@ function buildFallbackPlan(
     activePlans: Array<{ title: string; priority: string; deadline: string | null }>;
     activeTodos: Array<{ title: string }>;
     meals: Array<{ category: string; name: string }>;
+    personalContext: string | null;
+    contextNotices: string[];
   }
 ) {
   const focusItem =
     input.bigThing ||
     context.activePlans[0]?.title ||
     context.activeTodos[0]?.title ||
-    "protect the highest-leverage work first";
+    "the highest-leverage work available";
   const freeTime = input.freeTimeHours ?? 3;
   const breakfast = context.meals.find((meal) => meal.category === "breakfast");
   const lunch = context.meals.find((meal) => meal.category === "lunch");
@@ -121,9 +131,12 @@ function buildFallbackPlan(
           },
         ];
 
+  const normalizedPersonalContext = context.personalContext?.replace(/[.!\s]+$/g, "") ?? null;
+
   return {
     headline: "Protect the important work before the day fragments.",
-    summary: `You do not need a complicated plan today. Use your available time to push ${focusItem}, contain reactive work, and make meals and logistics support execution instead of compete with it.`,
+    summary: `You do not need a complicated plan today. Use your available time to push ${focusItem}, contain reactive work, and make meals and logistics support execution instead of compete with it.${normalizedPersonalContext ? ` Keep this aligned with your stated context: ${normalizedPersonalContext}.` : ""}`,
+    contextNotices: context.contextNotices,
     priorityOrder: [
       input.bigThing || context.activePlans[0]?.title || "Finish the most important open commitment",
       context.activeTodos[0]?.title || "Clear one small operational loose end",
@@ -131,9 +144,15 @@ function buildFallbackPlan(
     ].filter(Boolean),
     scheduleBlocks,
     mealGuidance: [
-      breakfast ? `Use ${breakfast.name} for breakfast so you do not waste decision energy early.` : "Pick an existing breakfast option early instead of improvising.",
-      lunch ? `Keep lunch simple with ${lunch.name} or another low-friction option.` : "Keep lunch light and predictable so the middle of the day stays usable.",
-      dinner ? `Default dinner to ${dinner.name} if you want the evening to stay clean.` : "Pre-decide dinner so late-day fatigue does not derail the evening.",
+      breakfast
+        ? `Use ${breakfast.name} for breakfast so you do not waste decision energy early.`
+        : "Example breakfast: Greek yogurt, berries, and oats so the morning stays decision-free.",
+      lunch
+        ? `Keep lunch simple with ${lunch.name} or another low-friction option.`
+        : "Example lunch: chicken, rice, and fruit packed ahead of time so the middle of the day stays usable.",
+      dinner
+        ? `Default dinner to ${dinner.name} if you want the evening to stay clean.`
+        : "Example dinner: a protein, a carb source, and one vegetable so late-day fatigue does not derail the evening.",
     ],
     executionRules: [
       "Do the hardest work before checking low-value messages repeatedly.",
@@ -148,6 +167,82 @@ function buildFallbackPlan(
       "What can be decided once now so you are not renegotiating it later?",
     ],
   };
+}
+
+interface PlannerDataAvailability {
+  hasHabits: boolean;
+  hasMeals: boolean;
+  hasPlans: boolean;
+  hasTodos: boolean;
+  hasNotes: boolean;
+  hasRoutines: boolean;
+  hasWorkoutHistory: boolean;
+  hasAnalytics: boolean;
+}
+
+function buildContextNotices(availability: PlannerDataAvailability): string[] {
+  const nothingTracked =
+    !availability.hasHabits &&
+    !availability.hasMeals &&
+    !availability.hasPlans &&
+    !availability.hasTodos &&
+    !availability.hasNotes &&
+    !availability.hasRoutines &&
+    !availability.hasWorkoutHistory &&
+    !availability.hasAnalytics;
+
+  if (nothingTracked) {
+    return [
+      "You have no meals, plans, to-dos, notes, habits, workout history, or analytics yet, so this plan is built from generic examples.",
+    ];
+  }
+
+  const notices: string[] = [];
+  if (!availability.hasMeals) {
+    notices.push("You have no meals, so I generated a few examples for you.");
+  }
+  if (!availability.hasPlans) {
+    notices.push("You have no active plans, so I generated a simple priority structure for today.");
+  }
+  if (!availability.hasTodos) {
+    notices.push("You have nothing in your to-do list, so I generated a few example operational tasks.");
+  }
+  if (!availability.hasNotes) {
+    notices.push("You have no notes or saved references, so this plan is missing personal reference material.");
+  }
+  if (!availability.hasHabits) {
+    notices.push("You have no habits yet, so this plan cannot reinforce any habit system you already use.");
+  }
+  if (!availability.hasRoutines && !availability.hasWorkoutHistory) {
+    notices.push("You have no workouts or routines saved, so any training block is just an example.");
+  }
+  if (!availability.hasAnalytics) {
+    notices.push("You have no recent analytics or daily entry data yet, so this plan cannot adapt to your real performance trends.");
+  }
+
+  return notices;
+}
+
+function applySparsePlanDefaults(
+  plan: z.infer<typeof responseSchema>,
+  fallback: z.infer<typeof responseSchema>,
+  availability: PlannerDataAvailability,
+  contextNotices: string[]
+) {
+  const nextPlan = {
+    ...plan,
+    contextNotices,
+  };
+
+  if (!availability.hasMeals) {
+    nextPlan.mealGuidance = fallback.mealGuidance;
+  }
+
+  if (!availability.hasPlans && !availability.hasTodos) {
+    nextPlan.priorityOrder = fallback.priorityOrder;
+  }
+
+  return nextPlan;
 }
 
 async function generateWithGroq(prompt: string) {
@@ -196,6 +291,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const ip = extractClientIp(req.headers);
+  const rateLimitKeys = buildScopedRateLimitKeys(
+    "day-plan",
+    session.user.id,
+    ip
+  );
+
+  for (const rateLimitKey of rateLimitKeys) {
+    const limit = await checkRateLimit(rateLimitKey);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many day plan requests. Try again later." },
+        { status: 429 }
+      );
+    }
+  }
+
   try {
     const rawBody = await req.json();
     const parsed = requestSchema.safeParse(rawBody);
@@ -212,8 +324,10 @@ export async function POST(req: NextRequest) {
       projects,
       notes,
       routines,
+      workoutSessions,
       latestEntry,
       latestScore,
+      coachProfile,
     ] = await Promise.all([
       prisma.habit.findMany({
         where: { userId: session.user.id, isActive: true },
@@ -244,6 +358,19 @@ export async function POST(req: NextRequest) {
         orderBy: { createdAt: "asc" },
         take: 8,
       }),
+      prisma.workoutSession.findMany({
+        where: { userId: session.user.id },
+        select: {
+          date: true,
+          routine: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: { date: "desc" },
+        take: 6,
+      }),
       prisma.dailyEntry.findFirst({
         where: { userId: session.user.id },
         orderBy: { date: "desc" },
@@ -252,7 +379,13 @@ export async function POST(req: NextRequest) {
         where: { userId: session.user.id },
         orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       }),
+      prisma.coachProfile.findUnique({
+        where: { userId: session.user.id },
+        select: { preferences: true },
+      }),
     ]);
+
+    const userContext = extractUserContextSettings(coachProfile?.preferences);
 
     const activePlans = [...projects]
       .sort((left, right) => {
@@ -286,6 +419,7 @@ export async function POST(req: NextRequest) {
       }));
 
     const compactContext = {
+      personalContext: userContext.personalContext,
       latestEntry: latestEntry
         ? {
             date: latestEntry.date.toISOString().slice(0, 10),
@@ -315,18 +449,42 @@ export async function POST(req: NextRequest) {
       activeTodos,
       referenceNotes,
       routines: routines.map((routine) => routine.name),
+      workoutHistory: workoutSessions.map((session) => ({
+        routineName: session.routine.name,
+        startedAt: session.date.toISOString(),
+      })),
     };
+
+    const availability: PlannerDataAvailability = {
+      hasHabits: habits.length > 0,
+      hasMeals: meals.length > 0,
+      hasPlans: activePlans.length > 0,
+      hasTodos: activeTodos.length > 0,
+      hasNotes: referenceNotes.length > 0,
+      hasRoutines: routines.length > 0,
+      hasWorkoutHistory: workoutSessions.length > 0,
+      hasAnalytics: Boolean(latestEntry || latestScore),
+    };
+    const contextNotices = buildContextNotices(availability);
 
     const fallback = buildFallbackPlan(parsed.data, {
       activePlans,
       activeTodos,
       meals: meals.map((meal) => ({ category: meal.category, name: meal.name })),
+      personalContext: userContext.personalContext,
+      contextNotices,
     });
+
+    const hasNoTrackedData = contextNotices.length === 1 && contextNotices[0].includes("generic examples");
+    if (hasNoTrackedData) {
+      return NextResponse.json(fallback);
+    }
 
     const prompt = [
       "You are a ruthless but useful day planner inside a personal operating system app.",
       "Build a realistic plan for TODAY using the user's actual context.",
       "Use their meals, active plans, active to-dos, routines, habits, and latest performance context.",
+      "If any tracked area is missing, say that explicitly in contextNotices and compensate with sensible examples instead of pretending the data exists.",
       "Do not invent commitments that are not in the input.",
       "Bias toward deep work, execution clarity, and low-friction meal choices.",
       "Return ONLY valid JSON with this exact shape:",
@@ -336,6 +494,7 @@ export async function POST(req: NextRequest) {
       ),
       "",
       `Planner intake: ${JSON.stringify(parsed.data, null, 2)}`,
+      `Sparse-data notices to preserve if relevant: ${JSON.stringify(contextNotices, null, 2)}`,
       `User context: ${JSON.stringify(compactContext, null, 2)}`,
     ].join("\n");
 
@@ -343,8 +502,19 @@ export async function POST(req: NextRequest) {
       const aiPlan = GROQ_API_KEY
         ? await generateWithGroq(prompt)
         : await generateWithOllama(prompt);
-      return NextResponse.json(aiPlan);
+
+      for (const rateLimitKey of rateLimitKeys) {
+        await resetRateLimit(rateLimitKey);
+      }
+
+      return NextResponse.json(
+        applySparsePlanDefaults(aiPlan, fallback, availability, contextNotices)
+      );
     } catch {
+      for (const rateLimitKey of rateLimitKeys) {
+        await resetRateLimit(rateLimitKey);
+      }
+
       return NextResponse.json(fallback);
     }
   } catch (error) {

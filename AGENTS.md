@@ -1,22 +1,15 @@
 <claude-mem-context>
 # Memory Context
 
-# [habit_tracker] recent context, 2026-05-19 2:57pm EDT
+# [habit_tracker] recent context, 2026-05-21 3:05pm EDT
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (18,957t read) | 704,787t work | 97% savings
+Stats: 50 obs (19,117t read) | 1,643,153t work | 99% savings
 
 ### May 11, 2026
-357 3:01p 🔵 Zod Validation Gap: habits, meals, projects POST Routes Use Manual Checks
-361 " 🔵 Full Validation Gap Map: Weights and Project Tasks Routes Also Lack Zod
-362 " 🔵 Scoring Engine Is Pure, Deterministic — Ideal Unit Test Target
-363 3:02p 🟣 In-Memory Rate Limiter Implemented for Auth Brute-Force Protection
-364 " 🟣 Error Monitoring Utility Implemented with Discord Webhook Alerting
-365 " 🔴 Auth Brute-Force Protection Wired Into NextAuth Authorize Callback
-366 " 🔴 change-password Route Gets Rate Limiting and Monitoring
 367 3:03p 🔴 Habits Route Upgraded to Strict Zod Validation with Monitoring
 368 " 🔴 Meals Route Upgraded to Strict Zod Validation — Fixes parseInt Bug
 369 " 🔴 Projects Route Upgraded to Strict Zod Validation with ISO Datetime Deadline Check
@@ -66,6 +59,14 @@ S29 Redesign habit tracker Projects section: rename section, simplify filters to
 473 1:19p 🔵 All "Projects" Label Locations Mapped Across Codebase — Multiple Files Require Rename
 474 " ✅ projects/page.tsx Deleted in Preparation for Full Replacement
 475 " ⚖️ Session Reset: Switched to Implementing app.html Design Instead of index.html
+476 1:24p 🟣 Homepage scroll-reveal animation system added
+477 " ✅ Homepage background redesigned from gradient blobs to flat dark with grid
+478 " ✅ Homepage typography tightened — font-semibold, tighter tracking, removed serif display font from headings
+479 " ✅ Homepage UX refine committed and pushed to main (commit 3136fd5)
+480 " ⚖️ Auth system overhaul planned: Google OAuth + email-only, data migration from AbhaySivaram account
+### May 20, 2026
+481 10:57a ⚖️ User Requested Automated Google Cloud Console OAuth Setup
+482 11:01a 🟣 Google OAuth + Email-Only Auth Implementation Verified and Build-Clean
 
-Access 705k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 1643k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

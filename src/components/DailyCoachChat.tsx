@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Bot, Loader2, Send, Sparkles } from "lucide-react";
 import CoachActionButtons from "@/components/CoachActionButtons";
 import { useCoachChat } from "@/hooks/useCoachChat";
@@ -44,6 +45,16 @@ export default function DailyCoachChat() {
 
   return (
     <section className="mt-8">
+      <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+        <p className="text-sm leading-6 text-amber-100">
+          If these results do not line up with your goals, values, or constraints, update{" "}
+          <Link href="/settings#context" className="font-semibold text-amber-300 underline underline-offset-4 transition-colors hover:text-amber-200">
+            Settings &gt; Context
+          </Link>
+          .
+        </p>
+      </div>
+
       <div className="mb-4 flex items-center gap-2">
         <Bot className="h-4 w-4 text-blue-300" />
         <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">

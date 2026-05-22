@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   Brain,
+  ChevronDown,
   Clock3,
   Loader2,
   Sparkles,
@@ -14,6 +16,7 @@ import {
 interface DayPlanResponse {
   headline: string;
   summary: string;
+  contextNotices?: string[];
   priorityOrder: string[];
   scheduleBlocks: Array<{
     time: string;
@@ -25,9 +28,73 @@ interface DayPlanResponse {
   followUpQuestions: string[];
 }
 
+const START_TIME_OPTIONS = [
+  "05:00",
+  "05:30",
+  "06:00",
+  "06:30",
+  "07:00",
+  "07:30",
+  "08:00",
+  "08:30",
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "11:30",
+  "12:00",
+  "12:30",
+  "13:00",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+  "16:00",
+  "16:30",
+  "17:00",
+  "17:30",
+  "18:00",
+  "18:30",
+  "19:00",
+  "19:30",
+  "20:00",
+  "20:30",
+  "21:00",
+];
+
+const START_HOUR_OPTIONS = Array.from({ length: 17 }, (_, index) => index + 5);
+const START_MINUTE_OPTIONS = [0, 30];
+
+function formatStartTimeLabel(value: string) {
+  const [hourText, minuteText] = value.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute.toString().padStart(2, "0")} ${suffix}`;
+}
+
+function formatHourOptionLabel(value: number) {
+  const suffix = value >= 12 ? "PM" : "AM";
+  const displayHour = value % 12 || 12;
+  return `${displayHour} ${suffix}`;
+}
+
+function parseStartTime(value: string) {
+  const [hourText, minuteText] = value.split(":");
+  return {
+    hour: Number(hourText),
+    minute: Number(minuteText),
+  };
+}
+
 export default function DailyWorkPlanner() {
   const [freeTimeHours, setFreeTimeHours] = useState("3");
   const [startTime, setStartTime] = useState("08:00");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [draftStartTime, setDraftStartTime] = useState("08:00");
   const [energyLevel, setEnergyLevel] = useState<"low" | "medium" | "high">("medium");
   const [bigThing, setBigThing] = useState("");
   const [fixedCommitments, setFixedCommitments] = useState("");
@@ -35,6 +102,36 @@ export default function DailyWorkPlanner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [plan, setPlan] = useState<DayPlanResponse | null>(null);
+  const hourColumnRef = useRef<HTMLDivElement | null>(null);
+  const minuteColumnRef = useRef<HTMLDivElement | null>(null);
+
+  const draftHour = parseStartTime(draftStartTime).hour;
+  const draftMinute = parseStartTime(draftStartTime).minute;
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+
+    const hourSelected = hourColumnRef.current?.querySelector<HTMLButtonElement>(
+      `[data-hour="${draftHour}"]`
+    );
+    const minuteSelected = minuteColumnRef.current?.querySelector<HTMLButtonElement>(
+      `[data-minute="${draftMinute}"]`
+    );
+
+    hourSelected?.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+    minuteSelected?.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+  }, [draftHour, draftMinute, pickerOpen]);
+
+  function updateDraftStartTime(hour: number, minute: number) {
+    setDraftStartTime(
+      `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
+    );
+  }
+
+  function openPicker() {
+    setDraftStartTime(startTime);
+    setPickerOpen(true);
+  }
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -71,6 +168,16 @@ export default function DailyWorkPlanner() {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+        <p className="text-sm leading-6 text-amber-100">
+          If these results do not line up with your goals, values, or constraints, update{" "}
+          <Link href="/settings#context" className="font-semibold text-amber-300 underline underline-offset-4 transition-colors hover:text-amber-200">
+            Settings &gt; Context
+          </Link>
+          .
+        </p>
+      </div>
+
       <div className="rounded-3xl border border-[#1f2937] bg-[#0f172a] p-5 md:p-6">
         <div className="mb-5 flex items-start gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-300">
@@ -105,12 +212,14 @@ export default function DailyWorkPlanner() {
                 <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Start time
                 </label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(event) => setStartTime(event.target.value)}
-                  className="w-full rounded-xl border border-[#334155] bg-[#111827] px-3 py-2.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
-                />
+                <button
+                  type="button"
+                  onClick={openPicker}
+                  className="flex w-full items-center justify-between rounded-xl border border-[#334155] bg-[#111827] px-3 py-2.5 text-left text-sm text-slate-100 transition-colors hover:border-[#475569] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
+                >
+                  <span>{formatStartTimeLabel(startTime)}</span>
+                  <ChevronDown className="h-4 w-4 text-slate-500" />
+                </button>
               </div>
             </div>
 
@@ -206,6 +315,25 @@ export default function DailyWorkPlanner() {
 
       {plan && (
         <div className="space-y-5">
+          {plan.contextNotices && plan.contextNotices.length > 0 && (
+            <section className="rounded-3xl border border-amber-500/20 bg-amber-500/10 p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-300" />
+                <p className="text-sm font-semibold text-amber-100">Plan assumptions</p>
+              </div>
+              <div className="space-y-3">
+                {plan.contextNotices.map((item, index) => (
+                  <div
+                    key={`${item}-${index}`}
+                    className="rounded-2xl border border-amber-500/15 bg-[#120f08] px-4 py-3 text-sm leading-6 text-amber-50"
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <div className="rounded-3xl border border-blue-500/20 bg-blue-500/10 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-300">
               Today&apos;s direction
@@ -291,6 +419,125 @@ export default function DailyWorkPlanner() {
                 ))}
               </div>
             </section>
+          </div>
+        </div>
+      )}
+
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/70 px-4 py-6 backdrop-blur-sm sm:items-center sm:justify-center">
+          <div className="w-full max-w-xl rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Start time
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-100">
+                  {formatStartTimeLabel(draftStartTime)}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Set the first real working block for today.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Hour
+                </p>
+                <div
+                  ref={hourColumnRef}
+                  className="h-64 space-y-2 overflow-y-auto rounded-3xl border border-[#1f2937] bg-[#08111f] p-3"
+                >
+                  {START_HOUR_OPTIONS.map((hour) => {
+                    const active = draftHour === hour;
+                    return (
+                      <button
+                        key={hour}
+                        type="button"
+                        data-hour={hour}
+                        onClick={() => updateDraftStartTime(hour, draftMinute)}
+                        className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${
+                          active
+                            ? "bg-blue-600 text-white shadow-[0_10px_30px_-18px_rgba(59,130,246,0.9)]"
+                            : "bg-[#0f172a] text-slate-300 hover:bg-[#132033]"
+                        }`}
+                      >
+                        <span className="text-base font-semibold">
+                          {formatHourOptionLabel(hour)}
+                        </span>
+                        <span className={`text-xs uppercase tracking-[0.18em] ${active ? "text-blue-100" : "text-slate-500"}`}>
+                          hour
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Minutes
+                </p>
+                <div
+                  ref={minuteColumnRef}
+                  className="h-64 space-y-2 overflow-y-auto rounded-3xl border border-[#1f2937] bg-[#08111f] p-3"
+                >
+                  {START_MINUTE_OPTIONS.map((minute) => {
+                    const active = draftMinute === minute;
+                    return (
+                      <button
+                        key={minute}
+                        type="button"
+                        data-minute={minute}
+                        onClick={() => updateDraftStartTime(draftHour, minute)}
+                        className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all ${
+                          active
+                            ? "bg-blue-600 text-white shadow-[0_10px_30px_-18px_rgba(59,130,246,0.9)]"
+                            : "bg-[#0f172a] text-slate-300 hover:bg-[#132033]"
+                        }`}
+                      >
+                        <span className="text-base font-semibold">
+                          {minute.toString().padStart(2, "0")}
+                        </span>
+                        <span className={`text-xs uppercase tracking-[0.18em] ${active ? "text-blue-100" : "text-slate-500"}`}>
+                          min
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-300 transition-colors hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (START_TIME_OPTIONS.includes(draftStartTime)) {
+                    setStartTime(draftStartTime);
+                  }
+                  setPickerOpen(false);
+                }}
+                className="flex-1 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+              >
+                Use this time
+              </button>
+            </div>
           </div>
         </div>
       )}

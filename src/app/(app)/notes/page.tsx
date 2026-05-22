@@ -65,10 +65,6 @@ function NoteCard({
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content ?? "");
 
-  useEffect(() => {
-    setTitle(note.title);
-    setContent(note.content ?? "");
-  }, [note.title, note.content]);
 
   async function handleSave() {
     await onSave(note.id, {
@@ -459,7 +455,7 @@ export default function NotesPage() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {activeTodos.map((note) => (
                   <NoteCard
-                    key={note.id}
+                    key={`${note.id}:${note.updatedAt}`}
                     note={note}
                     saving={savingId === note.id}
                     onSave={updateNote}
@@ -489,7 +485,7 @@ export default function NotesPage() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {savedNotes.map((note) => (
                   <NoteCard
-                    key={note.id}
+                    key={`${note.id}:${note.updatedAt}`}
                     note={note}
                     saving={savingId === note.id}
                     onSave={updateNote}
@@ -519,7 +515,7 @@ export default function NotesPage() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {completedTodos.map((note) => (
                   <NoteCard
-                    key={note.id}
+                    key={`${note.id}:${note.updatedAt}`}
                     note={note}
                     saving={savingId === note.id}
                     onSave={updateNote}

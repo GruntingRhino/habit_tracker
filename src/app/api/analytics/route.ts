@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { reportError } from "@/lib/monitoring";
 import { calcStreak } from "@/lib/utils";
 import { normalizeHabitCategory } from "@/lib/habit-category";
 import { subDays } from "date-fns";
@@ -171,9 +172,9 @@ export async function GET() {
       projectStats,
     });
   } catch (error) {
-    console.error("[analytics GET] error:", error);
+    reportError({ context: "analytics GET", error, userId: session.user.id });
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to load analytics" },
       { status: 500 }
     );
   }

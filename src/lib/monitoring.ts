@@ -11,20 +11,37 @@ function formatError(error: unknown): string {
   return String(error);
 }
 
+function sanitizeUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url, "http://localhost").pathname;
+  } catch {
+    return url.split("?")[0];
+  }
+}
+
+function safeReport(report: ErrorReport): ErrorReport {
+  return {
+    ...report,
+    url: sanitizeUrl(report.url),
+  };
+}
+
 async function sendToDiscord(report: ErrorReport): Promise<void> {
   const webhookUrl = process.env.DISCORD_ERROR_WEBHOOK;
   if (!webhookUrl) return;
 
   try {
+    const safe = safeReport(report);
     const fields = [
-      { name: "Context", value: report.context, inline: true },
-      { name: "Error", value: formatError(report.error).slice(0, 1000), inline: false },
+      { name: "Context", value: safe.context, inline: true },
+      { name: "Error", value: formatError(safe.error).slice(0, 1000), inline: false },
     ];
-    if (report.method && report.url) {
-      fields.push({ name: "Request", value: `${report.method} ${report.url}`, inline: true });
+    if (safe.method && safe.url) {
+      fields.push({ name: "Request", value: `${safe.method} ${safe.url}`, inline: true });
     }
-    if (report.userId) {
-      fields.push({ name: "User", value: report.userId, inline: true });
+    if (safe.userId) {
+      fields.push({ name: "User", value: safe.userId, inline: true });
     }
 
     await fetch(webhookUrl, {
@@ -47,7 +64,8 @@ async function sendToDiscord(report: ErrorReport): Promise<void> {
 }
 
 export function reportError(report: ErrorReport): void {
-  const { context, error, method, url, userId } = report;
+  const safe = safeReport(report);
+  const { context, error, method, url, userId } = safe;
 
   const structured: Record<string, unknown> = {
     ts: new Date().toISOString(),
@@ -57,11 +75,13 @@ export function reportError(report: ErrorReport): void {
   if (method) structured.method = method;
   if (url) structured.url = url;
   if (userId) structured.userId = userId;
-  if (error instanceof Error && error.stack) structured.stack = error.stack;
+  if (error instanceof Error && error.stack && process.env.NODE_ENV !== "production") {
+    structured.stack = error.stack;
+  }
 
   console.error("[ERROR]", JSON.stringify(structured));
 
   if (process.env.NODE_ENV === "production") {
-    void sendToDiscord(report);
+    void sendToDiscord(safe);
   }
 }

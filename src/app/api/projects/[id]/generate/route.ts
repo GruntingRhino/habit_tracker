@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import {
   generateProjectChecklist,
@@ -134,9 +135,9 @@ export async function POST(_req: NextRequest, { params }: RouteParams) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("[generate tasks] error:", error);
+    reportError({ context: "projects generate POST", error, userId: session.user.id });
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to generate tasks" },
       { status: 500 }
     );
   }

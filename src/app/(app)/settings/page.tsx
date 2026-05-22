@@ -13,7 +13,6 @@ import {
 import {
   User,
   Lock,
-  Cpu,
   Brain,
   Bell,
   Siren,
@@ -72,20 +71,128 @@ const WEEKDAY_LABELS: Record<WeekdayCode, string> = {
 };
 
 interface SectionProps {
+  id?: string;
   title: string;
   icon: React.ReactNode;
   children: React.ReactNode;
 }
 
-function Section({ title, icon, children }: SectionProps) {
+function Section({ id, title, icon, children }: SectionProps) {
   return (
-    <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6">
+    <div id={id} className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-6 scroll-mt-24">
       <div className="flex items-center gap-2 mb-5">
         {icon}
         <h2 className="font-semibold text-slate-100">{title}</h2>
       </div>
       {children}
     </div>
+  );
+}
+
+function ContextSection() {
+  const [personalContext, setPersonalContext] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSettings() {
+      try {
+        const res = await fetch("/api/user-context", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to load context settings");
+        const data = await res.json() as { personalContext: string | null };
+        if (active) setPersonalContext(data.personalContext ?? "");
+      } catch {
+        if (active) {
+          setStatus({ type: "error", message: "Failed to load context settings." });
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setStatus(null);
+
+    try {
+      const res = await fetch("/api/user-context", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          personalContext: personalContext.trim() || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Failed to save context settings");
+      }
+
+      const data = await res.json() as { personalContext: string | null };
+      setPersonalContext(data.personalContext ?? "");
+      setStatus({ type: "success", message: "Context settings saved." });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to save context settings.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Section id="context" title="Context" icon={<Brain className="w-4 h-4 text-blue-400" />}>
+      <div className="space-y-4">
+        <p className="text-slate-400 text-sm">
+          Give the planner and AI coach durable context about what you actually want. Leave this blank to keep the current default behavior.
+        </p>
+
+        <div>
+          <label className={labelClass()}>Values, goals, and constraints</label>
+          <textarea
+            rows={8}
+            value={personalContext}
+            onChange={(e) => setPersonalContext(e.target.value)}
+            placeholder="Examples: I want to work out with no equipment. I care more about school than lifting right now. I want low-cost meals. I do not want long morning routines."
+            className={inputClass()}
+            disabled={loading || saving}
+          />
+          <p className="text-slate-500 text-xs mt-1">
+            This is used by Plan Today and the AI coach when generating advice.
+          </p>
+        </div>
+
+        {status && <StatusMsg type={status.type} message={status.message} />}
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={loading || saving}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {saving ? "Saving..." : "Save Context"}
+        </button>
+      </div>
+    </Section>
   );
 }
 
@@ -816,24 +923,18 @@ function WakeAlarmSection() {
 }
 
 function ReminderSection() {
-  const [supported] = useState(
-    () => typeof window !== "undefined" && "Notification" in window
+  const [supported] = useState(() => typeof window !== "undefined" && "Notification" in window);
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() =>
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported"
   );
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
-    () =>
-      typeof window !== "undefined" && "Notification" in window
-        ? Notification.permission
-        : "unsupported"
-  );
-  const [enabled, setEnabled] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(REMINDER_ENABLED_KEY) === "true"
+  const [enabled, setEnabled] = useState(() =>
+    typeof window !== "undefined" ? window.localStorage.getItem(REMINDER_ENABLED_KEY) === "true" : false
   );
   const [status, setStatus] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
+
 
   function syncEnabled(nextEnabled: boolean) {
     window.localStorage.setItem(REMINDER_ENABLED_KEY, String(nextEnabled));
@@ -934,111 +1035,6 @@ function ReminderSection() {
             Disable
           </button>
         </div>
-      </div>
-    </Section>
-  );
-}
-
-function OllamaSection() {
-  const [baseUrl, setBaseUrl] = useState(
-    process.env.NEXT_PUBLIC_OLLAMA_BASE_URL ?? "http://localhost:11434"
-  );
-  const [model, setModel] = useState("llama3.2");
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
-
-  async function handleTest() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch(`${baseUrl}/api/tags`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const models: string[] = (data.models ?? []).map(
-          (m: { name: string }) => m.name
-        );
-        setTestResult({
-          type: "success",
-          message: `Connected! Available models: ${
-            models.length > 0 ? models.join(", ") : "none"
-          }`,
-        });
-      } else {
-        throw new Error(`Status ${res.status}`);
-      }
-    } catch {
-      setTestResult({
-        type: "error",
-        message: "Cannot connect to Ollama. Make sure it is running.",
-      });
-    } finally {
-      setTesting(false);
-    }
-  }
-
-  return (
-    <Section
-      title="AI Settings (Ollama)"
-      icon={<Cpu className="w-4 h-4 text-blue-400" />}
-    >
-      <div className="space-y-4">
-        <p className="text-slate-400 text-sm">
-          Configure your local Ollama instance for AI-powered task generation.
-        </p>
-        <div>
-          <label className={labelClass()}>Ollama Base URL</label>
-          <input
-            type="url"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="http://localhost:11434"
-            className={inputClass()}
-          />
-        </div>
-        <div>
-          <label className={labelClass()}>Model</label>
-          <input
-            type="text"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="llama3.2"
-            className={inputClass()}
-          />
-          <p className="text-slate-600 text-xs mt-1">
-            Make sure this model is pulled in Ollama
-          </p>
-        </div>
-        {testResult && (
-          <StatusMsg type={testResult.type} message={testResult.message} />
-        )}
-        <button
-          type="button"
-          onClick={handleTest}
-          disabled={testing}
-          className="flex items-center gap-2 bg-[#1e293b] hover:bg-[#334155] text-slate-300 font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-60"
-        >
-          {testing ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Testing...
-            </>
-          ) : (
-            <>
-              <TestTube className="w-4 h-4" />
-              Test Connection
-            </>
-          )}
-        </button>
-        <p className="text-slate-500 text-xs">
-          Note: Ollama URL and model settings are configured via environment
-          variables (OLLAMA_BASE_URL, OLLAMA_MODEL). The test above checks
-          connectivity only.
-        </p>
       </div>
     </Section>
   );
@@ -1164,6 +1160,8 @@ function DangerZone() {
 }
 
 export default function SettingsPage() {
+  const [isIosNative] = useState(() => isNativeAlarmSupported());
+
   return (
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-2xl mx-auto pb-20 lg:pb-6">
       <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
@@ -1180,11 +1178,11 @@ export default function SettingsPage() {
 
       <div className="space-y-5">
         <ProfileSection />
+        <ContextSection />
         <PasswordSection />
         <ScoringSection />
-        <WakeAlarmSection />
-        <ReminderSection />
-        <OllamaSection />
+        {isIosNative ? <WakeAlarmSection /> : null}
+        {!isIosNative ? <ReminderSection /> : null}
         <DangerZone />
       </div>
     </div>

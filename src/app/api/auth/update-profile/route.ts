@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { reportError } from "@/lib/monitoring";
 import { normalizeUsername, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/username";
 
 const updateProfileSchema = z.object({
@@ -68,7 +69,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json(user);
   } catch (error) {
-    console.error("[auth update-profile PATCH] error:", error);
+    reportError({ context: "auth update-profile PATCH", error, userId: session.user.id });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

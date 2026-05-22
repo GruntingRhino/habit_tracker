@@ -178,8 +178,7 @@ describe("coach fallback behavior", () => {
   it("answers weakest-area prompts from user data", () => {
     const response = __testables.buildFallbackCoachResponse(
       baseSnapshot as never,
-      "What is my weakest area right now, based on my actual data?",
-      "Answer the user"
+      "What is my weakest area right now, based on my actual data?"
     );
 
     expect(response.message).toContain("physical");
@@ -230,8 +229,7 @@ describe("coach fallback behavior", () => {
           },
         ],
       } as never,
-      "What is my weakest area right now, based on my actual data?",
-      "Answer the user"
+      "What is my weakest area right now, based on my actual data?"
     );
 
     expect(response.message).toContain("financial at 3.8/10");
@@ -247,8 +245,7 @@ describe("coach fallback behavior", () => {
   it("answers muscle-gain calorie prompts without generic fallback habits", () => {
     const response = __testables.buildFallbackCoachResponse(
       baseSnapshot as never,
-      "I want to gain muscle fast by July 15. Give me the exact calorie target and habits I should add.",
-      "Answer the user"
+      "I want to gain muscle fast by July 15. Give me the exact calorie target and habits I should add."
     );
 
     expect(response.message).toContain("3500kcal");
@@ -261,8 +258,7 @@ describe("coach fallback behavior", () => {
   it("returns a project recommendation when asked for one", () => {
     const response = __testables.buildFallbackCoachResponse(
       baseSnapshot as never,
-      "Suggest one project I should start this week that best matches my current priorities and explain why.",
-      "Answer the user"
+      "Suggest one project I should start this week that best matches my current priorities and explain why."
     );
     const firstAction = response.actions[0];
 
@@ -277,8 +273,7 @@ describe("coach fallback behavior", () => {
   it("returns one project and one habit when the user explicitly asks for both", () => {
     const response = __testables.buildFallbackCoachResponse(
       baseSnapshot as never,
-      "Give me one project and one habit to add that would improve me fastest.",
-      "Answer the user"
+      "Give me one project and one habit to add that would improve me fastest."
     );
 
     expect(response.message).toContain("one project");

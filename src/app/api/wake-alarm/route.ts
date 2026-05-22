@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { reportError } from "@/lib/monitoring";
 import {
   defaultWakeAlarmSettings,
   normalizeWakeAlarmSettings,
@@ -35,9 +36,9 @@ export async function GET() {
 
     return NextResponse.json(settings);
   } catch (error) {
-    console.error("[wake-alarm GET] error:", error);
+    reportError({ context: "wake-alarm GET", error, userId: session.user.id });
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to load wake alarm settings" },
       { status: 500 }
     );
   }
@@ -101,9 +102,9 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json(settings);
   } catch (error) {
-    console.error("[wake-alarm PATCH] error:", error);
+    reportError({ context: "wake-alarm PATCH", error, userId: session.user.id });
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to save wake alarm settings" },
       { status: 500 }
     );
   }

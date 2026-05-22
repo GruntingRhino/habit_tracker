@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { calculateScores } from "@/lib/scoring";
 import { subDays, startOfDay } from "date-fns";
 import { isProduction, secureCompare } from "@/lib/runtime-config";
+import { reportError } from "@/lib/monitoring";
 import { sanitizeUsernameCandidate } from "@/lib/username";
 
 export async function POST(req: NextRequest) {
@@ -468,7 +469,7 @@ export async function POST(req: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error("[seed] error:", error);
-    return NextResponse.json({ message: "Internal server error", error: String(error) }, { status: 500 });
+    reportError({ context: "seed POST", error });
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  Utensils, Plus, X, Loader2, AlertCircle, ChevronDown, Trash2,
+  Utensils, Plus, Loader2, AlertCircle, ChevronDown, Trash2,
   Flame, BookOpen, Coffee, Sun, Moon, Cookie, ArrowLeft,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";

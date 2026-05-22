@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { reportError } from "@/lib/monitoring";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import {
@@ -37,9 +38,9 @@ export async function GET() {
 
     return NextResponse.json(entries);
   } catch (error) {
-    console.error("[daily-entries GET] error:", error);
+    reportError({ context: "daily-entries GET", error, userId: session.user.id });
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to load daily entries" },
       { status: 500 }
     );
   }
@@ -144,9 +145,9 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("[daily-entries POST] error:", error);
+    reportError({ context: "daily-entries POST", error, userId: session.user.id });
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to save daily entry" },
       { status: 500 }
     );
   }

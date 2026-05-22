@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import {
   DEFAULT_SCORING_SETTINGS,
@@ -72,9 +73,9 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json(extractScoringSettings(updated.preferences));
   } catch (error) {
-    console.error("[scoring-settings PATCH] error:", error);
+    reportError({ context: "scoring-settings PATCH", error, userId: session.user.id });
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to save scoring settings" },
       { status: 500 }
     );
   }

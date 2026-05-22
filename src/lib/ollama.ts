@@ -278,7 +278,7 @@ export async function chatWithCoach(
     if (ollamaUp) return chatWithOllama(messages, context);
     return "No AI backend configured. Add a GROQ_API_KEY to enable the daily coach.";
   } catch (err) {
-    console.error("[ai] chatWithCoach error:", err);
+    reportError({ context: "ai chatWithCoach", error: err });
     return "Unable to connect to the AI coach at this time.";
   }
 }
@@ -300,7 +300,7 @@ export async function generateInsights(
     if (ollamaUp) return insightsWithOllama(scores, entrySummary);
     return "No AI backend configured. Add a GROQ_API_KEY to enable insights.";
   } catch (err) {
-    console.error("[ai] generateInsights error:", err);
+    reportError({ context: "ai generateInsights", error: err });
     return "Unable to generate insights at this time.";
   }
 }

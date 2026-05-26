@@ -1,0 +1,199 @@
+# Video Ad Concepts
+
+## Global spec
+- Vertical 1080x1920
+- Burned-in captions
+- Native creator / UGC tone
+- One promise per ad
+- CTA in the final 2 seconds
+- Real UI only when showing product screens
+- No fake proof, no medical claims, no invented features
+
+## 1) 7s TikTok self-recognition hook
+- **Name:** Monday Reset Loop
+- **Platform:** TikTok
+- **Funnel stage:** cold acquisition
+- **Objective:** thumb-stop + first habit created
+- **Hyperframe:** self-recognition hook → app solution → CTA
+- **Target pain:** “I keep restarting my habits every Monday.”
+- **Hook:** “Every Monday, I start over.”
+- **Second-by-second script:**
+  - 0.0–0.5s: creator selfie, deadpan stare, big caption: “Every Monday, I start over.”
+  - 0.5–2.0s: quick cuts of a reset calendar / empty checklist / phone notification ignored
+  - 2.0–5.0s: cut to real LiveImproved dashboard screenshot: one place to track the habit, one place to see the day
+  - 5.0–7.0s: CTA card: “Start with one habit today.”
+- **Shot list:** selfie hook, quick pain montage, real dashboard capture, CTA end card
+- **On-screen text:** “Every Monday, I start over.” / “One habit. One system.” / “Start with one habit today.”
+- **Voiceover:** “Every Monday, I start over. LiveImproved makes one habit visible, so you stop resetting.”
+- **Required UI assets:** dashboard/home screenshot, app icon
+- **CTA:** Start with one habit today.
+- **Caption:** I stopped trying to fix everything at once. I started with one habit.
+- **A/B variant:** opener text changes from “Every Monday, I start over” to “I keep restarting my habits.”
+- **Success metric:** 3s hold, CTR, first habit created
+- **Compliance check:** no fake scores, no invented testimonials, no medical claims
+
+## 2) 15s TikTok cold acquisition
+- **Name:** Motivation Is Not the Problem
+- **Platform:** TikTok
+- **Funnel stage:** cold acquisition
+- **Objective:** install + activation
+- **Hyperframe:** pain spiral → relief → one habit completed
+- **Target pain:** “I know what to do. I just don’t do it.”
+- **Hook:** “I know what to do. I just don’t do it.”
+- **Second-by-second script:**
+  - 0.0–0.5s: creator on camera, immediate hook text
+  - 0.5–3.0s: creator lists the loop: plan, restart, quit, repeat
+  - 3.0–7.0s: real habit library / add-habit capture appears; the creator taps one habit to start
+  - 7.0–12.0s: real dashboard / today screen shows the habit in motion
+  - 12.0–15.0s: CTA end card
+- **Shot list:** selfie, real habit add screen, real dashboard, end card
+- **On-screen text:** “I know what to do. I just don’t do it.” / “One habit. One reminder. One check-off.”
+- **Voiceover:** “It is not a motivation problem. It is a system problem.”
+- **Required UI assets:** habits page / add habit flow, dashboard screen
+- **CTA:** Try LiveImproved.
+- **Caption:** One habit is easier to keep than five habits you keep restarting.
+- **A/B variant:** use “I don’t need more motivation. I need a system.” as the hook
+- **Success metric:** install rate, first habit created, reminder set rate
+- **Compliance check:** no fake proof, no fake before/after claims
+
+## 3) 15s Instagram Reels UGC-style
+- **Name:** Five Apps, Zero Consistency
+- **Platform:** Instagram Reels
+- **Funnel stage:** cold to warm
+- **Objective:** installs from creator-native delivery
+- **Hyperframe:** UGC confession → app relief → CTA
+- **Target pain:** “I tried five productivity apps and used none.”
+- **Hook:** “I tried five productivity apps and used none.”
+- **Second-by-second script:**
+  - 0.0–0.5s: creator talking-head hook
+  - 0.5–4.0s: fast cuts of failed apps / unused notes / calendar chaos
+  - 4.0–9.0s: real app screens: habits page and add habit flow
+  - 9.0–13.0s: creator says the fix is one habit, one reminder, one check-off
+  - 13.0–15.0s: CTA card
+- **Shot list:** handheld talking head, b-roll of phone usage, real app capture, CTA
+- **On-screen text:** “I used none of them.” / “One habit is easier.” / “Set your first reminder.”
+- **Voiceover:** “I did not need another productivity app. I needed a simple habit system.”
+- **Required UI assets:** habits page, reminder/settings screen, app icon
+- **CTA:** Set your first reminder.
+- **Caption:** I only needed one habit that I would actually keep.
+- **A/B variant:** replace “five productivity apps” with “three productivity apps” for a softer claim test
+- **Success metric:** 3s hold, saves, install rate
+- **Compliance check:** no fake review language, no fake screenshots
+
+## 4) 24s YouTube Shorts demo
+- **Name:** Add, Remind, Check Off
+- **Platform:** YouTube Shorts
+- **Funnel stage:** warm consideration
+- **Objective:** teach the workflow and drive activation
+- **Hyperframe:** fast demo → visible progress → CTA
+- **Target pain:** “Skipping one day turns into skipping a week.”
+- **Hook:** “Skipping one day turns into skipping a week.”
+- **Second-by-second script:**
+  - 0.0–2.0s: creator says the line while the dashboard shows the current day
+  - 2.0–7.0s: show the real add-habit screen; add one habit
+  - 7.0–13.0s: show reminder / schedule settings; set the reminder
+  - 13.0–18.0s: show the habit marked complete / the dashboard streak update
+  - 18.0–22.0s: show analytics / weekly review as the payoff
+  - 22.0–24.0s: CTA end card
+- **Shot list:** dashboard, add habit, reminder settings, completion state, analytics, CTA
+- **On-screen text:** “Add one habit.” / “Set one reminder.” / “Check it off.” / “Make consistency visible.”
+- **Voiceover:** “One habit. One reminder. One check-off. That is the system.”
+- **Required UI assets:** dashboard, habits, reminder/settings, analytics, app icon
+- **CTA:** Make consistency visible.
+- **Caption:** If you can make the next step obvious, you can keep going.
+- **A/B variant:** swap analytics payoff for streak payoff
+- **Success metric:** 50% watch, first habit created, day-7 completion
+- **Compliance check:** only real UI, no synthetic analytics
+
+## 5) 12s Meta retargeting objection crusher
+- **Name:** You Do Not Need Another Complicated App
+- **Platform:** Meta (feed + stories)
+- **Funnel stage:** retargeting
+- **Objective:** convert warm traffic that bounced
+- **Hyperframe:** objection crusher → proof → CTA
+- **Target pain:** “I don’t need another complicated productivity app.”
+- **Hook:** “You do not need another complicated productivity app.”
+- **Second-by-second script:**
+  - 0.0–1.5s: bold text hook, creator face
+  - 1.5–5.0s: quick flashes of real dashboard / habits / reminder settings
+  - 5.0–9.0s: creator explains: one habit, one reminder, visible progress
+  - 9.0–12.0s: CTA card
+- **Shot list:** creator close-up, real UI flashes, CTA
+- **On-screen text:** “No clutter.” / “No five-step onboarding.” / “Start with one habit today.”
+- **Voiceover:** “You do not need more complexity. You need a system you will actually use.”
+- **Required UI assets:** dashboard, habits page, reminder/settings screen
+- **CTA:** Start with one habit today.
+- **Caption:** Simplicity converts when the user is already warm.
+- **A/B variant:** replace “complicated productivity app” with “five productivity apps”
+- **Success metric:** CTR, activated user rate
+- **Compliance check:** no fake proof, no feature inflation
+
+## 6) 14s one-habit challenge
+- **Name:** 7-Day One-Habit Challenge
+- **Platform:** TikTok / Reels / Shorts
+- **Funnel stage:** cold and warm
+- **Objective:** activate users with a challenge offer
+- **Hyperframe:** challenge frame → app task → CTA
+- **Target pain:** “I need a system, not more motivation.”
+- **Hook:** “Pick one habit for 7 days.”
+- **Second-by-second script:**
+  - 0.0–1.0s: creator says the challenge line
+  - 1.0–4.0s: show the habit library and choose one habit
+  - 4.0–8.0s: set the reminder
+  - 8.0–12.0s: show day 1 completion in the dashboard
+  - 12.0–14.0s: CTA end card
+- **Shot list:** creator, habit selection, reminder setting, completion, CTA
+- **On-screen text:** “Pick one habit for 7 days.” / “Do not add five.” / “Add one.”
+- **Voiceover:** “One habit for seven days. Nothing fancy. Just follow the system.”
+- **Required UI assets:** habits page, settings/reminder, dashboard
+- **CTA:** Track one habit for 7 days.
+- **Caption:** The challenge is not to do everything. The challenge is to stay consistent with one thing.
+- **A/B variant:** change challenge length from 7 days to 14 days for a later test
+- **Success metric:** first habit created, reminder set rate, day-7 completion
+- **Compliance check:** no challenge claims without real tracking
+
+## 7) 15s before/after contrast
+- **Name:** From Restarting to Visible Consistency
+- **Platform:** TikTok / Reels / Meta
+- **Funnel stage:** cold to warm
+- **Objective:** show contrast without fake proof
+- **Hyperframe:** before/after contrast → app system → CTA
+- **Target pain:** “Skipping one day turns into skipping a week.”
+- **Hook:** “Before: restart every Monday. After: one system.”
+- **Second-by-second script:**
+  - 0.0–3.0s: before state—creator, calendar chaos, “restart Monday” text
+  - 3.0–7.0s: show the habit addition and reminder setting in real UI
+  - 7.0–11.0s: after state—dashboard / streak / day completed
+  - 11.0–15.0s: CTA end card
+- **Shot list:** before montage, real UI, after montage, CTA
+- **On-screen text:** “Before: restarting.” / “After: visible consistency.” / “Start with one habit today.”
+- **Voiceover:** “I stopped restarting. I started tracking one habit and made the next step obvious.”
+- **Required UI assets:** habits page, reminder/settings, dashboard
+- **CTA:** Start with one habit today.
+- **Caption:** The after is not perfect. It is visible.
+- **A/B variant:** swap “restart every Monday” for “used none of the apps”
+- **Success metric:** CTR, activation, 7-day completion
+- **Compliance check:** no fake before/after numbers
+
+## 8) 10s progress / streak ad
+- **Name:** Make Consistency Visible
+- **Platform:** TikTok / Reels / Shorts / Meta stories
+- **Funnel stage:** warm retargeting and activation
+- **Objective:** highlight visible progress
+- **Hyperframe:** progress visual → small win → CTA
+- **Target pain:** “Skipping one day turns into skipping a week.”
+- **Hook:** “Make consistency visible.”
+- **Second-by-second script:**
+  - 0.0–1.5s: hook text and creator face
+  - 1.5–5.0s: real dashboard streak and score progression
+  - 5.0–8.0s: analytics / weekly review / trend line
+  - 8.0–10.0s: CTA end card
+- **Shot list:** hook, dashboard streak, analytics trend, CTA
+- **On-screen text:** “Make consistency visible.” / “One habit adds up.” / “Try LiveImproved.”
+- **Voiceover:** “A streak only matters if you can see it. LiveImproved makes the day visible.”
+- **Required UI assets:** dashboard streak state, analytics trend screen
+- **CTA:** Try LiveImproved.
+- **Caption:** The win is small. The signal is what matters.
+- **A/B variant:** use “Track one habit for 7 days” as the CTA variant
+- **Success metric:** 3s hold, CTR, activated user rate
+- **Compliance check:** no synthetic streak counts, no invented analytics

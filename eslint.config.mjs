@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "**/.claude/**",
+    // Generated Prisma client is machine-produced and intentionally includes patterns
+    // that conflict with the app's lint rules.
     "**/src/generated/prisma/**",
   ]),
 ]);

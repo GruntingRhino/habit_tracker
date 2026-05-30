@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams {
   params: Promise<{ id: string; taskId: string }>;
@@ -13,7 +14,7 @@ interface RouteParams {
 const VALID_STATUSES = ["todo", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 
-const taskPatchSchema = z.object({
+const taskPatchSchema = strictObject({
   title: z.string().trim().min(1).max(300).optional(),
   description: z.string().trim().max(5000).optional(),
   status: z.enum(VALID_STATUSES).optional(),

@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -13,7 +14,7 @@ interface RouteParams {
 const VALID_STATUSES = ["todo", "in_progress", "completed", "cancelled"] as const;
 const VALID_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 
-const taskPostSchema = z.object({
+const taskPostSchema = strictObject({
   title: z.string().trim().min(1, "title is required").max(300),
   description: z.string().trim().max(5000).optional(),
   parentTaskId: z.string().cuid().optional(),
@@ -24,7 +25,7 @@ const taskPostSchema = z.object({
   dueDate: z.string().datetime({ offset: true }).optional(),
 });
 
-const taskBulkCreateSchema = z.object({
+const taskBulkCreateSchema = strictObject({
   tasks: z
     .array(
       z.object({
@@ -38,7 +39,7 @@ const taskBulkCreateSchema = z.object({
     .max(100),
 });
 
-const taskBulkReorderSchema = z.object({
+const taskBulkReorderSchema = strictObject({
   tasks: z
     .array(z.object({ id: z.string().cuid(), order: z.number().int().min(0) }))
     .min(1)

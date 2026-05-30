@@ -9,14 +9,15 @@ import {
   extractClientIp,
   isRateLimited,
 } from "@/lib/rate-limit";
+import { trimmedString } from "@/lib/validation";
 
-const coachChatPostSchema = z.object({
-  message: z.string().trim().min(1).max(4000).optional(),
+const coachChatPostSchema = z.strictObject({
+  message: trimmedString(4000, 1).optional(),
   messages: z
     .array(
-      z.object({
-        role: z.string(),
-        content: z.string().max(4000),
+      z.strictObject({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string().trim().min(1).max(4000),
       })
     )
     .max(100)

@@ -48,7 +48,7 @@ function formatMoney(value: number): string {
   }).format(value);
 }
 
-const insightRequestSchema = z.object({
+const insightRequestSchema = z.strictObject({
   category: z.enum([
     "discipline",
     "focus",

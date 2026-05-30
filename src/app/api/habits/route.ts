@@ -8,6 +8,7 @@ import { calcStreak } from "@/lib/utils";
 import { normalizeHabitCategory } from "@/lib/habit-category";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { subDays } from "date-fns";
+import { strictObject } from "@/lib/validation";
 
 const VALID_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const VALID_CATEGORIES = [
@@ -16,7 +17,7 @@ const VALID_CATEGORIES = [
   "discipline", "focus",
 ] as const;
 
-const habitPostSchema = z.object({
+const habitPostSchema = strictObject({
   name: z.string().trim().min(1, "name is required").max(100),
   description: z.string().trim().max(500).optional(),
   category: z.enum(VALID_CATEGORIES).default("general"),

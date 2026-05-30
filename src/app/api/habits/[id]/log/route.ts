@@ -7,12 +7,13 @@ import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { getStartOfDay } from "@/lib/utils";
 import { reportError } from "@/lib/monitoring";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-const habitLogPostSchema = z.object({
+const habitLogPostSchema = strictObject({
   date: z.string().datetime({ offset: true }).optional(),
   completed: z.boolean().optional(),
   notes: z.string().trim().max(1000).optional(),

@@ -6,6 +6,7 @@ import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { normalizeHabitCategory } from "@/lib/habit-category";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -18,7 +19,7 @@ const VALID_CATEGORIES = [
   "discipline", "focus",
 ] as const;
 
-const habitPatchSchema = z.object({
+const habitPatchSchema = strictObject({
   name: z.string().trim().min(1).max(100).optional(),
   description: z.string().trim().max(500).optional(),
   category: z.enum(VALID_CATEGORIES).optional(),

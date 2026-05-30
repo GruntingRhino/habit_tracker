@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 
@@ -220,4 +221,26 @@ export async function isRateLimited(keys: string[]): Promise<RateLimitResult | n
   }
 
   return null;
+}
+
+export function buildRateLimitResponse(
+  message: string,
+  retryAfterMs?: number,
+  status = 429
+) {
+  const retryAfterSeconds = retryAfterMs ? Math.max(1, Math.ceil(retryAfterMs / 1000)) : undefined;
+  const response = NextResponse.json(
+    {
+      error: message,
+      code: "RATE_LIMITED",
+      retryAfterSeconds,
+    },
+    { status }
+  );
+
+  if (retryAfterSeconds) {
+    response.headers.set("Retry-After", String(retryAfterSeconds));
+  }
+
+  return response;
 }

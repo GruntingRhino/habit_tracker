@@ -5,8 +5,9 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
-const routinePostSchema = z.object({
+const routinePostSchema = strictObject({
   name: z.string().trim().min(1, "name is required").max(100),
   description: z.string().trim().max(500).optional(),
 });

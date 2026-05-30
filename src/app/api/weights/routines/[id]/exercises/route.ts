@@ -5,15 +5,16 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams { params: Promise<{ id: string }> }
 
-const exercisePostSchema = z.object({
+const exercisePostSchema = strictObject({
   name: z.string().trim().min(1, "name is required").max(120),
   descriptor: z.string().trim().max(200).optional(),
 });
 
-const exercisePutSchema = z.object({
+const exercisePutSchema = strictObject({
   exercises: z
     .array(
       z.object({

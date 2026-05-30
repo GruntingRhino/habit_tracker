@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { checkRateLimit, resetRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, resetRateLimit, buildRateLimitResponse } from "@/lib/rate-limit";
 
 describe("checkRateLimit", () => {
   beforeEach(async () => {
@@ -40,5 +40,16 @@ describe("checkRateLimit", () => {
     await resetRateLimit("test-key");
     const result = await checkRateLimit("test-key");
     expect(result.allowed).toBe(true);
+  });
+
+  it("buildRateLimitResponse includes retry-after metadata", async () => {
+    const response = buildRateLimitResponse("Too many requests", 2500);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("3");
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Too many requests",
+      code: "RATE_LIMITED",
+      retryAfterSeconds: 3,
+    });
   });
 });

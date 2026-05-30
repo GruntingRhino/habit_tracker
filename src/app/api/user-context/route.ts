@@ -16,8 +16,9 @@ import {
   extractClientIp,
   resetRateLimit,
 } from "@/lib/rate-limit";
+import { strictObject } from "@/lib/validation";
 
-const userContextSchema = z.object({
+const userContextSchema = strictObject({
   personalContext: z.string().trim().max(4000).nullable().optional(),
 });
 

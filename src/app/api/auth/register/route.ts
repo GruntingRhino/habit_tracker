@@ -3,16 +3,18 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import {
+  buildRateLimitResponse,
   buildScopedRateLimitKeys,
   checkRateLimit,
   extractClientIp,
   resetRateLimit,
 } from "@/lib/rate-limit";
 import { reportError } from "@/lib/monitoring";
+import { trimmedString } from "@/lib/validation";
 
 const registerSchema = z
-  .object({
-    name: z.string().trim().min(1).max(120),
+  .strictObject({
+    name: trimmedString(120, 1),
     email: z.email().transform((value) => value.toLowerCase().trim()),
     password: z.string().min(12).max(200),
     confirmPassword: z.string().min(12).max(200),
@@ -44,9 +46,9 @@ export async function POST(req: NextRequest) {
     for (const rateLimitKey of rateLimitKeys) {
       const limit = await checkRateLimit(rateLimitKey);
       if (!limit.allowed) {
-        return NextResponse.json(
-          { error: "Too many sign up attempts. Try again later." },
-          { status: 429 }
+        return buildRateLimitResponse(
+          "Too many sign up attempts. Try again later.",
+          limit.retryAfterMs
         );
       }
     }

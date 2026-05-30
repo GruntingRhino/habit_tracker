@@ -3,9 +3,10 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { isProduction, secureCompare } from "@/lib/runtime-config";
+import { buildRateLimitResponse, buildScopedRateLimitKeys, checkRateLimit, extractClientIp } from "@/lib/rate-limit";
 import { normalizeUsername, sanitizeUsernameCandidate, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/username";
 
-const provisionUserSchema = z.object({
+const provisionUserSchema = z.strictObject({
   email: z.string().email(),
   name: z.string().trim().min(1).max(120),
   username: z
@@ -26,6 +27,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const ip = extractClientIp(req.headers);
+  const ipLimit = await checkRateLimit(`provision-user:ip:${ip ?? "unknown"}`);
+  if (!ipLimit.allowed) {
+    return buildRateLimitResponse("Too many provisioning attempts. Try again later.", ipLimit.retryAfterMs);
+  }
+
   const provisioningSecret = process.env.PROVISIONING_SECRET;
   if (!provisioningSecret) {
     return NextResponse.json({ error: "Not configured" }, { status: 403 });
@@ -44,6 +51,22 @@ export async function POST(req: NextRequest) {
       { error: parsedBody.error.issues[0]?.message ?? "Invalid payload" },
       { status: 400 }
     );
+  }
+
+  const rateLimitKeys = buildScopedRateLimitKeys(
+    "provision-user",
+    parsedBody.data.email,
+    ip
+  );
+
+  for (const rateLimitKey of rateLimitKeys) {
+    const limit = await checkRateLimit(rateLimitKey);
+    if (!limit.allowed) {
+      return buildRateLimitResponse(
+        "Too many provisioning attempts. Try again later.",
+        limit.retryAfterMs
+      );
+    }
   }
 
   const { email, name, password } = parsedBody.data;

@@ -19,23 +19,24 @@ import {
   OLLAMA_MODEL,
   OLLAMA_TIMEOUT_MS,
 } from "@/lib/ai-config";
+import { optionalTrimmedString } from "@/lib/validation";
 
-const requestSchema = z.object({
+const requestSchema = z.strictObject({
   freeTimeHours: z.number().min(0).max(16).optional(),
   startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   energyLevel: z.enum(["low", "medium", "high"]).default("medium"),
-  bigThing: z.string().trim().max(500).optional(),
-  fixedCommitments: z.string().trim().max(2000).optional(),
-  planningNotes: z.string().trim().max(2000).optional(),
+  bigThing: optionalTrimmedString(500),
+  fixedCommitments: optionalTrimmedString(2000),
+  planningNotes: optionalTrimmedString(2000),
 });
 
-const responseSchema = z.object({
+const responseSchema = z.strictObject({
   headline: z.string().min(1).max(200),
   summary: z.string().min(1).max(1200),
   contextNotices: z.array(z.string().min(1).max(240)).max(10).optional().default([]),
   priorityOrder: z.array(z.string().min(1).max(240)).min(2).max(6),
   scheduleBlocks: z.array(
-    z.object({
+    z.strictObject({
       time: z.string().min(1).max(80),
       title: z.string().min(1).max(120),
       detail: z.string().min(1).max(400),

@@ -5,12 +5,13 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams { params: Promise<{ id: string }> }
 
 const VALID_MEAL_CATEGORIES = ["breakfast", "lunch", "dinner", "snack"] as const;
 
-const mealPatchSchema = z.object({
+const mealPatchSchema = strictObject({
   name: z.string().trim().min(1).max(120).optional(),
   category: z.enum(VALID_MEAL_CATEGORIES).optional(),
   recipe: z.string().trim().max(5000).optional(),

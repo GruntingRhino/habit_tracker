@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -12,7 +13,7 @@ interface RouteParams {
 const VALID_NOTE_TYPES = ["note", "todo"] as const;
 const VALID_NOTE_STATUSES = ["active", "completed"] as const;
 
-const notePatchSchema = z.object({
+const notePatchSchema = strictObject({
   title: z.string().trim().min(1).max(200).optional(),
   content: z.string().trim().max(5000).nullable().optional(),
   type: z.enum(VALID_NOTE_TYPES).optional(),

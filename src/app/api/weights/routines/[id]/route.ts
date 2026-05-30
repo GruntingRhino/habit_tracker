@@ -5,10 +5,11 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
 interface RouteParams { params: Promise<{ id: string }> }
 
-const routinePatchSchema = z.object({
+const routinePatchSchema = strictObject({
   name: z.string().trim().min(1).max(100).optional(),
   description: z.string().trim().max(500).nullable().optional(),
 });

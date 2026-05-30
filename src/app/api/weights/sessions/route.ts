@@ -5,8 +5,9 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
-const exerciseLogSchema = z.object({
+const exerciseLogSchema = strictObject({
   exerciseId: z.string().cuid().optional(),
   exerciseName: z.string().trim().min(1).max(120),
   weight: z.number().min(0).max(10000).optional(),
@@ -15,7 +16,7 @@ const exerciseLogSchema = z.object({
   notes: z.string().trim().max(500).optional(),
 });
 
-const sessionPostSchema = z.object({
+const sessionPostSchema = strictObject({
   routineId: z.string().cuid("routineId is required"),
   date: z.string().datetime({ offset: true }).optional(),
   notes: z.string().trim().max(1000).optional(),

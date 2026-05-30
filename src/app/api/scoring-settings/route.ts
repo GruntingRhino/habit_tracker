@@ -10,8 +10,9 @@ import {
   extractScoringSettings,
   mergeScoringSettingsIntoPreferences,
 } from "@/lib/scoring-settings";
+import { strictObject } from "@/lib/validation";
 
-const scoringSettingsSchema = z.object({
+const scoringSettingsSchema = strictObject({
   strictness: z.enum(["lenient", "balanced", "strict"]),
   ageYears: z.number().int().min(0).max(120).nullable(),
 });

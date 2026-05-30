@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { calculateScores } from "@/lib/scoring";
 import { subDays, startOfDay } from "date-fns";
 import { isProduction, secureCompare } from "@/lib/runtime-config";
 import { reportError } from "@/lib/monitoring";
+import { buildRateLimitResponse, checkRateLimit, extractClientIp } from "@/lib/rate-limit";
 import { sanitizeUsernameCandidate } from "@/lib/username";
+
+const seedQuerySchema = z.strictObject({
+  full: z.enum(["true", "false"]).default("false"),
+});
+
+function getSeedRateLimitKey(ip: string | null) {
+  return `seed:ip:${ip ?? "unknown"}`;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,8 +23,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    const ip = extractClientIp(req.headers);
+    const seedLimit = await checkRateLimit(getSeedRateLimitKey(ip));
+    if (!seedLimit.allowed) {
+      return buildRateLimitResponse("Too many seed attempts. Try again later.", seedLimit.retryAfterMs);
+    }
+
     const url = new URL(req.url);
-    const full = url.searchParams.get("full") === "true";
+    const params = Object.fromEntries(url.searchParams.entries());
+    const unexpectedQueryKeys = Object.keys(params).filter((key) => key !== "full");
+    if (unexpectedQueryKeys.length > 0) {
+      return NextResponse.json(
+        { error: `Unexpected query parameter(s): ${unexpectedQueryKeys.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const parsedQuery = seedQuerySchema.safeParse({ full: params.full ?? "false" });
+    if (!parsedQuery.success) {
+      return NextResponse.json(
+        { error: parsedQuery.error.issues[0]?.message ?? "Invalid query" },
+        { status: 400 }
+      );
+    }
+
+    const full = parsedQuery.data.full === "true";
     const seedSecret = process.env.SEED_SECRET;
 
     if (!seedSecret) {

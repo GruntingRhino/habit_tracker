@@ -5,11 +5,12 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { strictObject } from "@/lib/validation";
 
 const VALID_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 const VALID_STATUSES = ["active", "completed", "on_hold", "archived"] as const;
 
-const projectPostSchema = z.object({
+const projectPostSchema = strictObject({
   title: z.string().trim().min(1, "title is required").max(200),
   description: z.string().trim().max(2000).optional(),
   specs: z.string().trim().max(10000).optional(),

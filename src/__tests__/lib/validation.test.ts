@@ -61,7 +61,7 @@ const habitPostSchema = z.object({
     .max(7)
     .default(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#3b82f6"),
-});
+}).strict();
 
 describe("habitPostSchema", () => {
   it("accepts minimal valid payload", () => {
@@ -85,6 +85,10 @@ describe("habitPostSchema", () => {
     expect(habitPostSchema.safeParse({ name: "Track Spending", category: "finance" }).success).toBe(true);
     expect(habitPostSchema.safeParse({ name: "No Scrolling", category: "discipline" }).success).toBe(true);
   });
+
+  it("rejects unexpected fields", () => {
+    expect(habitPostSchema.safeParse({ name: "Run", unexpected: true }).success).toBe(false);
+  });
 });
 
 const mealPostSchema = z.object({
@@ -92,7 +96,7 @@ const mealPostSchema = z.object({
   category: z.enum(["breakfast", "lunch", "dinner", "snack"]),
   calories: z.number().int().min(1).max(10000).optional(),
   servings: z.number().min(0.25).max(100).default(1),
-});
+}).strict();
 
 describe("mealPostSchema", () => {
   it("accepts valid meal", () => {
@@ -105,5 +109,9 @@ describe("mealPostSchema", () => {
 
   it("rejects negative calories", () => {
     expect(mealPostSchema.safeParse({ name: "Oats", category: "breakfast", calories: -10 }).success).toBe(false);
+  });
+
+  it("rejects unexpected fields", () => {
+    expect(mealPostSchema.safeParse({ name: "Oats", category: "breakfast", extra: "x" }).success).toBe(false);
   });
 });

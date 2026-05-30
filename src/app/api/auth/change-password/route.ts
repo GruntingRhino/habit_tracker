@@ -6,10 +6,11 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limit";
 import { reportError } from "@/lib/monitoring";
+import { trimmedString } from "@/lib/validation";
 
 const changePasswordSchema = z
-  .object({
-    oldPassword: z.string().min(1),
+  .strictObject({
+    oldPassword: trimmedString(200, 1),
     newPassword: z.string().min(12).max(200),
   })
   .refine((value) => value.oldPassword !== value.newPassword, {

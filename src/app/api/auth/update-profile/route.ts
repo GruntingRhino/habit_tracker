@@ -6,9 +6,10 @@ import prisma from "@/lib/prisma";
 import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { reportError } from "@/lib/monitoring";
 import { normalizeUsername, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/username";
+import { trimmedString } from "@/lib/validation";
 
-const updateProfileSchema = z.object({
-  name: z.string().trim().min(1).max(120),
+const updateProfileSchema = z.strictObject({
+  name: trimmedString(120, 1),
   username: z
     .string()
     .trim()

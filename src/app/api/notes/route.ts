@@ -4,11 +4,12 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
+import { strictObject } from "@/lib/validation";
 
 const VALID_NOTE_TYPES = ["note", "todo"] as const;
 const VALID_NOTE_STATUSES = ["active", "completed"] as const;
 
-const notePostSchema = z.object({
+const notePostSchema = strictObject({
   title: z.string().trim().min(1, "title is required").max(200),
   content: z.string().trim().max(5000).optional(),
   type: z.enum(VALID_NOTE_TYPES).default("note"),

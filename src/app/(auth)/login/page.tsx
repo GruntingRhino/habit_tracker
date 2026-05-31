@@ -47,6 +47,12 @@ function LoginPageContent() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [sessionGraceElapsed, setSessionGraceElapsed] = useState(false);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setSessionGraceElapsed(true), 1200);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
     if (status === "authenticated" && session) {
@@ -81,6 +87,34 @@ function LoginPageContent() {
   async function handleCredentialsSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+
+    if (mode === "signup") {
+      if (form.name.trim().length < 2) {
+        setError("Username must be at least 2 characters.");
+        return;
+      }
+
+      if (!form.email.trim()) {
+        setError("Email is required.");
+        return;
+      }
+
+      if (form.password.length < 8) {
+        setError("Password must be at least 8 characters.");
+        return;
+      }
+
+      if (form.confirmPassword.length < 8) {
+        setError("Confirm password must be at least 8 characters.");
+        return;
+      }
+
+      if (form.password !== form.confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -139,7 +173,7 @@ function LoginPageContent() {
     await signIn("google", { callbackUrl: "/dashboard" });
   }
 
-  if (status === "loading") {
+  if (status === "loading" && !sessionGraceElapsed) {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
@@ -357,13 +391,13 @@ function LoginPageContent() {
             {mode === "signup" && (
               <Field
                 id="name"
-                label="Display Name"
+                label="Username"
                 icon={User}
                 type="text"
                 autoComplete="name"
                 value={form.name}
                 onChange={(value) => updateField("name", value)}
-                placeholder="Your name"
+                placeholder="Choose a username"
               />
             )}
 
@@ -386,7 +420,7 @@ function LoginPageContent() {
               autoComplete={mode === "signin" ? "current-password" : "new-password"}
               value={form.password}
               onChange={(value) => updateField("password", value)}
-              placeholder={mode === "signin" ? "Enter your password" : "Minimum 12 characters"}
+              placeholder={mode === "signin" ? "Enter your password" : "Minimum 8 characters"}
             />
 
             {mode === "signup" && (

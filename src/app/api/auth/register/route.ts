@@ -10,14 +10,19 @@ import {
   resetRateLimit,
 } from "@/lib/rate-limit";
 import { reportError } from "@/lib/monitoring";
-import { trimmedString } from "@/lib/validation";
 
 const registerSchema = z
   .strictObject({
-    name: trimmedString(120, 1),
-    email: z.email().transform((value) => value.toLowerCase().trim()),
-    password: z.string().min(12).max(200),
-    confirmPassword: z.string().min(12).max(200),
+    name: z.string().trim().min(2, "Username must be at least 2 characters.").max(120, "Username must be 120 characters or fewer."),
+    email: z.email("Enter a valid email address.").transform((value) => value.toLowerCase().trim()),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters.")
+      .max(200, "Password must be 200 characters or fewer."),
+    confirmPassword: z
+      .string()
+      .min(8, "Confirm password must be at least 8 characters.")
+      .max(200, "Confirm password must be 200 characters or fewer."),
   })
   .refine((value) => value.password === value.confirmPassword, {
     path: ["confirmPassword"],

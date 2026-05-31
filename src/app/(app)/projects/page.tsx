@@ -145,6 +145,15 @@ function NewQueueItemModal({ onClose, onSaved }: NewQueueItemModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   function applyDeadlinePreset(mode: "today" | "tomorrow" | "week") {
     const next = new Date();
     next.setHours(0, 0, 0, 0);
@@ -196,8 +205,9 @@ function NewQueueItemModal({ onClose, onSaved }: NewQueueItemModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-4xl rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)]">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/88 px-4 py-6 backdrop-blur-md sm:px-6 sm:py-10">
+      <div className="mx-auto flex min-h-full w-full max-w-6xl items-center justify-center">
+        <div className="w-full max-w-5xl rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[#0f1525] p-4 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)] sm:p-6 lg:p-8 max-h-[calc(100vh-3rem)] overflow-y-auto">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">
@@ -392,6 +402,7 @@ function NewQueueItemModal({ onClose, onSaved }: NewQueueItemModalProps) {
         </form>
       </div>
     </div>
+  </div>
   );
 }
 

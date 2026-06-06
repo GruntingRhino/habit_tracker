@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { checkRateLimit, resetRateLimit, buildRateLimitResponse } from "@/lib/rate-limit";
+import { checkRateLimit, resetRateLimit, buildRateLimitResponse, buildScopedRateLimitKeys } from "@/lib/rate-limit";
 
 describe("checkRateLimit", () => {
   beforeEach(async () => {
@@ -40,6 +40,14 @@ describe("checkRateLimit", () => {
     await resetRateLimit("test-key");
     const result = await checkRateLimit("test-key");
     expect(result.allowed).toBe(true);
+  });
+
+  it("buildScopedRateLimitKeys returns identity, IP, and combined buckets", () => {
+    expect(buildScopedRateLimitKeys("provision-user", "USER@Example.COM", "203.0.113.10")).toEqual([
+      "provision-user:id:user@example.com",
+      "provision-user:ip:203.0.113.10",
+      "provision-user:id-ip:user@example.com:203.0.113.10",
+    ]);
   });
 
   it("buildRateLimitResponse includes retry-after metadata", async () => {

@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     "provision-user",
     parsedBody.data.email,
     ip
-  );
+  ).filter((key) => key !== `provision-user:ip:${ip ?? "unknown"}`);
 
   for (const rateLimitKey of rateLimitKeys) {
     const limit = await checkRateLimit(rateLimitKey);

@@ -1269,7 +1269,9 @@ function parseNutritionContext(text: string | null | undefined): ParsedNutrition
   const raw = text ?? "";
   const normalized = normalizeText(raw);
 
-  const ageMatch = raw.match(/\b(\d{1,2})\s*(?:years? old|yo)\b/i);
+  const ageMatch =
+    raw.match(/\b(\d{1,2})\s*(?:years? old|yo)\b/i) ??
+    raw.match(/(?:^|\s)(?:i'?m|i am|age)\s+(\d{1,2})\b/i);
   const bodyweightMatch =
     raw.match(
       /\b(?:bodyweight|body weight|current bodyweight|current weight|weigh(?:ing)?)(?:\s+is|\s+at|\s+around)?\s*(\d+(?:\.\d+)?)/i

@@ -283,6 +283,17 @@ describe("coach fallback behavior", () => {
     expect(response.actions[1]?.type).toBe("add_habit");
   });
 
+  it("includes teen safety text when a minor asks about bulking with performance data", () => {
+    const response = __testables.buildFallbackCoachResponse(
+      baseSnapshot as never,
+      "I'm 14 and want to bulk as fast as possible. What should I do?"
+    );
+
+    expect(response.message).toContain("keep the bulk controlled");
+    expect(response.message).toContain("parent or pediatrician");
+    expect(response.message).toContain("calories");
+  });
+
   it("does not treat overall as a weakest area when ranking saved category averages", () => {
     const response = __testables.buildFallbackCoachResponse(
       {

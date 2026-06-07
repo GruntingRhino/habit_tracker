@@ -4,22 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, MessageSquare, Send, Sparkles, X } from "lucide-react";
 import CoachActionButtons from "@/components/CoachActionButtons";
 import { useCoachChat } from "@/hooks/useCoachChat";
-
-const CATEGORY_DOT_COLORS: Record<string, string> = {
-  physical: "#22c55e",
-  financial: "#10b981",
-  discipline: "#f43f5e",
-  focus: "#3b82f6",
-  mental: "#a855f7",
-  general: "#64748b",
-};
-
-const QUICK_PROMPTS = [
-  "Audit my goals — where am I falling short?",
-  "What habits am I missing for my goals?",
-  "Which of my habits are underperforming?",
-  "Build me a game plan for this week",
-];
+import { CATEGORY_DOT_COLORS, QUICK_PROMPTS } from "@/lib/coach-config";
 
 function FloatingCoachPanel() {
   const { messages, goals, loading, ready, error, sendMessage, applyAction, pendingActionIds } =

@@ -1,9 +1,9 @@
-import { TrendingUp, TrendingDown, Minus, type LucideIcon } from "lucide-react";
+import { TrendingUp, TrendingDown, type LucideIcon } from "lucide-react";
 
 interface ScoreCardProps {
   title: string;
   score: number;
-  trend: "up" | "down" | "stable";
+  trend?: "up" | "down" | "stable";
   icon: LucideIcon;
   subtitle?: string;
 }
@@ -39,7 +39,7 @@ export default function ScoreCard({
   const ringColorClass = getScoreRingColor(score);
 
   const TrendIcon =
-    trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
+    trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : null;
   const trendColor =
     trend === "up"
       ? "text-green-400"
@@ -63,10 +63,12 @@ export default function ScoreCard({
             )}
           </div>
         </div>
-        <div className={`flex items-center gap-1 text-xs ${trendColor}`}>
-          <TrendIcon className="w-3.5 h-3.5" />
-          <span className="capitalize">{trend}</span>
-        </div>
+        {trend && TrendIcon && (
+          <div className={`flex items-center gap-1 text-xs ${trendColor}`}>
+            <TrendIcon className="w-3.5 h-3.5" />
+            <span className="capitalize">{trend}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-4">

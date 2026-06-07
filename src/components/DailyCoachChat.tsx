@@ -5,13 +5,7 @@ import Link from "next/link";
 import { Bot, Loader2, Send, Sparkles } from "lucide-react";
 import CoachActionButtons from "@/components/CoachActionButtons";
 import { useCoachChat } from "@/hooks/useCoachChat";
-
-const QUICK_PROMPTS = [
-  "Audit my goals — where am I falling short?",
-  "What habits am I missing for my goals?",
-  "Which habits are underperforming?",
-  "Build me a game plan for this week",
-];
+import { QUICK_PROMPTS } from "@/lib/coach-config";
 
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
   physical: { bg: "bg-green-500/10", border: "border-green-500/20", text: "text-green-300" },

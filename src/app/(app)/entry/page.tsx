@@ -179,14 +179,14 @@ function SleepTimeSlider({
 
         {/* Bedtime handle (indigo) */}
         <div
-          className="absolute top-[11px] w-6 h-6 -translate-x-3 rounded-full bg-indigo-500 border-2 border-indigo-200 shadow-lg cursor-grab active:cursor-grabbing z-10 touch-none"
+          className="absolute top-[4px] w-11 h-11 -translate-x-[22px] rounded-full bg-indigo-500 border-2 border-indigo-200 shadow-lg cursor-grab active:cursor-grabbing z-10 touch-none"
           style={{ left: `${bedFrac * 100}%` }}
           onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); draggingRef.current = "bed"; }}
         />
 
         {/* Wake handle (amber) */}
         <div
-          className="absolute top-[11px] w-6 h-6 -translate-x-3 rounded-full bg-amber-500 border-2 border-amber-200 shadow-lg cursor-grab active:cursor-grabbing z-10 touch-none"
+          className="absolute top-[4px] w-11 h-11 -translate-x-[22px] rounded-full bg-amber-500 border-2 border-amber-200 shadow-lg cursor-grab active:cursor-grabbing z-10 touch-none"
           style={{ left: `${wakeFrac * 100}%` }}
           onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); draggingRef.current = "wake"; }}
         />
@@ -684,7 +684,9 @@ function summarizeAnswer(
 }
 
 export default function EntryPage() {
-  const [mode, setMode] = useState<"entry" | "planner">("entry");
+  const [mode, setMode] = useState<"entry" | "planner">(
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "plan" ? "planner" : "entry"
+  );
   const [form, setForm] = useState<DailyEntryForm>({ ...defaultForm });
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
@@ -790,6 +792,52 @@ export default function EntryPage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("entry-draft");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const today = getLocalDateKey();
+        if (parsed.date === today && parsed.currentStepIndex > 0) {
+          if (confirm("You have an unfinished entry. Resume where you left off?")) {
+            setForm((prev) => ({ ...prev, ...parsed.form }));
+            setCurrentStepIndex(parsed.currentStepIndex);
+          } else {
+            localStorage.removeItem("entry-draft");
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!loading && currentStepIndex > 0 && currentStepIndex < STEP_ORDER.length) {
+      try {
+        localStorage.setItem("entry-draft", JSON.stringify({
+          date: form.date,
+          form,
+          currentStepIndex,
+        }));
+      } catch {}
+    }
+  }, [currentStepIndex, form, loading]);
+
+  useEffect(() => {
+    const handler = () => {
+      if (!loading && currentStepIndex > 0 && currentStepIndex < STEP_ORDER.length) {
+        try {
+          localStorage.setItem("entry-draft", JSON.stringify({
+            date: form.date,
+            form,
+            currentStepIndex,
+          }));
+        } catch {}
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [form, currentStepIndex, loading]);
 
   useEffect(() => {
     if (!currentStepId) return;
@@ -1074,6 +1122,7 @@ export default function EntryPage() {
       }
       setSaved(true);
       setChatReady(true);
+      localStorage.removeItem("entry-draft");
       setTimeout(() => setSaved(false), 3000);
     } catch (saveError) {
       setError(
@@ -1482,7 +1531,13 @@ export default function EntryPage() {
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setMode(value as "entry" | "planner")}
+                  onClick={() => {
+                    const url = new URL(window.location.href);
+                    if (value === "planner") url.searchParams.set("mode", "plan");
+                    else url.searchParams.delete("mode");
+                    window.history.replaceState({}, "", url.toString());
+                    setMode(value as "entry" | "planner");
+                  }}
                   className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
                     active
                       ? "bg-blue-600 text-white"
@@ -1713,7 +1768,6 @@ export default function EntryPage() {
                   key={key}
                   title={SCORE_LABELS[key]}
                   score={value}
-                  trend="stable"
                   icon={SCORE_ICONS[key]}
                 />
               )

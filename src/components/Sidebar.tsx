@@ -12,6 +12,7 @@ import {
   Brain,
   LogOut,
   User,
+  Users,
 } from "lucide-react";
 
 const navLinks = [
@@ -19,6 +20,7 @@ const navLinks = [
   { href: "/entry",     label: "Daily Work", icon: BookOpen },
   { href: "/projects",  label: "Plans", icon: FolderKanban },
   { href: "/notes",     label: "Notes", icon: StickyNote },
+  { href: "/social",    label: "Social", icon: Users },
 ];
 
 interface SidebarProps {
@@ -67,7 +69,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
             backgroundClip: "text",
           }}
         >
-          GoodHabits
+          LiveImproved
         </span>
       </div>
 

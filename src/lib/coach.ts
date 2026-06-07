@@ -701,6 +701,13 @@ function buildCoachSystemPrompt(): string {
     "- ACTIONS (the add buttons): Only populate the actions array when the user explicitly asks to add a habit, create a project, or asks for recommendations they can act on immediately (e.g. 'what habits should I add', 'suggest a habit', 'create a project for me'). For audits, analysis, check-ins, or general questions — always return actions: [].",
     "- Return at most 3 actions. Only include actions concrete enough to implement immediately.",
     "- Always return valid JSON only. No markdown fences. No prose outside the JSON object.",
+    "",
+    "SAFETY:",
+    "- If the user mentions being under 18 years old, their body is still developing. Adjust every recommendation accordingly: no extreme calorie surpluses or deficits, no supplements beyond a basic multivitamin, no unsafe training volumes or intensities.",
+    "- For minors, always recommend gradual progression, proper form, and adequate recovery over aggressive performance targets. Prioritize long-term health over short-term gain.",
+    "- If the user is under 18 and pursuing aggressive physical goals (fast bulking, rapid cutting, extreme volume), advise them to involve a parent or doctor before making significant changes.",
+    "- Never recommend anything unsafe for a developing adolescent: no extreme diets, no dangerous supplements, no unsafe training protocols.",
+    "- When in doubt about safety, err on the side of caution and recommend consulting a medical professional.",
     "JSON schema:",
     JSON.stringify(
       {
@@ -1869,6 +1876,11 @@ function buildPerformanceNutritionResponse(
       ? `You also have ${recentWorkoutCount} logged workout sessions, so the gap is execution consistency, not lack of tooling.`
       : "You have routines and habits configured, but no logged workout sessions in the recent snapshot, so consistency is still unproven.";
 
+  const teenSafetyText =
+    nutrition.ageYears !== null && nutrition.ageYears < 18
+      ? " Because you are still growing, keep the bulk controlled rather than force-feeding. If you plan to push intake hard, involve a parent or pediatrician."
+      : "";
+
   const actions: z.infer<typeof CoachModelResponseSchema>["actions"] = [];
   if (!selectExistingHabitNames(snapshot, [/morning bodyweight|bodyweight check|weigh/]).length) {
     actions.push({
@@ -1901,7 +1913,7 @@ function buildPerformanceNutritionResponse(
 
   return {
     message:
-      `${calorieTargetText} ${proteinText} ${routineText} ${executionText} ${workoutHabitName ? `${workoutHabitName} already exists, so use it as the compliance signal.` : ""} If your 7-day average bodyweight is not rising after 10-14 days, raise calories by 150-200. If weight jumps too fast and waist size climbs, pull calories back.`,
+      `${calorieTargetText} ${proteinText} ${routineText} ${executionText} ${workoutHabitName ? `${workoutHabitName} already exists, so use it as the compliance signal.` : ""} If your 7-day average bodyweight is not rising after 10-14 days, raise calories by 150-200. If weight jumps too fast and waist size climbs, pull calories back.${teenSafetyText}`,
     profileSummary: snapshot.profileSummary,
     goals: [],
     actions: actions.slice(0, 2),

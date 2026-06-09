@@ -27,7 +27,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   try {
     const { id: habitId } = await params;
-    const rawBody = await req.json();
+    let rawBody: unknown = {};
+    try {
+      rawBody = await req.json();
+    } catch {
+      // no body — treat as empty object (optimistic toggle from dashboard)
+    }
     const parsed = habitLogPostSchema.safeParse(rawBody);
     if (!parsed.success) {
       return NextResponse.json(

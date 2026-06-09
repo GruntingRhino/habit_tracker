@@ -13,60 +13,46 @@ import {
   LogOut,
   User,
   Users,
+  Flame,
 } from "lucide-react";
+import PetWidget from "@/components/PetWidget";
 
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/entry",     label: "Daily Work", icon: BookOpen },
-  { href: "/projects",  label: "Plans", icon: FolderKanban },
-  { href: "/notes",     label: "Notes", icon: StickyNote },
+  { href: "/entry",     label: "Daily Entry", icon: BookOpen },
+  { href: "/projects",  label: "Projects", icon: FolderKanban },
   { href: "/social",    label: "Social", icon: Users },
+  { href: "/settings",  label: "Settings", icon: Settings },
 ];
 
 interface SidebarProps {
   onClose?: () => void;
+  streak?: number;
 }
 
-export default function Sidebar({ onClose }: SidebarProps) {
+export default function Sidebar({ onClose, streak = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
 
   return (
     <aside
-      className="relative flex h-screen w-full flex-shrink-0 flex-col"
+      className="relative flex h-full w-[260px] flex-shrink-0 flex-col"
       style={{
-        background: "linear-gradient(180deg, #060e20 0%, #070d1d 100%)",
-        borderRight: "1px solid rgba(40, 76, 140, 0.25)",
+        background: "linear-gradient(180deg, rgba(255,255,255,.02), transparent), var(--bg-deep)",
+        borderRight: "1px solid var(--stroke-1)",
+        padding: "24px 16px",
       }}
     >
-      {/* Subtle inner glow on right edge */}
-      <div
-        className="absolute inset-y-0 right-0 w-px pointer-events-none"
-        style={{ background: "linear-gradient(180deg, transparent 0%, rgba(79,114,255,0.2) 40%, rgba(79,114,255,0.1) 70%, transparent 100%)" }}
-      />
-
       {/* ── Brand ───────────────────────────────────────────────────── */}
-      <div
-        className="flex items-center gap-3 px-5 py-5"
-        style={{ borderBottom: "1px solid rgba(40, 76, 140, 0.2)" }}
-      >
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{
-            background: "linear-gradient(135deg, #4f72ff 0%, #22d3ee 100%)",
-            boxShadow: "0 0 16px rgba(79, 114, 255, 0.35)",
-          }}
-        >
-          <Brain className="w-4 h-4 text-white" />
+      <div className="flex items-center gap-3 px-2 mb-6">
+        <div className="gh-logo">
+          <Brain className="w-5 h-5 text-white" />
         </div>
         <span
-          className="font-semibold text-sm tracking-wide"
+          className="text-lg font-semibold"
           style={{
-            fontFamily: "'Syne', sans-serif",
-            background: "linear-gradient(135deg, #c8deff 0%, #a0bfff 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
+            color: "var(--ink-100)",
+            letterSpacing: "-0.01em",
           }}
         >
           LiveImproved
@@ -74,7 +60,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       </div>
 
       {/* ── Navigation ──────────────────────────────────────────────── */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex flex-col gap-1 flex-1">
         {navLinks.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + "/");
 
@@ -83,104 +69,156 @@ export default function Sidebar({ onClose }: SidebarProps) {
               key={href}
               href={href}
               onClick={onClose}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 relative"
+              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
               style={
                 isActive
                   ? {
-                      background: "linear-gradient(135deg, rgba(79,114,255,0.18) 0%, rgba(79,114,255,0.06) 100%)",
-                      border: "1px solid rgba(79,114,255,0.28)",
-                      color: "#a8c4ff",
-                      boxShadow: "0 0 12px rgba(79,114,255,0.12)",
+                      background: "rgba(79, 127, 255, .08)",
+                      border: "1px solid rgba(79, 127, 255, .35)",
+                      color: "var(--ink-100)",
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)",
                     }
                   : {
                       border: "1px solid transparent",
-                      color: "rgba(107, 140, 184, 0.9)",
+                      color: "var(--ink-300)",
                     }
               }
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.background = "rgba(18, 36, 66, 0.7)";
-                  (e.currentTarget as HTMLElement).style.color = "#c8deff";
+                  (e.currentTarget as HTMLElement).style.color = "var(--ink-100)";
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,.03)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.color = "var(--ink-300)";
                   (e.currentTarget as HTMLElement).style.background = "transparent";
-                  (e.currentTarget as HTMLElement).style.color = "rgba(107, 140, 184, 0.9)";
                 }
               }}
             >
-              {isActive && (
-                <div
-                  className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-full"
-                  style={{ background: "linear-gradient(180deg, #4f72ff, #22d3ee)" }}
-                />
-              )}
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              <Icon
+                className="w-[18px] h-[18px] flex-shrink-0"
+                style={{ color: isActive ? "var(--blue-400)" : "var(--ink-400)" }}
+              />
               {label}
             </Link>
           );
         })}
       </nav>
 
-      {/* ── User section ────────────────────────────────────────────── */}
-      <div
-        className="p-3"
-        style={{ borderTop: "1px solid rgba(40, 76, 140, 0.2)" }}
-      >
+      {/* ── Streak card ─────────────────────────────────────────────── */}
+      {streak > 0 && (
         <div
-          className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-lg"
-          style={{ background: "rgba(12, 24, 48, 0.6)" }}
+          className="mx-1 p-3.5 rounded-[14px] mb-6"
+          style={{
+            background: "rgba(79, 127, 255, .06)",
+            border: "1px solid rgba(79, 127, 255, .18)",
+          }}
         >
           <div
-            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+            className="text-[10px] uppercase mb-1.5"
             style={{
-              background: "linear-gradient(135deg, rgba(79,114,255,0.2), rgba(34,211,238,0.2))",
-              border: "1px solid rgba(79,114,255,0.2)",
+              letterSpacing: ".18em",
+              color: "var(--blue-200)",
             }}
           >
-            <User className="w-3.5 h-3.5" style={{ color: "#7a9cc4" }} />
+            <span className="inline-flex items-center gap-1">
+              <Flame className="w-[11px] h-[11px]" /> Current streak
+            </span>
           </div>
-          <div className="flex-1 min-w-0">
-            {session?.user?.name && (
-              <p className="text-xs font-medium truncate" style={{ color: "#c8deff" }}>
-                {session.user.name}
-              </p>
-            )}
-            <p className="text-xs truncate" style={{ color: "#334d6e" }}>
-              {session?.user?.email ?? ""}
-            </p>
-          </div>
-          <Link
-            href="/settings"
-            onClick={onClose}
-            className="transition-colors"
-            style={{ color: "#334d6e" }}
-            title="Settings"
-            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9cc4")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#334d6e")}
+          <div
+            className="text-[28px] leading-none"
+            style={{
+              fontFamily: "var(--font-display)",
+              color: "var(--ink-100)",
+              letterSpacing: "-0.02em",
+            }}
           >
-            <Settings className="w-3.5 h-3.5" />
-          </Link>
+            {streak} days
+          </div>
+          <div
+            className="text-[11px] mt-1.5"
+            style={{ color: "var(--ink-400)" }}
+          >
+            Don&apos;t break the chain · log today.
+          </div>
         </div>
+      )}
 
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm transition-all duration-150"
-          style={{ color: "#3d5a7a" }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.color = "#ff6b7a";
-            (e.currentTarget as HTMLElement).style.background = "rgba(255, 77, 106, 0.08)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.color = "#3d5a7a";
-            (e.currentTarget as HTMLElement).style.background = "transparent";
+      {/* ── Pet Widget ────────────────────────────────────────────── */}
+      <div className="mt-auto mb-3">
+        <PetWidget />
+      </div>
+
+      {/* ── User section ────────────────────────────────────────────── */}
+      <div
+        className="flex items-center gap-2.5 p-2.5 rounded-[14px] cursor-pointer"
+        style={{
+          background: "rgba(255,255,255,.02)",
+          border: "1px solid var(--stroke-1)",
+        }}
+        onClick={() => {
+          window.location.href = "/settings";
+        }}
+      >
+        <div
+          className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
+          style={{
+            background: "linear-gradient(135deg, #4f7fff, #2cb6ff)",
+            color: "white",
+            fontSize: "12px",
+            fontWeight: 600,
           }}
         >
-          <LogOut className="w-3.5 h-3.5" />
-          Sign out
-        </button>
+          {session?.user?.name
+            ? session.user.name.charAt(0).toUpperCase()
+            : "U"}
+        </div>
+        <div className="flex-1 min-w-0">
+          {session?.user?.name && (
+            <p
+              className="text-xs font-medium truncate"
+              style={{ color: "var(--ink-100)" }}
+            >
+              {session.user.name}
+            </p>
+          )}
+          <p
+            className="text-[11px] truncate"
+            style={{ color: "var(--ink-500)" }}
+          >
+            {session?.user?.email ?? ""}
+          </p>
+        </div>
+        <Settings
+          className="w-4 h-4 cursor-pointer transition-colors"
+          style={{ color: "var(--ink-500)" }}
+          onMouseEnter={(e) =>
+            ((e.currentTarget as unknown as HTMLElement).style.color = "var(--ink-200)")
+          }
+          onMouseLeave={(e) =>
+            ((e.currentTarget as unknown as HTMLElement).style.color = "var(--ink-500)")
+          }
+        />
       </div>
+
+      <button
+        onClick={() => signOut({ callbackUrl: "/login" })}
+        className="flex items-center gap-2 w-full px-3 py-2.5 mt-2 rounded-xl text-sm transition-all duration-150"
+        style={{ color: "var(--ink-400)" }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.color = "var(--bad)";
+          (e.currentTarget as HTMLElement).style.background =
+            "rgba(255, 95, 109, .08)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.color = "var(--ink-400)";
+          (e.currentTarget as HTMLElement).style.background = "transparent";
+        }}
+      >
+        <LogOut className="w-4 h-4" />
+        Sign out
+      </button>
     </aside>
   );
 }

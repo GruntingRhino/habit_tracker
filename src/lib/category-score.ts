@@ -14,8 +14,6 @@ import { subDays } from "date-fns";
 type ScoreKey = "physical" | "financial" | "discipline" | "focus" | "mental";
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
-// Habit categories are broader than score categories, so unmapped buckets
-// fall back to discipline-only and the closest score dimension gets the bump.
 const HABIT_CATEGORY_MAP: Record<string, ScoreKey | null> = {
   discipline: "discipline",
   finance: "financial",
@@ -116,6 +114,7 @@ export async function recomputeCategoryScoreForDate(
   db: DbClient = prisma
 ) {
   const scoreDate = getStartOfDay(date);
+  const isToday = getStartOfDay(new Date()).getTime() === scoreDate.getTime();
 
   const [entry, activeHabits, allLogs, completedThisWeek, overdueCount, totalActive, coachProfile] =
     await Promise.all([
@@ -230,6 +229,7 @@ export async function recomputeCategoryScoreForDate(
         mental: nextScores.mental,
         appearance: 0,
         overall: nextScores.overall,
+        finalized: !isToday,
       },
     });
   }
@@ -246,6 +246,22 @@ export async function recomputeCategoryScoreForDate(
       mental: nextScores.mental,
       appearance: 0,
       overall: nextScores.overall,
+      finalized: !isToday,
+    },
+  });
+}
+
+export async function finalizeYesterdayScores(db: DbClient = prisma) {
+  const yesterday = getStartOfDay(new Date());
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  await db.categoryScore.updateMany({
+    where: {
+      date: yesterday,
+      finalized: false,
+    },
+    data: {
+      finalized: true,
     },
   });
 }

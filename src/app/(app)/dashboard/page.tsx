@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Flame, PlusCircle } from "lucide-react";
+import { Flame, Plus } from "lucide-react";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { format } from "date-fns";
@@ -124,7 +124,7 @@ export default async function DashboardPage() {
   }
 
   const hasData = latestScore !== null;
-  const dateLabel = format(new Date(), "EEEE, MMMM d, yyyy");
+  const dateLabel = format(new Date(), "EEEE · MMMM d, yyyy");
 
   const tabsProps: DashboardTabsProps = {
     dateLabel,
@@ -161,47 +161,53 @@ export default async function DashboardPage() {
   };
 
   return (
-    <div className="px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto pb-20 lg:pb-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+    <div className="fade-in">
+      {/* Header (Claude Design) */}
+      <div className="flex items-end justify-between gap-4 mb-7">
         <div>
           <h1
-            className="text-2xl font-bold"
+            className="text-[48px] leading-none m-0"
             style={{
-              fontFamily: "'Syne', sans-serif",
-              background: "linear-gradient(135deg, #c8deff 0%, #93b8ff 60%, #7eb3ff 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
+              fontFamily: "var(--font-display)",
+              fontWeight: 400,
+              letterSpacing: "-0.025em",
+              color: "var(--ink-100)",
             }}
           >
-            GoodHabits
+            LiveImproved
           </h1>
-          <p className="text-xs font-medium tracking-widest uppercase mt-1" style={{ color: "#334d6e" }}>
+          <div
+            className="text-xs uppercase mt-2"
+            style={{
+              letterSpacing: ".15em",
+              color: "var(--ink-500)",
+            }}
+          >
             {dateLabel}
-          </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {streak > 0 && (
             <div
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
               style={{
-                background: "rgba(251, 146, 60, 0.08)",
-                border: "1px solid rgba(251, 146, 60, 0.2)",
+                background: "rgba(255, 181, 71, .08)",
+                border: "1px solid rgba(255, 181, 71, .2)",
               }}
             >
-              <Flame className="w-4 h-4" style={{ color: "#fb923c" }} />
-              <span className="text-sm font-semibold" style={{ color: "#fb923c" }}>
+              <Flame className="w-4 h-4" style={{ color: "var(--cat-appearance)" }} />
+              <span className="text-sm font-semibold" style={{ color: "var(--cat-appearance)" }}>
                 {streak} day streak
               </span>
             </div>
           )}
           <Link
             href="/entry"
-            className="btn-primary-glow flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-lg"
+            className="btn-primary flex items-center gap-2 text-sm"
+            style={{ padding: "14px 22px", borderRadius: "14px" }}
           >
-            <PlusCircle className="w-4 h-4" />
-            {todayEntry ? "Open Daily Work" : "Start Daily Work"}
+            <Plus className="w-4 h-4" />
+            {todayEntry ? "Log today" : "Log today"}
           </Link>
         </div>
       </div>

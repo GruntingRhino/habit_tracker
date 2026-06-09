@@ -690,7 +690,7 @@ export default function HabitsPage() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [updatingCategoryId, setUpdatingCategoryId] = useState<string | null>(null);
-  const [characterizing, setCharacterizing] = useState(false);
+
 
   const existingHabitNames = new Set(habits.map((h) => h.name.toLowerCase()));
 
@@ -754,23 +754,6 @@ export default function HabitsPage() {
     }
   }
 
-  async function characterizeAllHabits() {
-    setCharacterizing(true);
-    try {
-      const res = await fetch("/api/habits/characterize", {
-        method: "POST",
-        credentials: "include",
-      });
-      if (res.ok) {
-        await fetchHabits();
-      }
-    } catch {
-      // ignore
-    } finally {
-      setCharacterizing(false);
-    }
-  }
-
   // Build chart data: last 30 days completion count
   const chartData = Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
@@ -811,14 +794,6 @@ export default function HabitsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => void characterizeAllHabits()}
-            disabled={characterizing}
-            className="flex items-center gap-2 bg-[#0f172a] hover:bg-[#1e293b] border border-[#334155] text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-60"
-          >
-            {characterizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-blue-400" />}
-            <span className="hidden sm:inline">Characterize All Habits</span>
-          </button>
           <button
             onClick={() => setShowLibrary(true)}
             className="flex items-center gap-2 bg-[#0f172a] hover:bg-[#1e293b] border border-[#334155] text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition-colors"

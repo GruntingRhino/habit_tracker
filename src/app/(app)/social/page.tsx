@@ -9,18 +9,19 @@ import {
   Flame,
   Trophy,
   Share2,
-  Gift,
-  Send,
-  Check,
-  X,
-  Loader2,
-  Sparkles,
   ChevronRight,
-  Medal,
   Target,
   Zap,
   Star,
+  Check,
+  Sparkles,
 } from "lucide-react";
+
+interface Friend {
+  id: string;
+  name: string | null;
+  email: string;
+}
 
 export default function SocialPage() {
   const [tab, setTab] = useState<"friends" | "challenges">("friends");
@@ -70,27 +71,43 @@ export default function SocialPage() {
 }
 
 function FriendsTab() {
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addEmail, setAddEmail] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim()) return;
-    setSending(true);
+  useEffect(() => {
+    fetch("/api/friends", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setFriends(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleAddFriend = async () => {
+    if (!addEmail.trim()) return;
+    setAdding(true);
+    setMessage("");
     try {
-      const res = await fetch("/api/invite", {
+      const res = await fetch("/api/friends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: inviteEmail }),
+        body: JSON.stringify({ email: addEmail }),
       });
+      const data = await res.json();
       if (res.ok) {
-        setSent(true);
-        setInviteEmail("");
-        setTimeout(() => setSent(false), 3000);
+        setMessage("Friend added!");
+        setAddEmail("");
+        setFriends((prev) => [...prev, { id: data.id, name: data.name, email: data.email }]);
+      } else {
+        setMessage(data.error || "Failed to add friend");
       }
-    } catch {} finally {
-      setSending(false);
+    } catch {
+      setMessage("Failed to add friend");
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -98,7 +115,7 @@ function FriendsTab() {
     const shareData = {
       title: "LiveImproved",
       text: "Join me on LiveImproved — track habits, earn streaks, and level up daily.",
-      url: "https://liveimproved.app",
+      url: "https://habit-tracker-sandy-eight.vercel.app",
     };
     if (typeof navigator !== "undefined" && navigator.share) {
       try { await navigator.share(shareData); } catch {}
@@ -110,41 +127,37 @@ function FriendsTab() {
 
   return (
     <div className="space-y-5">
-      {/* Invite by email */}
+      {/* Add friend by email */}
       <div className="rounded-3xl border border-[#1f2937] bg-[#020617] p-5">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-300">
             <UserPlus className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-slate-100">Invite a friend</h2>
-            <p className="text-xs text-[#6b8cb8]">Send an email invite or share the app</p>
+            <h2 className="text-sm font-semibold text-slate-100">Add a friend</h2>
+            <p className="text-xs text-[#6b8cb8]">Enter their email to connect</p>
           </div>
         </div>
         <div className="flex gap-2">
           <input
             type="email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+            value={addEmail}
+            onChange={(e) => setAddEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAddFriend()}
             placeholder="friend@email.com"
             className="flex-1 rounded-xl border border-[#334155] bg-[#111827] px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
           />
           <button
-            onClick={handleInvite}
-            disabled={sending || !inviteEmail.trim()}
+            onClick={handleAddFriend}
+            disabled={adding || !addEmail.trim()}
             className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {sending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : sent ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            {sent ? "Sent" : "Send"}
+            {adding ? "Adding..." : "Add"}
           </button>
         </div>
+        {message && (
+          <p className="mt-2 text-xs text-[#6b8cb8]">{message}</p>
+        )}
       </div>
 
       {/* Share via native share sheet */}
@@ -175,13 +188,38 @@ function FriendsTab() {
             <p className="text-xs text-[#6b8cb8]">Compare streaks and scores</p>
           </div>
         </div>
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[#1f2937] bg-[#0f172a] px-5 py-10">
-          <Users className="h-8 w-8 text-slate-600" />
-          <p className="text-sm text-[#6b8cb8]">No friends yet</p>
-          <p className="text-xs text-slate-500 text-center max-w-xs">
-            Invite someone using the link above. Once they join, you will see their streak and recent scores here.
-          </p>
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="w-5 h-5 rounded-full border-2 border-slate-600 border-t-blue-500 animate-spin" />
+          </div>
+        ) : friends.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[#1f2937] bg-[#0f172a] px-5 py-10">
+            <Users className="h-8 w-8 text-slate-600" />
+            <p className="text-sm text-[#6b8cb8]">No friends yet</p>
+            <p className="text-xs text-slate-500 text-center max-w-xs">
+              Add someone using the email above. Once they join, you will see their streak and recent scores here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {friends.map((friend) => (
+              <div
+                key={friend.id}
+                className="flex items-center gap-3 p-3 rounded-xl bg-[#0f172a]"
+              >
+                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-sm font-semibold">
+                  {friend.name?.[0] || friend.email[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-100 truncate">
+                    {friend.name || friend.email}
+                  </p>
+                  <p className="text-xs text-slate-500 truncate">{friend.email}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

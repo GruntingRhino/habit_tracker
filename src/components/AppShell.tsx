@@ -13,11 +13,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const open = openPath === pathname;
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--background)" }}>
+    <div
+      className="flex h-screen overflow-hidden"
+      style={{ background: "var(--bg-base)" }}
+    >
       <DailyEntryReminder />
 
       {/* ── Desktop sidebar (always visible) ── */}
-      <div className="hidden lg:block flex-shrink-0">
+      <div className="hidden lg:block flex-shrink-0 h-full">
         <Sidebar />
       </div>
 
@@ -25,21 +28,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {open && (
         <div
           className="fixed inset-0 z-40 lg:hidden"
-          style={{ background: "rgba(6,13,28,0.8)", backdropFilter: "blur(4px)" }}
+          style={{
+            background: "rgba(5, 7, 13, 0.8)",
+            backdropFilter: "blur(4px)",
+          }}
           onClick={() => setOpenPath(null)}
         />
       )}
 
       {/* ── Mobile sidebar (slides in from left) ── */}
       <div
-        className="fixed inset-y-0 left-0 z-50 w-[min(86vw,18rem)] lg:hidden transition-transform duration-300 ease-out"
+        className="fixed inset-y-0 left-0 z-50 w-[min(86vw,260px)] lg:hidden transition-transform duration-300 ease-out"
         style={{ transform: open ? "translateX(0)" : "translateX(-100%)" }}
       >
         <Sidebar onClose={() => setOpenPath(null)} />
       </div>
 
       {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto relative">
+      <main className="flex-1 overflow-y-auto relative" style={{ padding: "32px 40px 80px" }}>
         {children}
       </main>
 
@@ -56,16 +62,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         style={{
           background: open
             ? "linear-gradient(135deg, #334d6e, #1e3050)"
-            : "linear-gradient(135deg, #4f72ff 0%, #22d3ee 100%)",
+            : "linear-gradient(135deg, var(--blue-400), var(--cyan-400))",
           boxShadow: open
             ? "0 0 12px rgba(30,48,80,0.6), 0 4px 12px rgba(0,0,0,0.4)"
-            : "0 0 20px rgba(79,114,255,0.45), 0 4px 12px rgba(0,0,0,0.4)",
+            : "0 0 20px rgba(79,127,255,0.45), 0 4px 12px rgba(0,0,0,0.4)",
         }}
       >
-        {open
-          ? <X    className="w-5 h-5 text-white" />
-          : <Menu className="w-5 h-5 text-white" />
-        }
+        {open ? (
+          <X className="w-5 h-5 text-white" />
+        ) : (
+          <Menu className="w-5 h-5 text-white" />
+        )}
       </button>
     </div>
   );

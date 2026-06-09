@@ -27,6 +27,39 @@ model User {
   coachProfile    CoachProfile?
   coachGoals      CoachGoal[]
   coachChatMessages CoachChatMessage[]
+  friendshipsSent     Friendship[] @relation("FriendshipSender")
+  friendshipsReceived Friendship[] @relation("FriendshipReceiver")
+  pet               UserPet?
+}
+
+model UserPet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  name      String   @default("Buddy")
+  species   String   @default("cat") // cat, dog, dragon, phoenix, robot
+  xp        Int      @default(0)
+  level     Int      @default(1)
+  mood      String   @default("happy") // happy, excited, sleepy, hungry, idle
+  lastFed   DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Friendship {
+  id        String   @id @default(cuid())
+  senderId  String
+  receiverId String
+  status    String   @default("pending") // pending, accepted, rejected
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sender   User @relation("FriendshipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
 }
 
 model DailyEntry {
@@ -76,6 +109,7 @@ model CategoryScore {
   mental      Float      @default(0)
   appearance  Float      @default(0)
   overall     Float      @default(0)
+  finalized   Boolean    @default(false)
   createdAt   DateTime   @default(now())
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)

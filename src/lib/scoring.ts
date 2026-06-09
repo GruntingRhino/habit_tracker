@@ -66,30 +66,9 @@ function ratio(value: number, target: number): number {
   return clamp(value / target, 0, 1);
 }
 
-function getStrictnessFactor(settings: ScoringSettings): number {
-  switch (settings.strictness) {
-    case "lenient":
-      return 0.9;
-    case "strict":
-      return 1.12;
-    default:
-      return 1;
-  }
-}
-
-function getAdjustedTarget(target: number, settings: ScoringSettings): number {
-  return target * getStrictnessFactor(settings);
-}
-
-function average(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
 function weightedAverage(parts: Array<{ value: number; weight: number }>): number {
   const totalWeight = parts.reduce((sum, part) => sum + part.weight, 0);
   if (totalWeight <= 0) return 0;
-
   return parts.reduce((sum, part) => sum + part.value * part.weight, 0) / totalWeight;
 }
 
@@ -100,18 +79,21 @@ function getTaskCompletionRatio(entry: DailyEntryInput): number {
   return clamp(completed / planned, 0, 1.2);
 }
 
-function getOverduePenalty(projectStats: ProjectStats, perProject: number, maxPenalty: number): number {
-  return Math.min(projectStats.overdueCount * perProject, maxPenalty);
-}
+const HABIT_WEIGHT = 1;
+const ENTRY_WEIGHT = 2;
 
-function calcPhysical(entry: DailyEntryInput, settings: ScoringSettings): number {
+function calcPhysical(
+  entry: DailyEntryInput,
+  habitRate: number,
+  settings: ScoringSettings
+): number {
   const workout = assessWorkout(entry);
   const sleepHours = entry.sleepHours ?? 0;
   const steps = entry.steps ?? 0;
   const trainingLoadMinutes = workout.effectiveTrainingMinutes + (entry.sportsTrainingMinutes ?? 0);
 
-  const sleepTarget = getAdjustedTarget(8, settings);
-  const stepTarget = getAdjustedTarget(10000, settings);
+  const sleepTarget = 8;
+  const stepTarget = 10000;
 
   const sleepScore = clamp(10 - Math.abs(sleepHours - sleepTarget) * 2.2, 0, 10);
   const movementScore = ratio(steps, stepTarget) * 10;
@@ -120,118 +102,106 @@ function calcPhysical(entry: DailyEntryInput, settings: ScoringSettings): number
 
   return clamp(
     weightedAverage([
-      { value: trainingScore, weight: 0.45 },
-      { value: movementScore, weight: 0.25 },
-      { value: sleepScore, weight: 0.2 },
-      { value: calorieAwareness, weight: 0.1 },
+      { value: habitRate * 10, weight: HABIT_WEIGHT },
+      { value: trainingScore, weight: ENTRY_WEIGHT },
+      { value: movementScore, weight: ENTRY_WEIGHT },
+      { value: sleepScore, weight: ENTRY_WEIGHT },
+      { value: calorieAwareness, weight: ENTRY_WEIGHT },
     ])
   );
 }
 
-function calcFinancial(entry: DailyEntryInput, settings: ScoringSettings): number {
-  const ageYears = settings.ageYears;
+function calcFinancial(
+  entry: DailyEntryInput,
+  habitRate: number,
+  settings: ScoringSettings
+): number {
   const incomeSignal = entry.incomeActivity ? 10 : 0;
   const savingsSignal = entry.moneySaved && entry.moneySaved > 0 ? 8 : 4;
-  const disciplineSignal =
-    ageYears !== null && ageYears <= 22
-      ? average([
-          ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(4, settings)) * 10,
-          clamp(getTaskCompletionRatio(entry) * 10, 0, 10),
-        ])
-      : savingsSignal;
+  const spendingControl = entry.moneySpent !== null && entry.moneySpent !== undefined
+    ? clamp(10 - (entry.moneySpent / 200) * 10, 0, 10)
+    : 5;
 
   return clamp(
     weightedAverage([
-      { value: incomeSignal, weight: ageYears !== null && ageYears <= 22 ? 0.45 : 0.65 },
-      { value: disciplineSignal, weight: ageYears !== null && ageYears <= 22 ? 0.35 : 0.2 },
-      { value: savingsSignal, weight: 0.2 },
+      { value: habitRate * 10, weight: HABIT_WEIGHT },
+      { value: incomeSignal, weight: ENTRY_WEIGHT },
+      { value: savingsSignal, weight: ENTRY_WEIGHT },
+      { value: spendingControl, weight: ENTRY_WEIGHT },
     ])
   );
 }
 
 function calcDiscipline(
   entry: DailyEntryInput,
-  habitCompletionRate: number,
+  habitRate: number,
   recentStreak: number,
   projectStats: ProjectStats,
-  settings: ScoringSettings,
-  categoryHabitRates?: Partial<Record<ScoreCategoryKey, number>>
+  settings: ScoringSettings
 ): number {
   const taskRatio = getTaskCompletionRatio(entry);
-  const habitRate = average([
-    habitCompletionRate,
-    categoryHabitRates?.discipline ?? 0,
-  ]);
-  const streakScore = ratio(recentStreak, settings.strictness === "strict" ? 21 : 14) * 10;
-  const entryScore = average([
-    clamp(taskRatio * 10, 0, 10),
-    ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(4, settings)) * 10,
-    clamp(10 - (entry.screenTimeHours ?? 0) * 1.4, 0, 10),
-  ]);
+  const taskScore = clamp(taskRatio * 10, 0, 10);
+  const deepWorkScore = ratio(entry.deepWorkHours ?? 0, 4) * 10;
+  const screenScore = clamp(10 - (entry.screenTimeHours ?? 0) * 1.7, 0, 10);
+  const streakScore = ratio(recentStreak, 14) * 10;
+  const overduePenalty = Math.min(projectStats.overdueCount * 0.8, 2.5);
 
   return clamp(
     weightedAverage([
-      { value: entryScore, weight: 0.45 },
-      { value: habitRate * 10, weight: 0.4 },
-      { value: streakScore, weight: 0.15 },
-    ]) - getOverduePenalty(projectStats, 0.8, 2.5)
+      { value: habitRate * 10, weight: HABIT_WEIGHT },
+      { value: taskScore, weight: ENTRY_WEIGHT },
+      { value: deepWorkScore, weight: ENTRY_WEIGHT },
+      { value: screenScore, weight: ENTRY_WEIGHT },
+      { value: streakScore, weight: ENTRY_WEIGHT },
+    ]) - overduePenalty
   );
 }
 
 function calcFocus(
   entry: DailyEntryInput,
+  habitRate: number,
   projectStats: ProjectStats,
-  settings: ScoringSettings,
-  categoryHabitRates?: Partial<Record<ScoreCategoryKey, number>>
+  settings: ScoringSettings
 ): number {
-  const deepWorkScore = ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(5, settings)) * 10;
+  const deepWorkScore = ratio(entry.deepWorkHours ?? 0, 5) * 10;
   const taskScore = clamp(getTaskCompletionRatio(entry) * 10, 0, 10);
-  const junkPenaltyBase = entry.screenTimeHours ?? 0;
-  const screenScore = clamp(10 - junkPenaltyBase * (settings.strictness === "strict" ? 2.1 : 1.7), 0, 10);
-  const habitScore = average([
-    categoryHabitRates?.focus ?? 0,
-    categoryHabitRates?.discipline ?? 0,
-  ]) * 10;
+  const screenScore = clamp(10 - (entry.screenTimeHours ?? 0) * 1.7, 0, 10);
+  const overduePenalty = Math.min(projectStats.overdueCount * 0.7, 2);
 
   return clamp(
     weightedAverage([
-      { value: deepWorkScore, weight: 0.4 },
-      { value: taskScore, weight: 0.3 },
-      { value: screenScore, weight: 0.2 },
-      { value: habitScore, weight: 0.1 },
-    ]) - getOverduePenalty(projectStats, 0.7, 2)
+      { value: habitRate * 10, weight: HABIT_WEIGHT },
+      { value: deepWorkScore, weight: ENTRY_WEIGHT },
+      { value: taskScore, weight: ENTRY_WEIGHT },
+      { value: screenScore, weight: ENTRY_WEIGHT },
+    ]) - overduePenalty
   );
 }
 
 function calcMental(
   entry: DailyEntryInput,
-  settings: ScoringSettings,
-  categoryHabitRates?: Partial<Record<ScoreCategoryKey, number>>
+  habitRate: number,
+  settings: ScoringSettings
 ): number {
-  const sleepScore = clamp(10 - Math.abs((entry.sleepHours ?? 0) - getAdjustedTarget(8, settings)) * 1.8, 0, 10);
+  const sleepScore = clamp(10 - Math.abs((entry.sleepHours ?? 0) - 8) * 1.8, 0, 10);
   const reflectionScore = entry.overallDayRating ? entry.overallDayRating : 5;
-  const deepWorkScore = ratio(entry.deepWorkHours ?? 0, getAdjustedTarget(4, settings)) * 10;
+  const deepWorkScore = ratio(entry.deepWorkHours ?? 0, 4) * 10;
   const screenBalanceScore = clamp(10 - (entry.screenTimeHours ?? 0) * 1.3, 0, 10);
-  const habitScore = (categoryHabitRates?.mental ?? 0) * 10;
 
   return clamp(
     weightedAverage([
-      { value: reflectionScore, weight: 0.3 },
-      { value: sleepScore, weight: 0.25 },
-      { value: deepWorkScore, weight: 0.15 },
-      { value: screenBalanceScore, weight: 0.15 },
-      { value: habitScore, weight: 0.15 },
+      { value: habitRate * 10, weight: HABIT_WEIGHT },
+      { value: reflectionScore, weight: ENTRY_WEIGHT },
+      { value: sleepScore, weight: ENTRY_WEIGHT },
+      { value: deepWorkScore, weight: ENTRY_WEIGHT },
+      { value: screenBalanceScore, weight: ENTRY_WEIGHT },
     ])
   );
 }
 
 export function calculateOverallScore(scores: Pick<CategoryScores, "physical" | "financial" | "discipline" | "focus" | "mental">): number {
   return clamp(
-    scores.physical * 0.25 +
-      scores.financial * 0.15 +
-      scores.discipline * 0.2 +
-      scores.focus * 0.2 +
-      scores.mental * 0.2
+    (scores.physical + scores.financial + scores.discipline + scores.focus + scores.mental) / 5
   );
 }
 
@@ -245,18 +215,17 @@ export function calculateScores(params: ScoreParams): CategoryScores {
     scoringSettings = DEFAULT_SCORING_SETTINGS,
   } = params;
 
-  const physical = calcPhysical(entry, scoringSettings);
-  const financial = calcFinancial(entry, scoringSettings);
-  const discipline = calcDiscipline(
-    entry,
-    habitCompletionRate,
-    recentStreak,
-    projectStats,
-    scoringSettings,
-    categoryHabitRates
-  );
-  const focus = calcFocus(entry, projectStats, scoringSettings, categoryHabitRates);
-  const mental = calcMental(entry, scoringSettings, categoryHabitRates);
+  const physicalHabitRate = categoryHabitRates?.physical ?? habitCompletionRate;
+  const financialHabitRate = categoryHabitRates?.financial ?? habitCompletionRate;
+  const disciplineHabitRate = categoryHabitRates?.discipline ?? habitCompletionRate;
+  const focusHabitRate = categoryHabitRates?.focus ?? habitCompletionRate;
+  const mentalHabitRate = categoryHabitRates?.mental ?? habitCompletionRate;
+
+  const physical = calcPhysical(entry, physicalHabitRate, scoringSettings);
+  const financial = calcFinancial(entry, financialHabitRate, scoringSettings);
+  const discipline = calcDiscipline(entry, disciplineHabitRate, recentStreak, projectStats, scoringSettings);
+  const focus = calcFocus(entry, focusHabitRate, projectStats, scoringSettings);
+  const mental = calcMental(entry, mentalHabitRate, scoringSettings);
 
   const overall = calculateOverallScore({
     physical,

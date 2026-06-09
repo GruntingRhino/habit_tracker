@@ -3,5 +3,5 @@ export const OLLAMA_BASE_URL =
 export const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "llama3";
 export const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? "12000");
 export const GROQ_API_KEY = typeof window === "undefined" ? process.env.GROQ_API_KEY : undefined;
-export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+export const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
 export const GROQ_MODEL = process.env.GROQ_MODEL ?? DEFAULT_GROQ_MODEL;

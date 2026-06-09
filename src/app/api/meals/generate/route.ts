@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { reportError } from "@/lib/monitoring";
-import { isAIAvailable, chatWithCoach } from "@/lib/ollama";
+import { isGroqAvailable, chatWithCoach } from "@/lib/ollama";
 import {
   buildScopedRateLimitKeys,
   extractClientIp,
@@ -13,6 +13,14 @@ export async function POST(_req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Fast-path: no AI configured → 503 without waiting for Ollama probe
+  if (!isGroqAvailable()) {
+    return NextResponse.json(
+      { error: "AI not available. Add a GROQ_API_KEY to enable meal suggestions." },
+      { status: 503 }
+    );
   }
 
   try {
@@ -30,51 +38,35 @@ export async function POST(_req: NextRequest) {
       );
     }
 
-    const { category, goal } = await _req.json();
-
-    const aiUp = await isAIAvailable();
-    if (!aiUp) {
-      return NextResponse.json(
-        { error: "AI not available" },
-        { status: 503 }
-      );
+    let category = "lunch";
+    let goal = "eat healthy";
+    try {
+      const body = await _req.json();
+      if (body.category) category = body.category;
+      if (body.goal) goal = body.goal;
+    } catch {
+      // no body — use defaults
     }
 
-    const prompt = `Suggest 3 healthy ${category || "lunch"} meals for someone trying to ${goal || "eat healthy"}. For each meal, provide: name, approximate calories, and a brief recipe or description. Return as JSON array with fields: name, calories, recipe.`;
-
+    const prompt = `Suggest 3 healthy ${category} meals for someone trying to ${goal}. For each meal, provide: name, approximate calories, and a brief recipe or description. Return as JSON array with fields: name, calories, recipe.`;
     const messages = [{ role: "user" as const, content: prompt }];
     const response = await chatWithCoach(messages, {});
 
     let meals;
     try {
       const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        meals = JSON.parse(jsonMatch[0]);
-      } else {
-        meals = [
-          {
-            name: "Healthy Bowl",
-            calories: 450,
-            recipe: "A balanced bowl with protein, grains, and vegetables.",
-          },
-        ];
-      }
+      meals = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
     } catch {
-      meals = [
-        {
-          name: "Healthy Bowl",
-          calories: 450,
-          recipe: "A balanced bowl with protein, grains, and vegetables.",
-        },
-      ];
+      meals = null;
+    }
+
+    if (!meals) {
+      meals = [{ name: "Healthy Bowl", calories: 450, recipe: "A balanced bowl with protein, grains, and vegetables." }];
     }
 
     return NextResponse.json({ meals });
   } catch (error) {
     reportError({ context: "meals generate POST", error, userId: session.user.id });
-    return NextResponse.json(
-      { error: "Failed to generate meals" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to generate meals" }, { status: 500 });
   }
 }

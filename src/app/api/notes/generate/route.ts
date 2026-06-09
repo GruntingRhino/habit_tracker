@@ -50,9 +50,15 @@ export async function POST(_req: NextRequest) {
 
     const prompt = `Help me write a ${type} note about ${topic}. Keep it concise and insightful. Return just the text content.`;
     const messages = [{ role: "user" as const, content: prompt }];
-    const response = await chatWithCoach(messages, {});
 
-    return NextResponse.json({ content: response });
+    let content = "";
+    try {
+      content = await chatWithCoach(messages, {});
+    } catch {
+      content = "AI generation unavailable. Write your note here.";
+    }
+
+    return NextResponse.json({ content });
   } catch (error) {
     reportError({ context: "notes generate POST", error, userId: session.user.id });
     return NextResponse.json({ error: "Failed to generate note" }, { status: 500 });

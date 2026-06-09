@@ -50,9 +50,15 @@ export async function POST(_req: NextRequest) {
 
     const prompt = `Suggest 3 healthy ${category} meals for someone trying to ${goal}. For each meal, provide: name, approximate calories, and a brief recipe or description. Return as JSON array with fields: name, calories, recipe.`;
     const messages = [{ role: "user" as const, content: prompt }];
-    const response = await chatWithCoach(messages, {});
 
-    let meals;
+    let response = "";
+    try {
+      response = await chatWithCoach(messages, {});
+    } catch {
+      // AI error — fall through to default meals
+    }
+
+    let meals: { name: string; calories: number; recipe: string }[] | null = null;
     try {
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       meals = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
@@ -60,7 +66,7 @@ export async function POST(_req: NextRequest) {
       meals = null;
     }
 
-    if (!meals) {
+    if (!meals || meals.length === 0) {
       meals = [{ name: "Healthy Bowl", calories: 450, recipe: "A balanced bowl with protein, grains, and vegetables." }];
     }
 

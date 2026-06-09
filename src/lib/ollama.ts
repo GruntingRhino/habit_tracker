@@ -273,9 +273,9 @@ export async function chatWithCoach(
   context: CoachContext
 ): Promise<string> {
   try {
-    if (isGroqAvailable()) return chatWithGroq(messages, context);
+    if (isGroqAvailable()) return await chatWithGroq(messages, context);
     const ollamaUp = await isOllamaAvailable();
-    if (ollamaUp) return chatWithOllama(messages, context);
+    if (ollamaUp) return await chatWithOllama(messages, context);
     return "No AI backend configured. Add a GROQ_API_KEY to enable the daily coach.";
   } catch (err) {
     reportError({ context: "ai chatWithCoach", error: err });

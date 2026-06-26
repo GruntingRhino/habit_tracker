@@ -1,7 +1,7 @@
 import Link from "next/link";
+import { LiveImprovedTileIcon } from "@/components/brand/LiveImprovedLogo";
 import {
   ArrowRight,
-  Brain,
   ChevronRight,
   Clock3,
   Dumbbell,
@@ -130,15 +130,8 @@ export default async function RootPage() {
       <header className="sticky top-0 z-40 border-b border-white/6 bg-[rgba(11,16,24,0.88)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/8 bg-[#121925] shadow-[0_18px_40px_-24px_rgba(0,0,0,0.85)]">
-              <Brain className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold tracking-[-0.01em] text-white">LiveImproved</div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
-                Daily operating system
-              </div>
-            </div>
+            <LiveImprovedTileIcon className="h-10 w-10 shadow-[0_18px_40px_-24px_rgba(0,0,0,0.85)]" />
+            <div className="text-sm font-semibold tracking-[-0.01em] text-white">LiveImproved</div>
           </div>
 
           <nav className="hidden items-center gap-2 md:flex">
@@ -175,10 +168,6 @@ export default async function RootPage() {
         <section className="relative px-4 pb-20 pt-16 md:px-8 md:pb-28 md:pt-24">
           <div className="mx-auto grid max-w-7xl items-center gap-16 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="hp-reveal hp-reveal-up" data-reveal="up">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/[0.02] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--text-secondary)]">
-                <span className="h-2 w-2 rounded-full bg-[#4f72ff]" />
-                Measurable daily improvement
-              </div>
               <h1 className="mt-6 max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.045em] text-white md:text-7xl">
                 Track what makes
                 <br />

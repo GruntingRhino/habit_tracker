@@ -4,10 +4,10 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { LiveImprovedTileIcon } from "@/components/brand/LiveImprovedLogo";
 import {
   AlertCircle,
   ArrowLeft,
-  Brain,
   Loader2,
   Lock,
   Mail,
@@ -209,16 +209,12 @@ function LoginPageContent() {
 
       <div className="w-full max-w-md relative z-10 px-4 sm:px-0">
         <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4"
+          <LiveImprovedTileIcon
+            className="mx-auto mb-4 h-16 w-16"
             style={{
-              background: "linear-gradient(135deg, #4f72ff 0%, #22d3ee 100%)",
-              boxShadow:
-                "0 0 32px rgba(79,114,255,0.4), 0 0 64px rgba(79,114,255,0.15)",
+              filter: "drop-shadow(0 0 24px rgba(6,13,28,0.55))",
             }}
-          >
-            <Brain className="w-8 h-8 text-white" />
-          </div>
+          />
           <h1
             className="text-3xl font-bold mb-1"
             style={{

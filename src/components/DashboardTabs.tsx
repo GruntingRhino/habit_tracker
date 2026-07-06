@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  ArrowRight,
   CheckCircle2,
   Circle,
   BarChart3,
@@ -26,19 +25,13 @@ import {
   Radar,
   PolarGrid,
   PolarAngleAxis,
-  BarChart,
-  Bar,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
-  PieChart,
-  Pie,
 } from "recharts";
-import DashboardScores from "@/components/DashboardScores";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import { type LucideIcon } from "lucide-react";
@@ -79,6 +72,12 @@ export interface DashboardTabsProps {
   projects: DashboardProject[];
   entryNotes: string | null;
   entryDate: string | null;
+  weekEntriesLogged: number;
+  weekHabitsCompleted: number;
+  weekHabitsTotal: number;
+  weekDeepWorkHours: number;
+  coachInsight: string | null;
+  userName: string;
 }
 
 // ── Analytics types (mirrored from analytics page) ───────────────────────────
@@ -105,7 +104,6 @@ interface HabitStat {
 interface ProjectStats {
   total: number;
   completed: number;
-  active: number;
   overdueCount: number;
   taskCompletionRate: number;
   totalTasks: number;
@@ -125,6 +123,7 @@ interface AnalyticsData {
   categoryScores: CategoryScore[];
   trends: Trends;
   habitStats: HabitStat[];
+  habitConsistency: number;
   projectStats: ProjectStats;
 }
 
@@ -151,20 +150,11 @@ const SCORE_META: {
   { key: "physical",   label: "Physical",   color: "#22c55e", icon: Activity },
   { key: "financial",  label: "Financial",  color: "#8b5cf6", icon: DollarSign },
   { key: "discipline", label: "Discipline", color: "#f59e0b", icon: RefreshCw },
-  { key: "overall",    label: "Overall",    color: "#14b8a6", icon: BarChart3 },
   { key: "focus",      label: "Focus",      color: "#3b82f6", icon: Brain },
   { key: "mental",     label: "Mental",     color: "#a78bfa", icon: ClipboardCheck },
 ];
 
-const PIE_COLORS = ["#3b82f6", "#1e293b", "#ef4444"];
-
 // ── Small shared components ───────────────────────────────────────────────────
-
-function getScoreColor(score: number) {
-  if (score > 7) return "text-green-400";
-  if (score >= 5) return "text-yellow-400";
-  return "text-red-400";
-}
 
 interface CustomLineTooltipProps {
   active?: boolean;
@@ -183,21 +173,6 @@ function CustomLineTooltip({ active, payload, label }: CustomLineTooltipProps) {
           <span className="font-semibold" style={{ color: "#c8deff" }}>{p.value.toFixed(1)}</span>
         </div>
       ))}
-    </div>
-  );
-}
-
-interface CustomBarTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number }>;
-  label?: string;
-}
-function CustomBarTooltip({ active, payload, label }: CustomBarTooltipProps) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#0c1830", border: "1px solid rgba(40,76,140,0.3)" }}>
-      <p className="mb-1" style={{ color: "#6b8cb8" }}>{label}</p>
-      <p className="text-blue-400 font-semibold">{Math.round(payload[0].value * 100)}% completion</p>
     </div>
   );
 }
@@ -249,87 +224,60 @@ function MealsPreview() {
 
   return (
     <div
-      className="rounded-[20px] flex flex-col overflow-hidden"
+      className="rounded-xl flex flex-col"
       style={{
-        background: "var(--bg-elev-1)",
-        border: "1px solid var(--stroke-2)",
+        background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+        border: "1px solid rgba(40,76,140,0.22)",
         minHeight: "220px",
       }}
     >
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-5 py-4"
-        style={{ borderBottom: "1px solid var(--stroke-1)" }}
-      >
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-6 h-6 rounded-[7px] flex items-center justify-center"
-            style={{ background: "rgba(255, 181, 71, .12)", color: "var(--cat-appearance)" }}
-          >
-            <Utensils className="w-3 h-3" />
+      <div className="flex items-center justify-between px-4 pt-4 pb-3" style={{ borderBottom: "1px solid rgba(30,60,110,0.3)" }}>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "rgba(251,146,60,0.15)" }}>
+            <Utensils className="w-3 h-3" style={{ color: "#fb923c" }} />
           </div>
-          <span className="text-sm font-semibold" style={{ color: "var(--ink-100)" }}>
-            Meals
-          </span>
-          {!loading && (
-            <span
-              className="text-[11px] font-mono"
-              style={{ color: "var(--ink-400)" }}
-            >
-              · {meals.length}
-            </span>
-          )}
+          <span className="text-sm font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Meals</span>
+          {!loading && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(40,76,140,0.3)", color: "#4a6a90" }}>{meals.length}</span>}
         </div>
         <Link
           href="/meals"
-          className="text-[12px] flex items-center gap-1 transition-colors"
-          style={{ color: "var(--blue-400)" }}
+          className="flex items-center gap-1 text-xs font-medium transition-colors"
+          style={{ color: "#4f72ff" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}
         >
           See all <ChevronRight className="w-3 h-3" />
         </Link>
       </div>
 
       {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto p-3" style={{ maxHeight: "180px" }}>
+      <div className="flex-1 overflow-y-auto px-3 py-2" style={{ maxHeight: "180px" }}>
         {loading ? (
           <div className="flex items-center justify-center h-16">
-            <div
-              className="w-4 h-4 rounded-full border-2 animate-spin"
-              style={{ borderColor: "var(--stroke-2)", borderTopColor: "var(--blue-400)" }}
-            />
+            <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(40,76,140,0.3)", borderTopColor: "#4f72ff" }} />
           </div>
         ) : meals.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-16 gap-1">
-            <p className="text-xs" style={{ color: "var(--ink-500)" }}>No meals added yet</p>
-            <Link href="/meals" className="text-xs" style={{ color: "var(--blue-400)" }}>
-              Add your first meal →
-            </Link>
+            <p className="text-xs" style={{ color: "#2d4a6a" }}>No meals added yet</p>
+            <Link href="/meals" className="text-xs" style={{ color: "#4f72ff" }}>Add your first meal →</Link>
           </div>
         ) : (
           <div className="space-y-1">
             {meals.map((meal) => (
-              <div
-                key={meal.id}
-                className="flex items-center gap-3 px-3 py-2 rounded-[10px]"
-                style={{ background: "rgba(255,255,255,.015)" }}
-              >
+              <div key={meal.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(6,13,28,0.5)" }}>
                 <span
-                  className="text-[10px] uppercase px-2 py-0.5 rounded-[6px] font-medium flex-shrink-0"
+                  className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 capitalize"
                   style={{
-                    background: `${MEAL_CATEGORY_COLORS[meal.category] ?? "var(--blue-400)"}18`,
-                    color: MEAL_CATEGORY_COLORS[meal.category] ?? "var(--blue-400)",
-                    letterSpacing: ".12em",
+                    background: `${MEAL_CATEGORY_COLORS[meal.category] ?? "#4f72ff"}18`,
+                    color: MEAL_CATEGORY_COLORS[meal.category] ?? "#4f72ff",
                   }}
                 >
                   {meal.category}
                 </span>
-                <span className="text-xs flex-1 truncate" style={{ color: "var(--ink-300)" }}>
-                  {meal.name}
-                </span>
+                <span className="text-xs flex-1 truncate" style={{ color: "#8aadcc" }}>{meal.name}</span>
                 {meal.calories && (
-                  <span className="text-xs flex-shrink-0 font-mono" style={{ color: "var(--ink-400)" }}>
-                    {meal.calories} cal
-                  </span>
+                  <span className="text-xs flex-shrink-0" style={{ color: "#2d4a6a" }}>{meal.calories} cal</span>
                 )}
               </div>
             ))}
@@ -366,61 +314,43 @@ function RoutinesPreview() {
 
   return (
     <div
-      className="rounded-[20px] flex flex-col overflow-hidden"
+      className="rounded-xl flex flex-col"
       style={{
-        background: "var(--bg-elev-1)",
-        border: "1px solid var(--stroke-2)",
+        background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+        border: "1px solid rgba(40,76,140,0.22)",
         minHeight: "220px",
       }}
     >
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-5 py-4"
-        style={{ borderBottom: "1px solid var(--stroke-1)" }}
-      >
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-6 h-6 rounded-[7px] flex items-center justify-center"
-            style={{ background: "rgba(79, 127, 255, .12)", color: "var(--blue-400)" }}
-          >
-            <Dumbbell className="w-3 h-3" />
+      <div className="flex items-center justify-between px-4 pt-4 pb-3" style={{ borderBottom: "1px solid rgba(30,60,110,0.3)" }}>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "rgba(79,114,255,0.15)" }}>
+            <Dumbbell className="w-3 h-3" style={{ color: "#4f72ff" }} />
           </div>
-          <span className="text-sm font-semibold" style={{ color: "var(--ink-100)" }}>
-            Routines
-          </span>
-          {!loading && (
-            <span
-              className="text-[11px] font-mono"
-              style={{ color: "var(--ink-400)" }}
-            >
-              · {routines.length}
-            </span>
-          )}
+          <span className="text-sm font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Routines</span>
+          {!loading && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(40,76,140,0.3)", color: "#4a6a90" }}>{routines.length}</span>}
         </div>
         <Link
           href="/weights"
-          className="text-[12px] flex items-center gap-1 transition-colors"
-          style={{ color: "var(--blue-400)" }}
+          className="flex items-center gap-1 text-xs font-medium transition-colors"
+          style={{ color: "#4f72ff" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}
         >
           See all <ChevronRight className="w-3 h-3" />
         </Link>
       </div>
 
       {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto p-3" style={{ maxHeight: "180px" }}>
+      <div className="flex-1 overflow-y-auto px-3 py-2" style={{ maxHeight: "180px" }}>
         {loading ? (
           <div className="flex items-center justify-center h-16">
-            <div
-              className="w-4 h-4 rounded-full border-2 animate-spin"
-              style={{ borderColor: "var(--stroke-2)", borderTopColor: "var(--blue-400)" }}
-            />
+            <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(40,76,140,0.3)", borderTopColor: "#4f72ff" }} />
           </div>
         ) : routines.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-16 gap-1">
-            <p className="text-xs" style={{ color: "var(--ink-500)" }}>No routines yet</p>
-            <Link href="/weights" className="text-xs" style={{ color: "var(--blue-400)" }}>
-              Create a routine →
-            </Link>
+            <p className="text-xs" style={{ color: "#2d4a6a" }}>No routines yet</p>
+            <Link href="/weights" className="text-xs" style={{ color: "#4f72ff" }}>Create a routine →</Link>
           </div>
         ) : (
           <div className="space-y-1">
@@ -430,16 +360,10 @@ function RoutinesPreview() {
                 ? Math.floor((todayMs - new Date(lastSession.date).getTime()) / 86400000)
                 : null;
               return (
-                <div
-                  key={routine.id}
-                  className="flex items-center gap-3 px-3 py-2 rounded-[10px]"
-                  style={{ background: "rgba(255,255,255,.015)" }}
-                >
+                <div key={routine.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(6,13,28,0.5)" }}>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate" style={{ color: "var(--ink-200)" }}>
-                      {routine.name}
-                    </p>
-                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>
+                    <p className="text-xs font-medium truncate" style={{ color: "#8aadcc" }}>{routine.name}</p>
+                    <p className="text-xs" style={{ color: "#2d4a6a" }}>
                       {routine.exercises.length} exercise{routine.exercises.length !== 1 ? "s" : ""}
                       {" · "}
                       {routine._count.sessions} session{routine._count.sessions !== 1 ? "s" : ""}
@@ -447,14 +371,8 @@ function RoutinesPreview() {
                   </div>
                   {daysSince !== null && (
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <Flame
-                        className="w-3 h-3"
-                        style={{ color: daysSince <= 2 ? "var(--cat-appearance)" : "var(--ink-600)" }}
-                      />
-                      <span
-                        className="text-[11px]"
-                        style={{ color: daysSince <= 2 ? "var(--cat-appearance)" : "var(--ink-600)" }}
-                      >
+                      <Flame className="w-3 h-3" style={{ color: daysSince <= 2 ? "#fb923c" : "#1e3050" }} />
+                      <span className="text-xs" style={{ color: daysSince <= 2 ? "#fb923c" : "#1e3050" }}>
                         {daysSince === 0 ? "today" : `${daysSince}d ago`}
                       </span>
                     </div>
@@ -462,6 +380,84 @@ function RoutinesPreview() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Notes preview ─────────────────────────────────────────────────────────────
+
+interface NotePreviewItem {
+  id: string;
+  title: string;
+  content: string | null;
+  type: string;
+}
+
+function NotesPreview() {
+  const [notes, setNotes] = useState<NotePreviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/notes?limit=3", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setNotes(Array.isArray(d) ? d.slice(0, 3) : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div
+      className="rounded-xl flex flex-col"
+      style={{
+        background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+        border: "1px solid rgba(40,76,140,0.22)",
+        minHeight: "220px",
+      }}
+    >
+      <div className="flex items-center justify-between px-4 pt-4 pb-3" style={{ borderBottom: "1px solid rgba(30,60,110,0.3)" }}>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: "rgba(167,139,250,0.15)" }}>
+            <FolderKanban className="w-3 h-3" style={{ color: "#a78bfa" }} />
+          </div>
+          <span className="text-sm font-semibold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Notes</span>
+          {!loading && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(40,76,140,0.3)", color: "#4a6a90" }}>{notes.length}</span>}
+        </div>
+        <Link
+          href="/notes"
+          className="flex items-center gap-1 text-xs font-medium transition-colors"
+          style={{ color: "#4f72ff" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}
+        >
+          See all <ChevronRight className="w-3 h-3" />
+        </Link>
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 py-2" style={{ maxHeight: "180px" }}>
+        {loading ? (
+          <div className="flex items-center justify-center h-16">
+            <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(40,76,140,0.3)", borderTopColor: "#4f72ff" }} />
+          </div>
+        ) : notes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-16 gap-1">
+            <p className="text-xs" style={{ color: "#2d4a6a" }}>No notes yet</p>
+            <Link href="/notes" className="text-xs" style={{ color: "#4f72ff" }}>Add your first note →</Link>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {notes.map((note) => (
+              <div key={note.id} className="flex items-start gap-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(6,13,28,0.5)" }}>
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 capitalize mt-0.5"
+                  style={{ background: note.type === "todo" ? "rgba(16,217,160,0.12)" : "rgba(167,139,250,0.12)", color: note.type === "todo" ? "#10d9a0" : "#a78bfa" }}
+                >
+                  {note.type}
+                </span>
+                <span className="text-xs flex-1 truncate" style={{ color: "#8aadcc" }}>{note.title}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -486,49 +482,34 @@ function AnalyticsTab() {
   if (loading) return <div className="flex items-center justify-center h-64"><LoadingSpinner size="lg" /></div>;
   if (!data || data.categoryScores.length === 0) return <EmptyState icon={BarChart3} title="Log an entry to see analytics" description="Your performance charts will appear here once you've logged a daily entry." ctaLabel="Log Today's Entry" ctaHref="/entry" />;
 
-  const { categoryScores, trends, habitStats, projectStats } = data;
+  const { categoryScores, habitStats, habitConsistency, projectStats } = data;
   const lineData = categoryScores.map((s) => ({
     date: new Date(s.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     physical: s.physical, financial: s.financial, discipline: s.discipline,
-    focus: s.focus, mental: s.mental, overall: s.overall,
+    focus: s.focus, mental: s.mental,
   }));
-  const radarData = SCORE_META.filter((m) => m.key !== "overall").map(({ key, label }) => {
+  const radarData = SCORE_META.map(({ key, label }) => {
     const last7 = categoryScores.slice(-7);
     const avg = last7.length > 0 ? last7.reduce((sum, s) => sum + s[key], 0) / last7.length : 0;
     return { subject: label, value: Math.round(avg * 10) / 10, fullMark: 10 };
   });
-  const habitBarData = habitStats.map((h) => ({
-    name: h.name.length > 12 ? h.name.slice(0, 12) + "…" : h.name,
-    rate: Math.round(h.completionRate * 100) / 100,
-    color: h.color,
-  }));
-  const pieData = [
+  const planStatusData = [
+    { name: "Created past month", value: projectStats.total },
     { name: "Completed", value: projectStats.completed },
-    { name: "Active", value: projectStats.active },
     { name: "Overdue", value: projectStats.overdueCount },
-  ].filter((d) => d.value > 0);
+  ];
   const latest = categoryScores[categoryScores.length - 1];
+  const latestCategoryScores: DashboardScore[] = latest
+    ? SCORE_META.map(({ key, label }) => ({
+        key,
+        title: label,
+        score: latest[key],
+      }))
+    : [];
 
   return (
     <div>
-      {/* Score cards — clickable for insights */}
-      {latest && (
-        <section className="mb-8">
-          <h2 className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "#3d5a7a", fontFamily: "'Syne', sans-serif" }}>Current Scores</h2>
-          <p className="text-xs mb-4" style={{ color: "#1e3050" }}>Click any score to see what you&apos;re doing wrong and what to fix</p>
-          <DashboardScores
-            scores={SCORE_META.map(({ key, label }) => {
-              const prev = categoryScores[categoryScores.length - 2];
-              return {
-                key,
-                title: label,
-                score: latest[key as keyof typeof latest] as number,
-                prevScore: prev ? (prev[key as keyof typeof prev] as number) : undefined,
-              };
-            })}
-          />
-        </section>
-      )}
+      <CategoryScoreGrid scores={latestCategoryScores} />
 
       {/* Line chart */}
       {lineData.length > 1 && (
@@ -565,57 +546,50 @@ function AnalyticsTab() {
           </ResponsiveContainer>
         </div>
 
-        {/* Habit bar */}
-        <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
-          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Habit Completion Rates</h2>
-          {habitBarData.length === 0 ? (
+        {/* Habit consistency */}
+        <div className="rounded-xl p-5 text-center" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+          <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Habit Consistency</h2>
+          {habitStats.length === 0 ? (
             <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No habits yet</p></div>
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={habitBarData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,60,110,0.4)" horizontal={false} />
-                <XAxis type="number" domain={[0, 1]} tickFormatter={(v: number) => `${Math.round(v * 100)}%`} tick={{ fill: "#2d4a6a", fontSize: 10 }} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fill: "#4a6a90", fontSize: 11 }} tickLine={false} axisLine={false} width={80} />
-                <Tooltip content={<CustomBarTooltip />} />
-                <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
-                  {habitBarData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="flex h-48 flex-col items-center justify-center">
+              <div
+                className="text-[clamp(4rem,16vw,6rem)] font-light leading-none tracking-[-0.06em] text-white"
+                style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk', sans-serif)" }}
+              >
+                {habitConsistency}%
+              </div>
+              <p className="mt-4 max-w-xs text-sm leading-6" style={{ color: "#4a6a90" }}>
+                Average daily habit completion over the last 7 days.
+              </p>
+            </div>
           )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Action queue pie */}
+        {/* Plans status */}
         <div className="rounded-xl p-5" style={{ background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
           <h2 className="font-semibold mb-4" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>Plans Status</h2>
-          {pieData.length === 0 ? (
-            <div className="flex items-center justify-center h-48"><p className="text-sm" style={{ color: "#2d4a6a" }}>No plans yet</p></div>
-          ) : (
-            <div className="flex items-center gap-6">
-              <ResponsiveContainer width="50%" height={200}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" strokeWidth={0}>
-                    {pieData.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: "#0c1830", border: "1px solid rgba(40,76,140,0.3)", borderRadius: "8px", fontSize: "12px", color: "#c8deff" }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-3">
-                {pieData.map((entry, index) => (
-                  <div key={entry.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
-                    <span className="text-sm" style={{ color: "#4a6a90" }}>{entry.name}</span>
-                    <span className="font-semibold text-sm ml-auto" style={{ color: "#c8deff" }}>{entry.value}</span>
-                  </div>
-                ))}
-                <div className="pt-2" style={{ borderTop: "1px solid rgba(30,60,110,0.4)" }}>
-                  <p className="text-xs" style={{ color: "#2d4a6a" }}>{projectStats.taskCompletionRate}% task completion rate</p>
+          <div className="grid h-48 grid-cols-1 gap-3 sm:grid-cols-3">
+            {planStatusData.map((entry) => (
+              <div
+                key={entry.name}
+                className="flex flex-col items-center justify-center rounded-2xl px-3 py-4 text-center"
+                style={{ background: "rgba(6,13,28,0.45)", border: "1px solid rgba(40,76,140,0.18)" }}
+              >
+                <div
+                  className="text-5xl font-light leading-none tracking-[-0.05em] text-white"
+                  style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk', sans-serif)" }}
+                >
+                  {entry.value}
                 </div>
+                <p className="mt-3 text-xs font-medium uppercase tracking-[0.16em]" style={{ color: "#4a6a90" }}>
+                  {entry.name}
+                </p>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
 
         {/* Insights */}
@@ -641,15 +615,6 @@ function AnalyticsTab() {
                 <p className="text-xs" style={{ color: "#4a6a90" }}>{projectStats.completedTasks} of {projectStats.totalTasks} tasks completed ({projectStats.taskCompletionRate}%)</p>
               </div>
             </div>
-            {latest && (
-              <div className="flex gap-3 p-3 rounded-lg" style={{ background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.12)" }}>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(167,139,250,0.1)" }}><span className="text-base">📈</span></div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: "#8aadcc" }}>Overall Score</p>
-                  <p className="text-xs" style={{ color: "#4a6a90" }}>Current: <span className="font-semibold" style={{ color: getScoreColor(latest.overall) }}>{latest.overall.toFixed(1)}/10</span> — {trends.overall}</p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -771,488 +736,309 @@ function ProgressionTab() {
 
 type Tab = "dashboard" | "analytics" | "progression";
 
+const PRIORITY_DOT: Record<string, string> = {
+  urgent: "#ff6b7a",
+  high:   "#4f72ff",
+  medium: "#f59e0b",
+  low:    "#10d9a0",
+};
+
+function CenteredScoreRing({ score }: { score: number }) {
+  const radius = 78;
+  const circumference = 2 * Math.PI * radius;
+  const normalizedScore = Math.max(0, Math.min(10, score));
+  const dashOffset = circumference - (normalizedScore / 10) * circumference;
+
+  return (
+    <div className="relative mx-auto flex aspect-square w-full max-w-[240px] items-center justify-center sm:max-w-[280px]">
+      <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 200 200" aria-hidden="true">
+        <circle cx="100" cy="100" r={radius} fill="none" stroke="rgba(120,145,220,0.14)" strokeWidth="16" />
+        <circle
+          cx="100"
+          cy="100"
+          r={radius}
+          fill="none"
+          stroke="url(#dashboard-score-gradient)"
+          strokeWidth="16"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+        />
+        <defs>
+          <linearGradient id="dashboard-score-gradient" x1="20" x2="180" y1="160" y2="30" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#5d7cff" />
+            <stop offset="1" stopColor="#58b6ff" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <span
+        className="relative text-[clamp(4rem,18vw,6.5rem)] font-light leading-none tracking-[-0.06em] text-white"
+        style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk', sans-serif)" }}
+      >
+        {score.toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+function CategoryScoreGrid({ scores }: { scores: DashboardScore[] }) {
+  if (scores.length === 0) return null;
+
+  return (
+    <section
+      className="mx-auto mb-5 grid w-full max-w-5xl gap-3"
+      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))" }}
+    >
+      {scores.map((item) => (
+        <div key={item.key} className="rounded-2xl p-4 text-center" style={{
+          background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+          border: "1px solid rgba(40,76,140,0.22)",
+        }}>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: "#6b8cb8" }}>
+            {item.title}
+          </p>
+          <div
+            className="mt-5 text-6xl font-light leading-none tracking-[-0.05em] text-white"
+            style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk', sans-serif)" }}
+          >
+            {item.score.toFixed(1)}
+          </div>
+          <div className="mx-auto mt-5 h-1.5 w-full max-w-[240px] overflow-hidden rounded-full" style={{ background: "rgba(120,145,220,0.12)" }}>
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${Math.max(0, Math.min(100, item.score * 10))}%`, background: "#5d7cff" }}
+            />
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export default function DashboardTabs(props: DashboardTabsProps) {
   const {
-    habits, projects,
-    entryNotes, entryDate,
+    habits, projects, entryDate,
+    hasData, scores,
+    weekEntriesLogged, weekHabitsCompleted, weekHabitsTotal, weekDeepWorkHours,
+    coachInsight,
   } = props;
 
   const [tab, setTab] = useState<Tab>("dashboard");
   const [localHabits, setLocalHabits] = useState<DashboardHabit[]>(habits);
 
-  useEffect(() => {
-    setLocalHabits(habits);
-  }, [habits]);
+  useEffect(() => { setLocalHabits(habits); }, [habits]);
 
-  async function toggleHabit(id: string) {
-    setLocalHabits((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, completed: !h.completed } : h))
-    );
+  const toggleHabit = useCallback(async (id: string) => {
+    const habit = localHabits.find((h) => h.id === id);
+    if (!habit) return;
+    const newCompleted = !habit.completed;
+    setLocalHabits((prev) => prev.map((h) => h.id === id ? { ...h, completed: newCompleted } : h));
     try {
-      const res = await fetch(`/api/habits/${id}/log`, {
+      await fetch(`/api/habits/${id}/log`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ completed: newCompleted }),
       });
-      if (!res.ok) {
-        setLocalHabits((prev) =>
-          prev.map((h) => (h.id === id ? { ...h, completed: !h.completed } : h))
-        );
-      }
     } catch {
-      setLocalHabits((prev) =>
-        prev.map((h) => (h.id === id ? { ...h, completed: !h.completed } : h))
-      );
+      setLocalHabits((prev) => prev.map((h) => h.id === id ? { ...h, completed: !newCompleted } : h));
     }
-  }
+  }, [localHabits]);
+
+  const overallScore = scores.find((s) => s.key === "overall");
+
+  const cardStyle = {
+    background: "linear-gradient(135deg, #0c1830 0%, #091222 100%)",
+    border: "1px solid rgba(40,76,140,0.22)",
+  };
 
   const tabBtn = useCallback((id: Tab, label: string, Icon: LucideIcon) => (
     <button
       onClick={() => setTab(id)}
-      className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] text-[13px] font-medium transition-all duration-150"
+      aria-label={label}
+      title={label}
+      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 sm:flex-none sm:px-4"
       style={
         tab === id
-          ? {
-              color: "var(--ink-100)",
-              background: "rgba(79, 127, 255, .1)",
-              border: "1px solid rgba(79, 127, 255, .35)",
-            }
-          : {
-              color: "var(--ink-400)",
-              border: "1px solid transparent",
-            }
+          ? { background: "linear-gradient(135deg,rgba(79,114,255,0.22) 0%,rgba(79,114,255,0.1) 100%)", border: "1px solid rgba(79,114,255,0.35)", color: "#a8c4ff", boxShadow: "0 0 12px rgba(79,114,255,0.15)" }
+          : { border: "1px solid transparent", color: "#3d5a7a" }
       }
-      onMouseEnter={(e) => {
-        if (tab !== id) (e.currentTarget as HTMLElement).style.color = "var(--ink-200)";
-      }}
-      onMouseLeave={(e) => {
-        if (tab !== id) (e.currentTarget as HTMLElement).style.color = "var(--ink-400)";
-      }}
+      onMouseEnter={(e) => { if (tab !== id) (e.currentTarget as HTMLElement).style.color = "#6b8cb8"; }}
+      onMouseLeave={(e) => { if (tab !== id) (e.currentTarget as HTMLElement).style.color = "#3d5a7a"; }}
     >
-      <Icon className="w-3.5 h-3.5" />
-      {label}
+      <Icon className="h-4 w-4 flex-shrink-0" />
+      <span className="sr-only">{label}</span>
     </button>
   ), [tab]);
 
   return (
     <>
-      {/* Tab nav (Claude Design) */}
+      {/* Tab nav */}
       <div
-        className="inline-flex gap-1 p-1 mb-6 rounded-[14px] overflow-x-auto"
-        style={{
-          background: "var(--bg-elev-1)",
-          border: "1px solid var(--stroke-1)",
-        }}
+        className="mx-auto mb-6 flex w-full max-w-3xl gap-1 rounded-xl p-1"
+        style={{ background: "linear-gradient(135deg,rgba(9,18,34,0.95) 0%,rgba(6,13,28,0.9) 100%)", border: "1px solid rgba(40,76,140,0.25)", maxWidth: "100%" }}
       >
         {tabBtn("dashboard", "Dashboard", LayoutDashboard)}
         {tabBtn("analytics", "Analytics", BarChart3)}
         {tabBtn("progression", "Progression", Dumbbell)}
       </div>
 
-      {/* Dashboard tab */}
+      {/* ── Dashboard tab (v3 layout) ─────────────────────────────────────── */}
       {tab === "dashboard" && (
-        <div className="fade-in">
-          {/* Score Hero (Claude Design) */}
-          {props.hasData && props.scores.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-7 mb-7">
-              {/* Score Ring */}
-              <div
-                className="relative overflow-hidden rounded-[20px] p-7"
-                style={{
-                  background: "linear-gradient(180deg, rgba(79, 127, 255, .06), rgba(0,0,0,0)), var(--bg-elev-1)",
-                  border: "1px solid var(--stroke-2)",
-                }}
-              >
-                <div
-                  className="absolute inset-[-1px] pointer-events-none rounded-[20px]"
-                  style={{
-                    background: "radial-gradient(circle at 50% 0%, rgba(79, 127, 255, .15), transparent 50%)",
-                  }}
-                />
-                <div className="relative">
-                  <div
-                    className="text-[11px] uppercase"
-                    style={{ letterSpacing: ".2em", color: "var(--ink-400)" }}
-                  >
-                    Today&apos;s score
-                  </div>
-                  <div className="flex items-center gap-6 mt-5">
-                    {/* Animated Score Ring */}
-                    <div className="relative w-[160px] h-[160px] flex-shrink-0">
-                      <svg viewBox="0 0 160 160" className="w-full h-full">
-                        <defs>
-                          <linearGradient id="score-gradient" x1="0" x2="1" y1="0" y2="1">
-                            <stop offset="0" stopColor="#4f7fff"/>
-                            <stop offset="1" stopColor="#2cb6ff"/>
-                          </linearGradient>
-                        </defs>
-                        <circle
-                          cx="80" cy="80" r="68"
-                          fill="none"
-                          stroke="rgba(255,255,255,.06)"
-                          strokeWidth="12"
-                        />
-                        <circle
-                          cx="80" cy="80" r="68"
-                          fill="none"
-                          stroke="url(#score-gradient)"
-                          strokeWidth="12"
-                          strokeLinecap="round"
-                          strokeDasharray={2 * Math.PI * 68}
-                          strokeDashoffset={2 * Math.PI * 68 * (1 - (props.scores.find(s => s.key === "overall")?.score ?? 0) / 10)}
-                          transform="rotate(-90 80 80)"
-                          style={{ transition: "stroke-dashoffset 1.6s cubic-bezier(.2,.7,.2,1)" }}
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center flex-col">
-                        <div
-                          className="text-[56px] leading-none"
-                          style={{
-                            fontFamily: "var(--font-display)",
-                            color: "var(--ink-100)",
-                            letterSpacing: "-0.04em",
-                          }}
-                        >
-                          {props.scores.find(s => s.key === "overall")?.score ?? 0}
-                        </div>
-                        <div
-                          className="text-[9px] uppercase mt-1"
-                          style={{ letterSpacing: ".2em", color: "var(--ink-500)" }}
-                        >
-                          today
-                        </div>
-                      </div>
-                    </div>
-                    {/* Delta */}
-                    <div className="flex-1">
-                      {props.scores.find(s => s.key === "overall")?.prevScore !== undefined && (
-                        <span
-                          className="inline-flex items-center gap-1.5 text-[13px] px-2.5 py-1 rounded-full"
-                          style={{
-                            color: "var(--good)",
-                            background: "rgba(46, 216, 137, .1)",
-                          }}
-                        >
-                          +{(props.scores.find(s => s.key === "overall")?.score ?? 0) - (props.scores.find(s => s.key === "overall")?.prevScore ?? 0)} from yesterday
-                        </span>
-                      )}
-                      <div
-                        className="text-[14px] leading-relaxed mt-2.5"
-                        style={{ color: "var(--ink-300)" }}
-                      >
-                        {localHabits.filter(h => h.completed).length > 0
-                          ? `Great progress today. ${localHabits.filter(h => h.completed).length}/${localHabits.length} habits completed.`
-                          : "Log today's entry to see your score breakdown."}
-                      </div>
-                    </div>
-                  </div>
+        <>
+          <section className="mx-auto mb-5 flex w-full max-w-3xl justify-center">
+            <div className="w-full rounded-[28px] p-5 sm:p-8" style={cardStyle}>
+              {hasData && overallScore ? (
+                <CenteredScoreRing score={overallScore.score} />
+              ) : (
+                <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
+                  <CenteredScoreRing score={0} />
+                  <Link href="/entry" className="mt-5 text-sm font-medium" style={{ color: "#4f72ff" }}>
+                    Log an entry
+                  </Link>
                 </div>
-              </div>
-
-              {/* Lane Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {props.scores.filter(s => s.key !== "overall").slice(0, 4).map((score) => {
-                  const colors: Record<string, string> = {
-                    physical: "var(--cat-physical)",
-                    financial: "var(--cat-financial)",
-                    discipline: "var(--cat-discipline)",
-                    focus: "var(--blue-400)",
-                    mental: "var(--cat-mental)",
-                  };
-                  const color = colors[score.key] || "var(--blue-400)";
-                  const delta = score.prevScore !== undefined ? score.score - score.prevScore : 0;
-                  return (
-                    <div
-                      key={score.key}
-                      className="rounded-2xl p-4 relative overflow-hidden"
-                      style={{
-                        background: "var(--bg-elev-1)",
-                        border: "1px solid var(--stroke-2)",
-                      }}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <span
-                          className="text-[11px] uppercase"
-                          style={{ letterSpacing: ".15em", color: "var(--ink-400)" }}
-                        >
-                          {score.title}
-                        </span>
-                        <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ background: color, boxShadow: `0 0 10px ${color}` }}
-                        />
-                      </div>
-                      <div
-                        className="text-[44px] leading-none"
-                        style={{
-                          fontFamily: "var(--font-display)",
-                          color: "var(--ink-100)",
-                          letterSpacing: "-0.03em",
-                        }}
-                      >
-                        {score.score}
-                      </div>
-                      <div
-                        className="mt-3 h-1 rounded-full overflow-hidden"
-                        style={{ background: "rgba(255,255,255,.05)" }}
-                      >
-                        <div
-                          className="h-full rounded-full transition-all duration-1000"
-                          style={{
-                            width: `${(score.score / 10) * 100}%`,
-                            background: color,
-                          }}
-                        />
-                      </div>
-                      <div
-                        className="flex items-center gap-1 mt-2.5 text-[11px]"
-                        style={{ color: delta >= 0 ? "var(--good)" : "var(--bad)" }}
-                      >
-                        {delta >= 0 ? "↑" : "↓"} {delta >= 0 ? "+" : ""}{delta} this week
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              )}
             </div>
-          )}
+          </section>
 
-          {/* Meals & Routines previews */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-            <MealsPreview />
-            <RoutinesPreview />
-          </div>
-
-          {/* Habits & Projects grid (Claude Design) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Habits */}
-            <section
-              className="rounded-[20px] overflow-hidden"
-              style={{
-                background: "var(--bg-elev-1)",
-                border: "1px solid var(--stroke-2)",
-              }}
-            >
-              <div
-                className="flex items-center justify-between px-5 py-4"
-                style={{ borderBottom: "1px solid var(--stroke-1)" }}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-6 h-6 rounded-[7px] flex items-center justify-center"
-                    style={{ background: "rgba(79, 127, 255, .12)", color: "var(--blue-400)" }}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="text-sm font-semibold" style={{ color: "var(--ink-100)" }}>
-                    Habits today
-                  </span>
-                  <span
-                    className="text-[11px] font-mono"
-                    style={{ color: "var(--ink-400)" }}
-                  >
-                    · {localHabits.filter(h => h.completed).length}/{localHabits.length}
-                  </span>
+          <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)]">
+            <div className="overflow-hidden rounded-xl" style={cardStyle}>
+              {/* Card header */}
+              <div className="flex flex-wrap items-center justify-center gap-3 px-5 py-3.5 text-center sm:justify-between sm:text-left" style={{ borderBottom: "1px solid rgba(30,60,110,0.35)" }}>
+                <div className="flex items-baseline justify-center gap-2">
+                  <span className="text-sm font-semibold" style={{ color: "#c8deff" }}>Today</span>
+                  {entryDate && (
+                    <span className="text-xs" style={{ color: "#2d4a6a" }}>
+                      {new Date(entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </span>
+                  )}
                 </div>
-                <Link
-                  href="/habits"
-                  className="text-[12px] flex items-center gap-1 transition-colors"
-                  style={{ color: "var(--blue-400)" }}
-                >
-                  View all →
+                <Link href="/habits" className="text-xs transition-colors" style={{ color: "#4f72ff" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4f72ff")}>
+                  Manage habits →
                 </Link>
               </div>
-              <div className="p-3">
+
+              <div className="p-5">
+                {/* HABITS */}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] mb-3" style={{ color: "#2d4a6a" }}>
+                  HABITS
+                </p>
                 {localHabits.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <p className="text-sm" style={{ color: "var(--ink-400)" }}>No habits yet</p>
-                    <Link href="/habits" className="text-sm mt-1 inline-block" style={{ color: "var(--blue-400)" }}>
-                      Add your first habit
-                    </Link>
+                  <div className="py-4 text-center">
+                    <p className="text-sm mb-1" style={{ color: "#2d4a6a" }}>No habits yet</p>
+                    <Link href="/habits" className="text-xs" style={{ color: "#4f72ff" }}>Add your first habit</Link>
                   </div>
                 ) : (
-                  <div className="space-y-0.5">
+                  <div className="overflow-y-auto mb-5" style={{ maxHeight: "220px" }}>
                     {localHabits.map((habit) => (
-                      <div
+                      <button
                         key={habit.id}
-                        onClick={() => toggleHabit(habit.id)}
-                        className="flex items-center gap-3.5 px-3 py-3 rounded-[10px] cursor-pointer transition-all duration-150"
+                        onClick={() => void toggleHabit(habit.id)}
+                        className="w-full flex items-center gap-3 py-2 px-1 rounded-lg transition-all duration-150 text-left"
                         style={{ background: "transparent" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.02)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.02)")}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
                       >
-                        <div
-                          className="w-[18px] h-[18px] rounded-[6px] flex-shrink-0 flex items-center justify-center"
-                          style={{
-                            background: habit.completed ? "var(--blue-500)" : "transparent",
-                            border: habit.completed ? "none" : "1.5px solid var(--stroke-3)",
-                            boxShadow: habit.completed ? "0 0 0 3px rgba(47, 100, 255, .15)" : "none",
-                          }}
-                        >
-                          {habit.completed && (
-                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                              <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div
-                            className="text-sm"
-                            style={{ color: habit.completed ? "var(--ink-300)" : "var(--ink-200)" }}
-                          >
-                            {habit.name}
-                          </div>
-                        </div>
-                        <span
-                          className="text-[10px] uppercase px-2 py-0.5 rounded-[6px] font-medium"
-                          style={{
-                            background: `rgba(79, 127, 255, .12)`,
-                            color: "var(--blue-400)",
-                            letterSpacing: ".12em",
-                          }}
-                        >
-                          {habit.category}
+                        {habit.completed
+                          ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-green-400" />
+                          : <Circle className="w-4 h-4 flex-shrink-0" style={{ color: "#1e3050" }} />}
+                        <span className="text-sm flex-1" style={{ color: habit.completed ? "#334d6e" : "#c8deff", textDecoration: habit.completed ? "line-through" : "none" }}>
+                          {habit.name}
                         </span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
-              </div>
-            </section>
 
-            {/* Projects */}
-            <section
-              className="rounded-[20px] overflow-hidden"
-              style={{
-                background: "var(--bg-elev-1)",
-                border: "1px solid var(--stroke-2)",
-              }}
-            >
-              <div
-                className="flex items-center justify-between px-5 py-4"
-                style={{ borderBottom: "1px solid var(--stroke-1)" }}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-6 h-6 rounded-[7px] flex items-center justify-center"
-                    style={{ background: "rgba(79, 127, 255, .12)", color: "var(--blue-400)" }}
-                  >
-                    <FolderKanban className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="text-sm font-semibold" style={{ color: "var(--ink-100)" }}>
-                    Active projects
-                  </span>
-                  <span
-                    className="text-[11px] font-mono"
-                    style={{ color: "var(--ink-400)" }}
-                  >
-                    · {props.projects.length}
-                  </span>
-                </div>
-                <Link
-                  href="/projects"
-                  className="text-[12px] flex items-center gap-1 transition-colors"
-                  style={{ color: "var(--blue-400)" }}
-                >
-                  View all →
-                </Link>
-              </div>
-              <div className="p-3">
-                {props.projects.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <p className="text-sm" style={{ color: "var(--ink-400)" }}>No active projects</p>
-                    <Link href="/projects" className="text-sm mt-1 inline-block" style={{ color: "var(--blue-400)" }}>
-                      Create a project
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {props.projects.map((project) => {
-                      const pct = project.totalTasks > 0 ? Math.round((project.doneTasks / project.totalTasks) * 100) : 0;
-                      const priorityColors: Record<string, { bg: string; color: string }> = {
-                        high: { bg: "rgba(255,95,109,.15)", color: "#ff7a85" },
-                        medium: { bg: "rgba(255,181,71,.15)", color: "var(--cat-appearance)" },
-                        low: { bg: "rgba(46,216,137,.15)", color: "var(--cat-discipline)" },
-                      };
-                      const pColor = priorityColors[project.priority] ?? priorityColors.low;
-                      return (
+                {/* INCOMPLETE PRIORITIES */}
+                {projects.filter((p) => p.totalTasks > p.doneTasks).length > 0 && (
+                  <>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] mb-3" style={{ color: "#2d4a6a" }}>
+                      INCOMPLETE PRIORITIES
+                    </p>
+                    <div className="space-y-1.5 mb-5">
+                      {projects.filter((p) => p.totalTasks > p.doneTasks).map((project) => (
                         <Link
                           key={project.id}
                           href={`/projects/${project.id}`}
-                          className="block p-3.5 rounded-xl transition-all duration-150"
-                          style={{
-                            background: "rgba(255,255,255,.015)",
-                            border: "1px solid var(--stroke-1)",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = "var(--stroke-2)";
-                            e.currentTarget.style.background = "rgba(255,255,255,.025)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = "var(--stroke-1)";
-                            e.currentTarget.style.background = "rgba(255,255,255,.015)";
-                          }}
+                          className="flex items-center justify-between py-1.5 px-1 rounded-lg transition-all duration-150"
+                          style={{ background: "transparent" }}
+                          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.02)")}
+                          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
                         >
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <span className="text-sm font-medium line-clamp-1" style={{ color: "var(--ink-100)" }}>
-                              {project.title}
-                            </span>
-                            <span
-                              className="text-[9px] uppercase px-2 py-0.5 rounded-[6px] font-medium flex-shrink-0"
-                              style={{
-                                background: pColor.bg,
-                                color: pColor.color,
-                                letterSpacing: ".12em",
-                              }}
-                            >
-                              {project.priority}
-                            </span>
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: PRIORITY_DOT[project.priority] ?? "#4a6a90" }} />
+                            <span className="text-sm" style={{ color: "#c8deff" }}>{project.title}</span>
                           </div>
-                          <div
-                            className="mt-2 h-[4px] rounded-full overflow-hidden"
-                            style={{ background: "rgba(255,255,255,.05)" }}
-                          >
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${pct}%`,
-                                background: "linear-gradient(90deg, var(--blue-400), var(--cyan-400))",
-                              }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between mt-2">
-                            <span className="text-[11px]" style={{ color: "var(--ink-500)" }}>
-                              {project.doneTasks}/{project.totalTasks} tasks
-                            </span>
-                          </div>
+                          <span className="text-xs flex-shrink-0 ml-4" style={{ color: "#2d4a6a" }}>
+                            {project.doneTasks}/{project.totalTasks} tasks
+                          </span>
                         </Link>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* COACH INSIGHT */}
+                {coachInsight && (
+                  <div
+                    className="mb-5 px-4 py-3 rounded-xl"
+                    style={{ background: "rgba(79,114,255,0.06)", borderLeft: "2px solid rgba(79,114,255,0.5)" }}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] mb-1.5" style={{ color: "#4f72ff" }}>
+                      ✦ COACH INSIGHT
+                    </p>
+                    <p className="text-sm italic leading-relaxed" style={{ color: "#8aadcc" }}>
+                      &ldquo;{coachInsight}&rdquo;
+                    </p>
                   </div>
                 )}
+
+                {/* CTA */}
+                <Link
+                  href="/entry"
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm text-white transition-all duration-150"
+                  style={{ background: "var(--accent, #4f72ff)", boxShadow: "0 0 20px rgba(79,114,255,0.2)" }}
+                >
+                  Start Daily Work →
+                </Link>
               </div>
-            </section>
+            </div>
+
+            <div className="space-y-4">
+              {/* Week at a glance */}
+              <div className="rounded-xl p-5 text-center sm:text-left" style={cardStyle}>
+                <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#2d4a6a" }}>
+                  WEEK AT A GLANCE
+                </p>
+                <div className="space-y-3">
+                  {[
+                    { label: "Entries logged", value: `${weekEntriesLogged}/7 days` },
+                    { label: "Habits completed", value: weekHabitsTotal > 0 ? `${weekHabitsCompleted}/${weekHabitsTotal}` : "—" },
+                    { label: "Deep work hours", value: weekDeepWorkHours > 0 ? `${weekDeepWorkHours}h` : "—" },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between gap-4">
+                      <span className="text-sm" style={{ color: "#4a6a90" }}>{label}</span>
+                      <span className="text-sm font-semibold" style={{ color: "#c8deff" }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
-          {props.entryNotes && (
-            <section
-              className="mt-5 rounded-[20px] p-5"
-              style={{
-                background: "var(--bg-elev-1)",
-                border: "1px solid var(--stroke-2)",
-              }}
-            >
-              <h2 className="text-base font-semibold mb-3" style={{ color: "var(--ink-100)" }}>
-                Last Entry Notes
-                {props.entryDate && (
-                  <span className="text-xs font-normal ml-2" style={{ color: "var(--ink-500)" }}>
-                    ({new Date(props.entryDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
-                  </span>
-                )}
-              </h2>
-              <p className="text-sm leading-relaxed" style={{ color: "var(--ink-300)" }}>{props.entryNotes}</p>
-            </section>
-          )}
-        </div>
+          {/* Bottom: quick-access strips */}
+          <div
+            className="mx-auto mt-5 grid w-full max-w-5xl gap-3"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))" }}
+          >
+            <MealsPreview />
+            <RoutinesPreview />
+            <NotesPreview />
+          </div>
+        </>
       )}
 
       {/* Analytics tab */}

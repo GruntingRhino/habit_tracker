@@ -131,11 +131,11 @@ export default function DashboardScores({ scores }: { scores: ScoreData[] }) {
 
   return (
     <div>
-      {/* Scrollable on mobile, grid on desktop */}
-      <div className="overflow-x-auto -mx-1 px-1 pb-1">
+      {/* Responsive grid; never force a wider viewport. */}
+      <div className="pb-1">
       <div
         className="grid gap-2"
-        style={{ minWidth: "420px", gridTemplateColumns: `repeat(${scores.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))" }}
       >
         {scores.map(({ key, title, score, prevScore }) => {
           const Icon = SCORE_ICONS[key] ?? Star;

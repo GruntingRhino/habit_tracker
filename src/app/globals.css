@@ -87,9 +87,14 @@
 /* ─── Body base (Claude Design) ─────────────────────────────────────────────*/
 html {
   background: var(--bg-base);
+  min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: hidden;
   background: var(--bg-base);
   background-image:
     radial-gradient(800px 600px at 10% 0%, rgba(47, 100, 255, .14), transparent 60%),
@@ -262,6 +267,9 @@ h1, h2 {
 
 .homepage-shell {
   background-color: #0b1018;
+  position: relative;
+  width: 100%;
+  overflow-x: clip;
 }
 
 .homepage-grid {

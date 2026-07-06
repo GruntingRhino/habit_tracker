@@ -142,7 +142,7 @@ function LoginPageContent() {
   if (status === "loading") {
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
+        className="flex min-h-dvh items-center justify-center"
         style={{ background: "#060d1c" }}
       >
         <div
@@ -160,16 +160,22 @@ function LoginPageContent() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden"
-      style={{ background: "#060d1c" }}
+      className="relative flex min-h-dvh w-full flex-col overflow-x-hidden px-4 py-4 sm:px-6"
+      style={{
+        background: "#060d1c",
+        paddingTop: "calc(1rem + env(safe-area-inset-top))",
+        paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
+      }}
     >
-      <Link
-        href="/"
-        className="absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-white/10 bg-[rgba(11,16,24,0.82)] px-4 py-2 text-sm font-medium text-[#c8deff] transition-colors hover:text-white sm:left-6 sm:top-6"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back
-      </Link>
+      <div className="relative z-20 flex w-full flex-shrink-0 items-center">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[rgba(11,16,24,0.82)] px-4 py-2 text-sm font-medium text-[#c8deff] transition-colors hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Link>
+      </div>
       <div
         className="absolute pointer-events-none"
         style={{
@@ -207,34 +213,35 @@ function LoginPageContent() {
         }}
       />
 
-      <div className="w-full max-w-md relative z-10 px-4 sm:px-0">
-        <div className="text-center mb-8">
-          <LiveImprovedTileIcon
-            className="mx-auto mb-4 h-16 w-16"
-            style={{
-              filter: "drop-shadow(0 0 24px rgba(6,13,28,0.55))",
-            }}
-          />
-          <h1
-            className="text-3xl font-bold mb-1"
-            style={{
-              fontFamily: "var(--font-instrument-serif), Georgia, serif",
-              background:
-                "linear-gradient(135deg, #c8deff 0%, #93b8ff 60%, #7eb3ff 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            LiveImproved
-          </h1>
-          <p className="text-sm" style={{ color: "#2d4a6a" }}>
-            Access your account and continue where you left off
-          </p>
-        </div>
+      <main className="relative z-10 flex w-full flex-1 items-center justify-center py-6">
+        <div className="w-full max-w-md">
+          <div className="mb-6 text-center sm:mb-8">
+            <LiveImprovedTileIcon
+              className="mx-auto mb-4 h-14 w-14 sm:h-16 sm:w-16"
+              style={{
+                filter: "drop-shadow(0 0 24px rgba(6,13,28,0.55))",
+              }}
+            />
+            <h1
+              className="text-3xl font-bold mb-1"
+              style={{
+                fontFamily: "var(--font-instrument-serif), Georgia, serif",
+                background:
+                  "linear-gradient(135deg, #c8deff 0%, #93b8ff 60%, #7eb3ff 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              LiveImproved
+            </h1>
+            <p className="text-sm" style={{ color: "#2d4a6a" }}>
+              Access your account and continue where you left off
+            </p>
+          </div>
 
         <div
-          className="rounded-2xl p-8 relative"
+          className="relative overflow-hidden rounded-2xl p-5 sm:p-8"
           style={{
             background:
               "linear-gradient(135deg, rgba(12,24,48,0.95) 0%, rgba(9,18,34,0.98) 100%)",
@@ -244,7 +251,7 @@ function LoginPageContent() {
           }}
         >
           <div
-            className="absolute inset-x-0 top-0 h-px rounded-t-2xl"
+            className="-mx-5 mb-5 h-px flex-shrink-0 rounded-t-2xl sm:-mx-8 sm:mb-6"
             style={{
               background:
                 "linear-gradient(90deg, transparent, rgba(79,114,255,0.3), transparent)",
@@ -336,17 +343,21 @@ function LoginPageContent() {
             Continue with Google
           </button>
 
-          <div className="relative mb-5">
+          <div className="mb-5 flex items-center gap-3">
             <div
-              className="h-px w-full"
+              className="h-px flex-1"
               style={{ background: "rgba(30,60,110,0.45)" }}
             />
             <span
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-3 text-xs uppercase tracking-[0.18em]"
-              style={{ background: "rgba(9,18,34,0.98)", color: "#2d4a6a" }}
+              className="flex-shrink-0 text-xs uppercase tracking-[0.18em]"
+              style={{ color: "#2d4a6a" }}
             >
               Or
             </span>
+            <div
+              className="h-px flex-1"
+              style={{ background: "rgba(30,60,110,0.45)" }}
+            />
           </div>
 
           <form onSubmit={handleCredentialsSubmit} className="space-y-5">
@@ -422,6 +433,7 @@ function LoginPageContent() {
           </form>
         </div>
       </div>
+      </main>
     </div>
   );
 }
@@ -429,7 +441,7 @@ function LoginPageContent() {
 function AuthPageLoading() {
   return (
     <div
-      className="min-h-screen flex items-center justify-center"
+      className="flex min-h-dvh items-center justify-center"
       style={{ background: "#060d1c" }}
     >
       <div
@@ -471,9 +483,15 @@ function Field({
       >
         {label}
       </label>
-      <div className="relative">
+      <div
+        className="flex items-center rounded-lg"
+        style={{
+          background: "rgba(6,13,28,0.8)",
+          border: "1px solid rgba(30,60,110,0.5)",
+        }}
+      >
         <Icon
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+          className="ml-3 h-4 w-4 flex-shrink-0"
           style={{ color: "#2d4a6a" }}
         />
         <input
@@ -484,19 +502,21 @@ function Field({
           placeholder={placeholder}
           required
           autoComplete={autoComplete}
-          className="w-full rounded-lg pl-10 pr-4 py-2.5 text-sm outline-none transition-all duration-150"
+          className="min-w-0 flex-1 rounded-lg bg-transparent px-3 py-2.5 text-sm outline-none transition-all duration-150"
           style={{
-            background: "rgba(6,13,28,0.8)",
-            border: "1px solid rgba(30,60,110,0.5)",
             color: "#c8deff",
           }}
           onFocus={(event) => {
-            event.target.style.borderColor = "rgba(79,114,255,0.6)";
-            event.target.style.boxShadow = "0 0 0 3px rgba(79,114,255,0.08)";
+            const wrapper = event.currentTarget.parentElement;
+            if (!wrapper) return;
+            wrapper.style.borderColor = "rgba(79,114,255,0.6)";
+            wrapper.style.boxShadow = "0 0 0 3px rgba(79,114,255,0.08)";
           }}
           onBlur={(event) => {
-            event.target.style.borderColor = "rgba(30,60,110,0.5)";
-            event.target.style.boxShadow = "none";
+            const wrapper = event.currentTarget.parentElement;
+            if (!wrapper) return;
+            wrapper.style.borderColor = "rgba(30,60,110,0.5)";
+            wrapper.style.boxShadow = "none";
           }}
         />
       </div>

@@ -1,79 +1,88 @@
 "use client";
 
-import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import Link from "next/link";
+import { LayoutDashboard, BookOpen, FolderKanban, StickyNote } from "lucide-react";
 import Sidebar from "./Sidebar";
 import FloatingCoach from "./FloatingCoach";
 import DailyEntryReminder from "./DailyEntryReminder";
 
+const mobileNav = [
+  { href: "/dashboard", label: "Home",  icon: LayoutDashboard },
+  { href: "/entry",     label: "Daily", icon: BookOpen },
+  { href: "/projects",  label: "Plans", icon: FolderKanban },
+  { href: "/notes",     label: "Notes", icon: StickyNote },
+];
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [openPath, setOpenPath] = useState<string | null>(null);
-  const open = openPath === pathname;
 
   return (
     <div
-      className="flex h-screen overflow-hidden"
+      className="flex h-dvh min-h-dvh flex-col overflow-hidden lg:flex-row"
       style={{ background: "var(--bg-base)" }}
     >
       <DailyEntryReminder />
 
-      {/* ── Desktop sidebar (always visible) ── */}
-      <div className="hidden lg:block flex-shrink-0 h-full">
+      {/* Desktop sidebar */}
+      <div className="hidden lg:block flex-shrink-0">
         <Sidebar />
       </div>
 
-      {/* ── Mobile backdrop ── */}
-      {open && (
-        <div
-          className="fixed inset-0 z-40 lg:hidden"
-          style={{
-            background: "rgba(5, 7, 13, 0.8)",
-            backdropFilter: "blur(4px)",
-          }}
-          onClick={() => setOpenPath(null)}
-        />
-      )}
-
-      {/* ── Mobile sidebar (slides in from left) ── */}
-      <div
-        className="fixed inset-y-0 left-0 z-50 w-[min(86vw,260px)] lg:hidden transition-transform duration-300 ease-out"
-        style={{ transform: open ? "translateX(0)" : "translateX(-100%)" }}
-      >
-        <Sidebar onClose={() => setOpenPath(null)} />
-      </div>
-
-      {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto relative" style={{ padding: "32px 40px 80px" }}>
+      <main className="relative min-h-0 w-full flex-1 overflow-y-auto">
         {children}
       </main>
 
-      {/* ── Floating AI Coach (bottom-right) ── */}
-      <FloatingCoach />
+      {/* Floating AI Coach — desktop only */}
+      <div className="hidden lg:block">
+        <FloatingCoach />
+      </div>
 
-      {/* ── Mobile FAB toggle (bottom-left) ── */}
-      <button
-        onClick={() =>
-          setOpenPath((current) => (current === pathname ? null : pathname))
-        }
-        aria-label={open ? "Close menu" : "Open menu"}
-        className="fixed bottom-4 left-4 z-50 lg:hidden h-12 w-12 rounded-full flex items-center justify-center transition-all duration-200 sm:bottom-5 sm:left-5"
+      {/* Mobile bottom tab bar */}
+      <nav
+        className="z-40 flex flex-shrink-0 items-start pt-2 lg:hidden"
         style={{
-          background: open
-            ? "linear-gradient(135deg, #334d6e, #1e3050)"
-            : "linear-gradient(135deg, var(--blue-400), var(--cyan-400))",
-          boxShadow: open
-            ? "0 0 12px rgba(30,48,80,0.6), 0 4px 12px rgba(0,0,0,0.4)"
-            : "0 0 20px rgba(79,127,255,0.45), 0 4px 12px rgba(0,0,0,0.4)",
+          height: "calc(72px + env(safe-area-inset-bottom))",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          background: "linear-gradient(180deg, var(--bg-surface, #0c1830) 0%, var(--background, #060d1c) 100%)",
+          borderTop: "1px solid rgba(40,76,140,0.2)",
         }}
       >
-        {open ? (
-          <X className="w-5 h-5 text-white" />
-        ) : (
-          <Menu className="w-5 h-5 text-white" />
-        )}
-      </button>
+        {mobileNav.map(({ href, label, icon: Icon }) => {
+          const isActive = pathname === href || pathname.startsWith(href + "/");
+          return (
+            <Link
+              key={href}
+              href={href}
+              className="flex-1 flex flex-col items-center gap-1 py-1"
+            >
+              <div
+                className="flex items-center justify-center rounded-[10px]"
+                style={{
+                  width: 34,
+                  height: 26,
+                  background: isActive ? "rgba(79,114,255,0.12)" : "transparent",
+                  transition: "background 0.15s",
+                }}
+              >
+                <Icon
+                  className="w-[15px] h-[15px]"
+                  style={{ color: isActive ? "var(--accent, #4f72ff)" : "#334d6e" }}
+                />
+              </div>
+              <span
+                className="text-[9px] leading-none"
+                style={{
+                  color: isActive ? "var(--accent, #4f72ff)" : "#334d6e",
+                  fontWeight: isActive ? 600 : 400,
+                }}
+              >
+                {label}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

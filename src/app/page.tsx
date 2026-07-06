@@ -57,9 +57,9 @@ function DemoPhone() {
   return (
     <div
       data-reveal="scale"
-      className="hp-reveal hp-reveal-scale relative mx-auto w-[320px] rounded-[36px] border border-white/10 bg-[#0f1525] p-3 shadow-[0_30px_90px_-35px_rgba(12,18,30,0.9)]"
+      className="hp-reveal hp-reveal-scale relative mx-auto w-full max-w-[320px] rounded-[36px] border border-white/10 bg-[#0f1525] p-2.5 shadow-[0_30px_90px_-35px_rgba(12,18,30,0.9)] sm:p-3"
     >
-      <div className="rounded-[28px] border border-white/8 bg-[#0b1018] p-5">
+      <div className="rounded-[28px] border border-white/8 bg-[#0b1018] p-4 sm:p-5">
         <div className="mb-5 flex items-start justify-between">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
@@ -121,11 +121,11 @@ function DemoPhone() {
 
 export default async function RootPage() {
   return (
-    <div className="homepage-shell min-h-screen overflow-x-hidden bg-[#0b1018] text-[var(--text-primary)]">
+    <div className="homepage-shell min-h-dvh overflow-x-hidden bg-[#0b1018] text-[var(--text-primary)]">
       <HomepageEffects />
-      <div className="homepage-grid pointer-events-none fixed inset-0" />
-      <div className="homepage-column pointer-events-none fixed inset-y-0 left-[9%] hidden w-px bg-white/6 lg:block" />
-      <div className="homepage-column pointer-events-none fixed inset-y-0 right-[9%] hidden w-px bg-white/6 lg:block" />
+      <div className="homepage-grid pointer-events-none absolute inset-0" />
+      <div className="homepage-column pointer-events-none absolute inset-y-0 left-[9%] hidden w-px bg-white/6 lg:block" />
+      <div className="homepage-column pointer-events-none absolute inset-y-0 right-[9%] hidden w-px bg-white/6 lg:block" />
 
       <header className="sticky top-0 z-40 border-b border-white/6 bg-[rgba(11,16,24,0.88)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8">
@@ -165,15 +165,15 @@ export default async function RootPage() {
       </header>
 
       <main>
-        <section className="relative px-4 pb-20 pt-16 md:px-8 md:pb-28 md:pt-24">
+        <section className="relative px-4 pb-20 pt-12 md:px-8 md:pb-28 md:pt-24">
           <div className="mx-auto grid max-w-7xl items-center gap-16 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="hp-reveal hp-reveal-up" data-reveal="up">
-              <h1 className="mt-6 max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.045em] text-white md:text-7xl">
+              <h1 className="mt-6 max-w-4xl text-4xl font-semibold leading-[1.04] tracking-[-0.035em] text-white sm:text-5xl md:text-7xl">
                 Track what makes
                 <br />
                 you better.
               </h1>
-              <p className="mt-6 max-w-2xl text-[17px] leading-8 tracking-[-0.01em] text-[var(--text-secondary)]">
+              <p className="mt-6 max-w-2xl text-base leading-7 tracking-[-0.01em] text-[var(--text-secondary)] sm:text-[17px] sm:leading-8">
                 Sleep, training, focus, money, meals, habits, and execution in one score-driven system.
                 A clear daily read on how you operated, what improved, and what still needs work.
               </p>

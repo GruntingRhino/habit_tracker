@@ -5,16 +5,14 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
-  FileText,
   Loader2,
-  NotebookPen,
   Pencil,
   Plus,
+  Search,
   Square,
   StickyNote,
   Trash2,
 } from "lucide-react";
-import EmptyState from "@/components/EmptyState";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface NoteItem {
@@ -176,6 +174,8 @@ export default function NotesPage() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [type, setType] = useState<"note" | "todo">("note");
+  const [search, setSearch] = useState("");
+  const [showCompleted, setShowCompleted] = useState(false);
 
   async function loadNotes() {
     setLoading(true);
@@ -276,256 +276,213 @@ export default function NotesPage() {
     });
   }
 
+  const filtered = useMemo(() => {
+    if (!search.trim()) return notes;
+    const q = search.toLowerCase();
+    return notes.filter((n) => n.title.toLowerCase().includes(q) || (n.content ?? "").toLowerCase().includes(q));
+  }, [notes, search]);
+
   const activeTodos = useMemo(
-    () => notes.filter((item) => item.type === "todo" && item.status === "active"),
-    [notes]
+    () => filtered.filter((item) => item.type === "todo" && item.status === "active"),
+    [filtered]
   );
   const savedNotes = useMemo(
-    () => notes.filter((item) => item.type === "note"),
-    [notes]
+    () => filtered.filter((item) => item.type === "note"),
+    [filtered]
   );
   const completedTodos = useMemo(
-    () => notes.filter((item) => item.type === "todo" && item.status === "completed"),
-    [notes]
+    () => filtered.filter((item) => item.type === "todo" && item.status === "completed"),
+    [filtered]
   );
 
   if (loading) {
     return <div className="flex h-[60vh] items-center justify-center"><LoadingSpinner size="lg" /></div>;
   }
 
+  const cardStyle = {
+    background: "linear-gradient(135deg,#0c1830 0%,#091222 100%)",
+    border: "1px solid rgba(40,76,140,0.22)",
+  };
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 pb-20 md:px-6 md:py-6 lg:pb-6">
-      <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">
-            Notes
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">
-            Keep what matters in one place
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-            Save reference notes or track small to-dos without turning them into full plans.
-          </p>
-        </div>
+    <div className="mx-auto max-w-4xl px-4 py-5 pb-20 md:px-6 md:py-6 lg:pb-6">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold mb-0.5" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
+          Notes
+        </h1>
+        <p className="text-xs" style={{ color: "#2d4a6a" }}>
+          {activeTodos.length} to-do{activeTodos.length !== 1 ? "s" : ""} · {savedNotes.length} note{savedNotes.length !== 1 ? "s" : ""}
+        </p>
       </div>
 
       {error && (
-        <div className="mb-5 flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2">
           <AlertCircle className="h-4 w-4 text-red-300" />
           <p className="text-sm text-red-200">{error}</p>
         </div>
       )}
 
-      <form
-        onSubmit={handleCreate}
-        className="mb-6 grid gap-5 rounded-[28px] border border-[rgba(120,145,220,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-4 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.85)] sm:p-6 lg:grid-cols-[1.2fr_0.8fr]"
-      >
-        <div className="space-y-5">
-          <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-            <div className="mb-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                Quick Capture
-              </p>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Keep it short and legible. This surface is for working memory, not for full project breakdowns.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                  Title
-                </label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={type === "todo" ? "Follow up on vendor contract" : "Meeting notes from product sync"}
-                  className="w-full rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                  Details
-                </label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={5}
-                  placeholder="Optional context, checklist fragments, or reminders."
-                  className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-                />
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div className="space-y-5">
-          <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-            <div className="mb-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                Type
-              </p>
-            </div>
-            <div className="space-y-3">
-              {(Object.entries(TYPE_META) as Array<[keyof typeof TYPE_META, (typeof TYPE_META)[keyof typeof TYPE_META]]>).map(([value, meta]) => {
-                const active = type === value;
-                const Icon = meta.icon;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setType(value)}
-                    className="w-full rounded-2xl border px-4 py-4 text-left transition-all"
-                    style={{
-                      borderColor: active ? "rgba(79,114,255,0.45)" : "rgba(255,255,255,0.08)",
-                      background: active ? "rgba(79,114,255,0.12)" : "rgba(255,255,255,0.03)",
-                      boxShadow: active ? "0 18px 40px -24px rgba(79,114,255,0.7)" : "none",
-                    }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 rounded-2xl border border-white/10 bg-white/[0.04] p-2">
-                        <Icon className="h-4 w-4 text-[var(--accent)]" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--text-primary)]">{meta.label}</p>
-                        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{meta.description}</p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-2">
-                <NotebookPen className="h-4 w-4 text-[var(--accent)]" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Preview</p>
-                <p className="text-sm text-[var(--text-secondary)]">
-                  {type === "todo" ? "This will land in active to-dos." : "This will land in saved notes."}
-                </p>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
-              <p className="text-sm font-semibold text-[var(--text-primary)]">
-                {title.trim() || "Untitled"}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                {content.trim() || "No details yet."}
-              </p>
-            </div>
+      {/* Quick capture */}
+      <form onSubmit={handleCreate} className="mb-4">
+        <div className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={cardStyle}>
+          <span className="text-sm flex-shrink-0" style={{ color: "#2d4a6a" }}>+</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Quick capture — title of a note or to-do..."
+            className="flex-1 bg-transparent text-sm outline-none"
+            style={{ color: "#c8deff" }}
+          />
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {(["note", "todo"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                className="px-3 py-1 rounded-lg text-xs font-medium transition-all capitalize"
+                style={
+                  type === t
+                    ? { background: "rgba(79,114,255,0.2)", color: "#a8c4ff", border: "1px solid rgba(79,114,255,0.4)" }
+                    : { color: "#4a6a90", border: "1px solid transparent" }
+                }
+              >
+                {t === "todo" ? "To-do" : "Note"}
+              </button>
+            ))}
             <button
               type="submit"
               disabled={submitting || !title.trim()}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="ml-1 px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-all disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg,#4f72ff,#22d3ee)" }}
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Add {type === "todo" ? "to-do" : "note"}
+              {submitting ? "..." : "Add"}
             </button>
-          </section>
+          </div>
         </div>
       </form>
 
-      {notes.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title="Nothing captured yet"
-          description="Add a note or a to-do so the loose ends stop living in your head."
+      {/* Search */}
+      <div className="flex items-center gap-2 rounded-xl px-4 py-2.5 mb-6" style={cardStyle}>
+        <Search className="w-4 h-4 flex-shrink-0" style={{ color: "#2d4a6a" }} />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search notes and to-dos..."
+          className="flex-1 bg-transparent text-sm outline-none"
+          style={{ color: "#c8deff" }}
         />
+      </div>
+
+      {notes.length === 0 ? (
+        <div className="py-16 text-center">
+          <p className="text-sm mb-2" style={{ color: "#4a6a90" }}>Nothing captured yet</p>
+          <p className="text-xs" style={{ color: "#2d4a6a" }}>Add a note or to-do above</p>
+        </div>
       ) : (
         <div className="space-y-8">
-          <section>
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Active To-dos</h2>
-                <p className="text-sm text-[var(--text-secondary)]">Short execution items that still need to move.</p>
+          {/* Active To-dos */}
+          {activeTodos.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#2d4a6a" }}>Active To-dos</p>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(40,76,140,0.3)", color: "#4a6a90" }}>{activeTodos.length}</span>
               </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                {activeTodos.length}
-              </span>
-            </div>
-            {activeTodos.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-sm text-[var(--text-muted)]">
-                No active to-dos.
-              </div>
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {activeTodos.map((note) => (
-                  <NoteCard
+                  <div
                     key={`${note.id}:${note.updatedAt}`}
-                    note={note}
-                    saving={savingId === note.id}
-                    onSave={updateNote}
-                    onDelete={deleteNote}
-                    onToggleComplete={toggleComplete}
-                  />
+                    className="rounded-xl p-4"
+                    style={cardStyle}
+                  >
+                    <div className="flex items-start gap-3">
+                      <button
+                        onClick={() => void toggleComplete(note)}
+                        className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 transition-all"
+                        style={{ borderColor: "#334d6e" }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium" style={{ color: "#c8deff" }}>{note.title}</p>
+                        {note.content && (
+                          <p className="text-xs mt-1 line-clamp-2" style={{ color: "#4a6a90" }}>{note.content}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => void deleteNote(note.id)}
+                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ color: "#334d6e" }}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#f87171")}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#334d6e")}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
-            )}
-          </section>
+            </section>
+          )}
 
-          <section>
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Notes</h2>
-                <p className="text-sm text-[var(--text-secondary)]">Reference material, reminders, and loose context.</p>
+          {/* Notes */}
+          {savedNotes.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#2d4a6a" }}>Notes</p>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(40,76,140,0.3)", color: "#4a6a90" }}>{savedNotes.length}</span>
               </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                {savedNotes.length}
-              </span>
-            </div>
-            {savedNotes.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-sm text-[var(--text-muted)]">
-                No saved notes.
-              </div>
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {savedNotes.map((note) => (
-                  <NoteCard
+                  <div
                     key={`${note.id}:${note.updatedAt}`}
-                    note={note}
-                    saving={savingId === note.id}
-                    onSave={updateNote}
-                    onDelete={deleteNote}
-                    onToggleComplete={toggleComplete}
-                  />
+                    className="rounded-xl p-4"
+                    style={cardStyle}
+                  >
+                    <p className="text-sm font-medium mb-1" style={{ color: "#c8deff" }}>{note.title}</p>
+                    {note.content && (
+                      <p className="text-xs line-clamp-3 leading-relaxed" style={{ color: "#4a6a90" }}>{note.content}</p>
+                    )}
+                    <div className="flex items-center justify-end mt-3">
+                      <button
+                        onClick={() => void deleteNote(note.id)}
+                        style={{ color: "#334d6e" }}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#f87171")}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#334d6e")}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
-            )}
-          </section>
+            </section>
+          )}
 
-          <section>
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Completed To-dos</h2>
-                <p className="text-sm text-[var(--text-secondary)]">Finished small items stay here until you clear them out.</p>
-              </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                {completedTodos.length}
-              </span>
-            </div>
-            {completedTodos.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-sm text-[var(--text-muted)]">
-                No completed to-dos yet.
-              </div>
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {completedTodos.map((note) => (
-                  <NoteCard
-                    key={`${note.id}:${note.updatedAt}`}
-                    note={note}
-                    saving={savingId === note.id}
-                    onSave={updateNote}
-                    onDelete={deleteNote}
-                    onToggleComplete={toggleComplete}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
+          {/* Completed to-dos (collapsed) */}
+          {completedTodos.length > 0 && (
+            <section>
+              <button
+                onClick={() => setShowCompleted((v) => !v)}
+                className="flex items-center gap-2 text-xs transition-colors"
+                style={{ color: "#4a6a90" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#6b8cb8")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#4a6a90")}
+              >
+                ▸ Show {completedTodos.length} completed to-do{completedTodos.length !== 1 ? "s" : ""}
+              </button>
+              {showCompleted && (
+                <div className="grid gap-2 sm:grid-cols-2 mt-3">
+                  {completedTodos.map((note) => (
+                    <div key={`${note.id}:${note.updatedAt}`} className="rounded-xl p-4 opacity-50" style={cardStyle}>
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 text-green-500" />
+                        <p className="text-sm line-through" style={{ color: "#4a6a90" }}>{note.title}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       )}
     </div>

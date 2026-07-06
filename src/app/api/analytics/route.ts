@@ -49,8 +49,9 @@ export async function GET() {
 
   try {
     const userId = session.user.id;
-    const thirtyDaysAgo = subDays(new Date(), 30);
-    const oneWeekAgo = subDays(new Date(), 7);
+    const now = new Date();
+    const thirtyDaysAgo = subDays(now, 30);
+    const oneWeekAgo = subDays(now, 7);
 
     // --- Last 30 days of category scores ---
     const rawCategoryScores = await prisma.categoryScore.findMany({
@@ -77,7 +78,7 @@ export async function GET() {
       where: { userId, isActive: true },
       include: {
         logs: {
-          where: { date: { gte: thirtyDaysAgo } },
+          where: { date: { gte: oneWeekAgo } },
           orderBy: { date: "desc" },
         },
       },
@@ -119,12 +120,41 @@ export async function GET() {
         ) / 100;
     }
 
+    const dailyHabitGroups = new Map<string, { completed: number; total: number }>();
+    for (const habit of habits) {
+      for (const log of habit.logs) {
+        const key = getDateKey(log.date);
+        const current = dailyHabitGroups.get(key) ?? { completed: 0, total: 0 };
+        current.total += 1;
+        if (log.completed) current.completed += 1;
+        dailyHabitGroups.set(key, current);
+      }
+    }
+
+    const dailyCompletionRates = Array.from(dailyHabitGroups.values()).map(
+      (day) => (day.total > 0 ? day.completed / day.total : 0)
+    );
+    const habitConsistency =
+      dailyCompletionRates.length > 0
+        ? Math.round(
+            (dailyCompletionRates.reduce((sum, rate) => sum + rate, 0) /
+              dailyCompletionRates.length) *
+              100
+          )
+        : 0;
+
     // --- Project stats ---
-    const [totalProjects, completedProjects, activeProjects] =
+    const [plansCreatedPastMonth, completedProjects, overdueCount] =
       await Promise.all([
-        prisma.project.count({ where: { userId } }),
+        prisma.project.count({ where: { userId, createdAt: { gte: thirtyDaysAgo } } }),
         prisma.project.count({ where: { userId, status: "completed" } }),
-        prisma.project.count({ where: { userId, status: "active" } }),
+        prisma.project.count({
+          where: {
+            userId,
+            status: { not: "completed" },
+            deadline: { lt: now },
+          },
+        }),
       ]);
 
     const completedThisWeek = await prisma.project.count({
@@ -132,14 +162,6 @@ export async function GET() {
         userId,
         status: "completed",
         completedAt: { gte: oneWeekAgo },
-      },
-    });
-
-    const overdueCount = await prisma.project.count({
-      where: {
-        userId,
-        status: { not: "completed" },
-        deadline: { lt: new Date() },
       },
     });
 
@@ -154,9 +176,8 @@ export async function GET() {
       totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     const projectStats = {
-      total: totalProjects,
+      total: plansCreatedPastMonth,
       completed: completedProjects,
-      active: activeProjects,
       completedThisWeek,
       overdueCount,
       taskCompletionRate,
@@ -169,6 +190,7 @@ export async function GET() {
       trends,
       habitStats,
       categoryCompletionRates,
+      habitConsistency,
       projectStats,
     });
   } catch (error) {

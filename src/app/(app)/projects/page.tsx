@@ -385,7 +385,7 @@ function NewQueueItemModal({ onClose, onSaved }: NewQueueItemModalProps) {
                 className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_40px_-18px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Create item
+                Create plan
               </button>
             </div>
           </div>
@@ -482,102 +482,71 @@ export default function ProjectsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-5 pb-20 md:px-6 md:py-8 lg:pb-8">
-      <Link
-        href="/dashboard"
-        className="inline-flex items-center gap-1.5 text-sm transition-colors"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Dashboard
-      </Link>
-
-      <div className="mt-5 rounded-[32px] border border-[rgba(120,145,220,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-5 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.95)] md:p-7">
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
-              Plans
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-[var(--text-primary)] md:text-4xl">
-              Prioritized work, not clutter.
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-              Every item is auto-sorted by urgency first, then by the closest due date.
-              The only views are what is active right now and what is already finished.
-            </p>
-          </div>
-
-          <button
-            onClick={() => setShowModal(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#4f72ff_0%,#22d3ee_100%)] px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_40px_-20px_rgba(79,114,255,0.95)] transition-transform hover:-translate-y-0.5"
-          >
-            <Plus className="h-4 w-4" />
-            New item
-          </button>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <p className="text-xs font-medium tracking-widest uppercase mb-1" style={{ color: "#334d6e" }}>
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+          </p>
+          <h1 className="text-2xl md:text-3xl font-bold" style={{ color: "#c8deff", fontFamily: "'Syne', sans-serif" }}>
+            Plans
+          </h1>
         </div>
-
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          {[
-            { label: "Active", value: activeCount, icon: Clock3, tone: "text-[#9bb7ff] bg-[#4f72ff]/10" },
-            { label: "Completed", value: completedCount, icon: CheckCircle2, tone: "text-emerald-300 bg-emerald-500/10" },
-            { label: "Overdue", value: overdueCount, icon: AlertTriangle, tone: "text-rose-300 bg-rose-500/10" },
-          ].map(({ label, value, icon: Icon, tone }) => (
-            <div
-              key={label}
-              className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${tone}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-2xl font-semibold text-[var(--text-primary)]">{value}</p>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                    {label}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
+          style={{ background: "linear-gradient(135deg,#4f72ff 0%,#22d3ee 100%)", boxShadow: "0 0 20px rgba(79,114,255,0.3)" }}
+        >
+          <Plus className="h-4 w-4" />
+          + New Plan
+        </button>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        {(Object.keys(FILTER_META) as QueueFilter[]).map((value) => {
-          const meta = FILTER_META[value];
-          const Icon = meta.icon;
-          const isActive = value === filter;
-          const count = value === "active" ? activeCount : completedCount;
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {[
+          { label: "ACTIVE",    value: activeCount,    color: "#4f72ff" },
+          { label: "COMPLETED", value: completedCount, color: "#10d9a0" },
+          { label: "OVERDUE",   value: overdueCount,   color: "#f59e0b" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="rounded-xl p-4" style={{ background: "linear-gradient(135deg,#0c1830 0%,#091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+            <p className="text-2xl font-bold mb-0.5" style={{ color, fontFamily: "'Syne', sans-serif" }}>{value}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#2d4a6a" }}>{label}</p>
+          </div>
+        ))}
+      </div>
 
+      <div className="flex items-center gap-2 mb-5">
+        {(["active", "completed"] as QueueFilter[]).map((value) => {
+          const isActive = value === filter;
           return (
             <button
               key={value}
               onClick={() => setFilter(value)}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all ${
+              className="px-4 py-1.5 rounded-full text-sm font-medium transition-all capitalize"
+              style={
                 isActive
-                  ? "border-[rgba(79,114,255,0.45)] bg-[rgba(79,114,255,0.12)] text-[var(--text-primary)]"
-                  : "border-white/8 bg-white/5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
+                  ? { background: "rgba(79,114,255,0.15)", border: "1px solid rgba(79,114,255,0.4)", color: "#a8c4ff" }
+                  : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(40,76,140,0.2)", color: "#4a6a90" }
+              }
             >
-              <Icon className="h-4 w-4" />
-              {meta.label}
-              <span className="rounded-full bg-black/20 px-2 py-0.5 text-xs text-[var(--text-muted)]">
-                {count}
-              </span>
+              {value.charAt(0).toUpperCase() + value.slice(1)}
             </button>
           );
         })}
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="space-y-3">
         {filteredItems.length === 0 ? (
-          <div className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-4 py-8">
-            <EmptyState
-              icon={activeMeta.icon}
-              title={activeMeta.emptyTitle}
-              description={activeMeta.emptyDescription}
-              ctaLabel={filter === "active" ? "Create an item" : undefined}
-              onCtaClick={filter === "active" ? () => setShowModal(true) : undefined}
-            />
+          <div className="rounded-xl px-4 py-10 text-center" style={{ background: "linear-gradient(135deg,#0c1830 0%,#091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+            <p className="text-sm mb-2" style={{ color: "#4a6a90" }}>
+              {filter === "active" ? "No active plans" : "Nothing completed yet"}
+            </p>
+            {filter === "active" && (
+              <button onClick={() => setShowModal(true)} className="text-xs" style={{ color: "#4f72ff" }}>
+                Create a plan →
+              </button>
+            )}
           </div>
         ) : (
           filteredItems.map((item) => {
@@ -590,109 +559,66 @@ export default function ProjectsPage() {
             const isCompleted = getEffectiveStatus(item.status) === "completed";
 
             return (
-              <div key={item.id} className="group relative">
-                <Link
-                  href={`/projects/${item.id}`}
-                  className={`block rounded-[28px] border border-[rgba(120,145,220,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0)),#0f1525] p-5 transition-all hover:border-[rgba(79,114,255,0.28)] hover:shadow-[0_24px_60px_-36px_rgba(79,114,255,0.65)] md:p-6 ${
-                    isCompleting ? "queue-complete-burst border-emerald-400/30 bg-emerald-500/8" : ""
-                  }`}
-                >
-                  <div className="sm:pr-12">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityStyle}`}>
-                        {priorityLabel}
+              <div key={item.id} className="group relative rounded-xl overflow-hidden" style={{ background: "linear-gradient(135deg,#0c1830 0%,#091222 100%)", border: "1px solid rgba(40,76,140,0.22)" }}>
+                <Link href={`/projects/${item.id}`} className="block p-5 pr-14 transition-all hover:bg-white/[0.02]">
+                  {/* Priority + due date row */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className={`text-[10px] font-semibold uppercase tracking-[0.15em] px-2.5 py-1 rounded-full border ${priorityStyle}`}>
+                      {priorityLabel}
+                    </span>
+                    {deadline && (
+                      <span className="text-xs" style={{ color: overdue ? "#f87171" : "#4a6a90" }}>
+                        {overdue ? "Overdue · " : "Due "}
+                        {deadline}
                       </span>
-                      {overdue && (
-                        <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-200">
-                          Overdue
-                        </span>
-                      )}
+                    )}
+                  </div>
+
+                  {/* Title + description */}
+                  <h2 className="text-base font-semibold mb-1" style={{ color: "#c8deff" }}>
+                    {item.title}
+                  </h2>
+                  {item.description && (
+                    <p className="text-sm leading-relaxed mb-4" style={{ color: "#4a6a90" }}>
+                      {item.description}
+                    </p>
+                  )}
+
+                  {/* Progress bar + task count */}
+                  <div className="flex items-center gap-3 mt-3">
+                    <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(20,40,70,0.8)" }}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${item.completionPercentage}%`, background: "linear-gradient(90deg,#4f72ff,#22d3ee)" }}
+                      />
                     </div>
-
-                    <div className="mt-4 flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-primary)] sm:text-xl">
-                          {item.title}
-                        </h2>
-                        {item.description && (
-                          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                            {item.description}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="hidden items-center gap-1 text-[var(--text-muted)] md:flex">
-                        <span className="text-xs uppercase tracking-[0.18em]">Open</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
-                      <div>
-                        <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                          <span>Progress</span>
-                          <span>
-                            {item.completedTaskCount}/{item.taskCount} tasks
-                          </span>
-                        </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
-                          <div
-                            className="h-full rounded-full bg-[linear-gradient(90deg,#4f72ff_0%,#22d3ee_100%)] transition-all"
-                            style={{ width: `${item.completionPercentage}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap justify-start gap-4 text-sm text-[var(--text-secondary)] md:justify-end">
-                        <span className="inline-flex items-center gap-1.5">
-                          <Clock3 className="h-4 w-4 text-[var(--text-muted)]" />
-                          {item.taskCount} total
-                        </span>
-                        {deadline && (
-                          <span className={`inline-flex items-center gap-1.5 ${overdue ? "text-rose-200" : ""}`}>
-                            <Calendar className="h-4 w-4 text-[var(--text-muted)]" />
-                            {deadline}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <span className="text-xs flex-shrink-0" style={{ color: "#2d4a6a" }}>
+                      {item.completedTaskCount}/{item.taskCount}
+                    </span>
                   </div>
                 </Link>
 
-                <div className="mt-3 flex items-center justify-end gap-2 sm:absolute sm:right-4 sm:top-4 sm:mt-0 sm:justify-start sm:opacity-0 sm:transition-all sm:group-hover:opacity-100">
+                {/* Action buttons (hover) */}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   {!isCompleted && (
                     <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        void completeItem(item.id);
-                      }}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); void completeItem(item.id); }}
                       disabled={isCompleting || isDeleting}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 transition-all hover:bg-emerald-500/20 disabled:opacity-50"
-                      title="Complete plan"
+                      className="h-8 w-8 flex items-center justify-center rounded-xl transition-all disabled:opacity-50"
+                      style={{ background: "rgba(16,217,160,0.1)", border: "1px solid rgba(16,217,160,0.2)", color: "#10d9a0" }}
+                      title="Complete"
                     >
-                      {isCompleting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4" />
-                      )}
+                      {isCompleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                     </button>
                   )}
                   <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void deleteItem(item.id);
-                    }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); void deleteItem(item.id); }}
                     disabled={isDeleting || isCompleting}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-300 transition-all hover:bg-rose-500/20 disabled:opacity-50"
-                    title="Delete item"
+                    className="h-8 w-8 flex items-center justify-center rounded-xl transition-all disabled:opacity-50"
+                    style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", color: "#f87171" }}
+                    title="Delete"
                   >
-                    {isDeleting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
+                    {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                   </button>
                 </div>
               </div>

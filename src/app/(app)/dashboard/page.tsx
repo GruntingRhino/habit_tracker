@@ -3,6 +3,14 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Flame, Plus } from "lucide-react";
 import { authOptions } from "@/lib/auth";
+
+function getGreeting(name: string): string {
+  const hour = new Date().getHours();
+  const first = name.split(" ")[0];
+  if (hour < 12) return `Good morning, ${first}`;
+  if (hour < 17) return `Good afternoon, ${first}`;
+  return `Good evening, ${first}`;
+}
 import prisma from "@/lib/prisma";
 import { format } from "date-fns";
 import DashboardTabs from "@/components/DashboardTabs";
@@ -10,28 +18,25 @@ import type { DashboardTabsProps } from "@/components/DashboardTabs";
 
 function priorityRank(priority: string): number {
   switch (priority) {
-    case "urgent":
-      return 0;
-    case "high":
-      return 1;
-    case "medium":
-      return 2;
-    case "low":
-      return 3;
-    default:
-      return 4;
+    case "urgent": return 0;
+    case "high":   return 1;
+    case "medium": return 2;
+    case "low":    return 3;
+    default:       return 4;
   }
 }
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    redirect("/login");
-  }
+  if (!session?.user?.id) redirect("/login");
 
   const userId = session.user.id;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Last 7 days window
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
 
   // Fetch last 2 category scores for trend
   const rawRecentScores = await prisma.categoryScore.findMany({
@@ -48,80 +53,82 @@ export default async function DashboardPage() {
     }, new Map<string, (typeof rawRecentScores)[number]>()).values()
   ).slice(0, 2);
 
-  const latestScore = recentScores[0] ?? null;
+  const latestScore  = recentScores[0] ?? null;
   const previousScore = recentScores[1] ?? null;
 
-  // Fetch latest entry (not necessarily today's)
+  // Latest + today entries
   const latestEntry = await prisma.dailyEntry.findFirst({
     where: { userId },
     orderBy: { date: "desc" },
   });
-
-  // Check if today's entry exists (for button label)
   const todayEntry = await prisma.dailyEntry.findFirst({
     where: { userId, date: today },
   });
 
-  // Determine the date to use for habit logs (latest entry date or today)
+  // Habit log date
   const habitLogDate = latestEntry ? new Date(latestEntry.date) : today;
   habitLogDate.setHours(0, 0, 0, 0);
 
-  // Fetch active habits with logs from the latest entry date
+  // All active habits with today's log
   const habits = await prisma.habit.findMany({
     where: { userId, isActive: true },
-    include: {
-      logs: {
-        where: { date: habitLogDate },
-      },
-    },
+    include: { logs: { where: { date: habitLogDate } } },
     orderBy: { createdAt: "asc" },
-    take: 8,
   });
 
-  // Fetch top 3 active projects with task counts
+  // Projects
   const projects = await prisma.project.findMany({
     where: { userId, status: "active" },
-    include: {
-      tasks: { select: { id: true, status: true } },
-    },
+    include: { tasks: { select: { id: true, status: true } } },
     orderBy: { createdAt: "asc" },
   });
 
-  const sortedProjects = [...projects].sort((left, right) => {
-    const priorityDelta = priorityRank(left.priority) - priorityRank(right.priority);
-    if (priorityDelta !== 0) return priorityDelta;
-
-    const leftDeadline = left.deadline ? new Date(left.deadline).getTime() : Number.POSITIVE_INFINITY;
-    const rightDeadline = right.deadline ? new Date(right.deadline).getTime() : Number.POSITIVE_INFINITY;
-    if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
-
-    return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+  const sortedProjects = [...projects].sort((l, r) => {
+    const pd = priorityRank(l.priority) - priorityRank(r.priority);
+    if (pd !== 0) return pd;
+    const ld = l.deadline ? new Date(l.deadline).getTime() : Infinity;
+    const rd = r.deadline ? new Date(r.deadline).getTime() : Infinity;
+    if (ld !== rd) return ld - rd;
+    return new Date(l.createdAt).getTime() - new Date(r.createdAt).getTime();
   });
 
-  // Streak: count consecutive days with habit completions
+  // Streak
   const streakLogs = await prisma.habitLog.findMany({
-    where: {
-      habit: { userId },
-      completed: true,
-    },
+    where: { habit: { userId }, completed: true },
     orderBy: { date: "desc" },
     take: 60,
   });
-
   const uniqueDays = new Set(
-    streakLogs.map((l) => {
-      const d = new Date(l.date);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime();
-    })
+    streakLogs.map((l) => { const d = new Date(l.date); d.setHours(0,0,0,0); return d.getTime(); })
   );
-
   let streak = 0;
   let cursor = today.getTime();
-  while (uniqueDays.has(cursor)) {
-    streak++;
-    cursor -= 86400000;
-  }
+  while (uniqueDays.has(cursor)) { streak++; cursor -= 86400000; }
+
+  // Week at a glance
+  const weekEntries = await prisma.dailyEntry.findMany({
+    where: { userId, date: { gte: sevenDaysAgo, lte: today } },
+    select: { deepWorkHours: true },
+  });
+  const weekEntriesLogged = weekEntries.length;
+  const weekDeepWorkHours = weekEntries.reduce((sum, e) => sum + (e.deepWorkHours ?? 0), 0);
+
+  const weekHabitLogs = await prisma.habitLog.findMany({
+    where: {
+      habit: { userId },
+      date: { gte: sevenDaysAgo, lte: today },
+    },
+    select: { completed: true },
+  });
+  const weekHabitsCompleted = weekHabitLogs.filter((l) => l.completed).length;
+  const weekHabitsTotal     = weekHabitLogs.length;
+
+  // Coach insight
+  const coachProfile = await prisma.coachProfile.findUnique({
+    where: { userId },
+    select: { summary: true },
+  });
+  const coachInsight = coachProfile?.summary ?? null;
 
   const hasData = latestScore !== null;
   const dateLabel = format(new Date(), "EEEE · MMMM d, yyyy");
@@ -158,56 +165,54 @@ export default async function DashboardPage() {
     })),
     entryNotes: latestEntry?.notes ?? null,
     entryDate: latestEntry ? latestEntry.date.toISOString() : null,
+    weekEntriesLogged,
+    weekHabitsCompleted,
+    weekHabitsTotal,
+    weekDeepWorkHours: Math.round(weekDeepWorkHours * 10) / 10,
+    coachInsight,
+    userName: session.user.name ?? session.user.email ?? "there",
   };
 
   return (
-    <div className="fade-in">
-      {/* Header (Claude Design) */}
-      <div className="flex items-end justify-between gap-4 mb-7">
-        <div>
+    <div className="mx-auto w-full max-w-6xl px-4 py-5 md:px-6 md:py-6">
+      {/* Header */}
+      <div className="mb-6 flex flex-col items-center justify-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
+        <div className="min-w-0">
+          <p className="mb-1 break-words text-xs font-medium uppercase tracking-[0.28em]" style={{ color: "#334d6e" }}>
+            {dateLabel}
+          </p>
           <h1
-            className="text-[48px] leading-none m-0"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 400,
-              letterSpacing: "-0.025em",
-              color: "var(--ink-100)",
-            }}
+            className="text-[clamp(2.5rem,14vw,5rem)] font-light leading-none tracking-[-0.06em]"
+            style={{ color: "#f8fbff", fontFamily: "var(--font-instrument-serif, serif)" }}
           >
             LiveImproved
           </h1>
-          <div
-            className="text-xs uppercase mt-2"
-            style={{
-              letterSpacing: ".15em",
-              color: "var(--ink-500)",
-            }}
-          >
-            {dateLabel}
-          </div>
+          <p className="mt-1 text-sm" style={{ color: "#6b8cb8" }}>
+            {getGreeting(tabsProps.userName)}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-end">
           {streak > 0 && (
             <div
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-              style={{
-                background: "rgba(255, 181, 71, .08)",
-                border: "1px solid rgba(255, 181, 71, .2)",
-              }}
+              style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)" }}
             >
-              <Flame className="w-4 h-4" style={{ color: "var(--cat-appearance)" }} />
-              <span className="text-sm font-semibold" style={{ color: "var(--cat-appearance)" }}>
-                {streak} day streak
+              <Flame className="w-4 h-4" style={{ color: "#fb923c" }} />
+              <span className="text-sm font-semibold hidden sm:inline" style={{ color: "#fb923c" }}>
+                {streak}-day streak
+              </span>
+              <span className="text-sm font-semibold sm:hidden" style={{ color: "#fb923c" }}>
+                {streak}
               </span>
             </div>
           )}
           <Link
             href="/entry"
-            className="btn-primary flex items-center gap-2 text-sm"
-            style={{ padding: "14px 22px", borderRadius: "14px" }}
+            className="flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white"
+            style={{ background: "var(--accent, #4f72ff)", boxShadow: "0 0 20px rgba(79,114,255,0.25)" }}
           >
             <Plus className="w-4 h-4" />
-            {todayEntry ? "Log today" : "Log today"}
+            {todayEntry ? "Open Daily Work" : "Start Daily Work"}
           </Link>
         </div>
       </div>

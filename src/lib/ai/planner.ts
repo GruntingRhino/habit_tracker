@@ -102,7 +102,7 @@ export async function planDay(
       ],
       schema: PLAN_SCHEMA,
       think: opts.think ?? false,
-      maxTokens: opts.think ? 2500 : 400,
+      maxTokens: opts.think ? 1500 : 400,
       timeoutMs: opts.think ? 10 * 60_000 : 150_000,
     });
     const parsed = parseJson<{ picks?: { n: number; reason?: string }[]; summary?: string }>(result.content);

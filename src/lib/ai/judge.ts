@@ -112,7 +112,7 @@ export async function judgeDay(userId: string, date = new Date(), opts: { think?
         { role: "user", content: user },
       ],
       schema: JUDGE_SCHEMA,
-      think: opts.think ?? true,
+      think: opts.think ?? false,
       temperature: 0.4,
       maxTokens: opts.think === false ? 500 : 3000,
       timeoutMs: 12 * 60_000,

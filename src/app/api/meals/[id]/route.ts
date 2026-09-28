@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { strictObject } from "@/lib/validation";
 
 interface RouteParams { params: Promise<{ id: string }> }
@@ -18,6 +16,8 @@ const mealPatchSchema = strictObject({
   calories: z.number().int().min(1).max(10000).nullable().optional(),
   servings: z.number().min(0.25).max(100).optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  status: z.enum(["saved", "planned", "eaten"]).optional(),
+  plannedFor: z.string().datetime({ offset: true }).nullable().optional(),
 });
 
 async function ownsMeal(id: string, userId: string) {
@@ -26,7 +26,7 @@ async function ownsMeal(id: string, userId: string) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;
@@ -52,9 +52,15 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         calories: body.calories !== undefined ? body.calories : meal.calories,
         servings: body.servings !== undefined ? body.servings : meal.servings,
         notes: body.notes !== undefined ? body.notes : meal.notes,
+        status: body.status ?? meal.status,
+        plannedFor:
+          body.plannedFor !== undefined
+            ? body.plannedFor && new Date(body.plannedFor)
+            : body.status === "eaten" && !meal.plannedFor
+              ? new Date()
+              : meal.plannedFor,
       },
     });
-    await markCoachContextDirty(session.user.id);
     return NextResponse.json(updated);
   } catch (error) {
     reportError({ context: "meals PATCH", error, userId: session.user.id });
@@ -63,14 +69,13 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;
     const meal = await ownsMeal(id, session.user.id);
     if (!meal) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await prisma.meal.delete({ where: { id } });
-    await markCoachContextDirty(session.user.id);
     return NextResponse.json({ message: "deleted" });
   } catch (error) {
     reportError({ context: "meals DELETE", error, userId: session.user.id });

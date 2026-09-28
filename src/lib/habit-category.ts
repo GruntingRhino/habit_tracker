@@ -5,6 +5,7 @@ export const HABIT_CATEGORY_OPTIONS = [
   "discipline",
   "focus",
   "mental",
+  "spiritual",
 ] as const;
 
 export type HabitCategoryOption = (typeof HABIT_CATEGORY_OPTIONS)[number];
@@ -21,7 +22,9 @@ const HABIT_CATEGORY_ALIAS_MAP: Record<string, HabitCategoryOption> = {
   physical: "physical",
   productivity: "focus",
   social: "mental",
-  spiritual: "mental",
+  spiritual: "spiritual",
+  faith: "spiritual",
+  work: "focus",
 };
 
 export function normalizeHabitCategory(
@@ -56,6 +59,9 @@ export function characterizeHabitCategory(
     focus: scoreKeywords(text, [
       "deep work", "study", "read", "learn", "school", "task", "focus", "work block", "mit",
     ]),
+    spiritual: scoreKeywords(text, [
+      "pray", "prayer", "bible", "church", "mass", "god", "faith", "devotion", "scripture", "worship",
+    ]),
     mental: scoreKeywords(text, [
       "meditation", "gratitude", "reflect", "mental", "mind", "sunlight", "wind-down", "phone off", "journaling",
     ]),
@@ -65,4 +71,11 @@ export function characterizeHabitCategory(
     .sort((left, right) => right[1] - left[1]) as Array<[HabitCategoryOption, number]>;
 
   return ranked[0]?.[1] > 0 ? ranked[0][0] : "general";
+}
+
+/** Routines are tagged by life area; discipline/focus habits count toward work. */
+export function habitCategoryToArea(category: string | null | undefined): string {
+  const c = normalizeHabitCategory(category);
+  if (c === "discipline" || c === "focus") return "work";
+  return c;
 }

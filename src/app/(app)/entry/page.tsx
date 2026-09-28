@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import {
   Activity,
   AlertCircle,
-  ArrowLeft,
   Bot,
   Brain,
   CalendarDays,
@@ -26,8 +24,7 @@ import {
 import { type LucideIcon } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ScoreCard from "@/components/ScoreCard";
-import DailyCoachChat from "@/components/DailyCoachChat";
-import DailyWorkPlanner from "@/components/DailyWorkPlanner";
+import JournalFeedback from "@/components/JournalFeedback";
 import { getLocalDateKey } from "@/lib/utils";
 import {
   assessWorkout,
@@ -684,9 +681,7 @@ function summarizeAnswer(
 }
 
 export default function EntryPage() {
-  const [mode, setMode] = useState<"entry" | "planner">(
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "plan" ? "planner" : "entry"
-  );
+  const mode = "entry" as "entry" | "planner";
   const [form, setForm] = useState<DailyEntryForm>({ ...defaultForm });
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
@@ -696,10 +691,6 @@ export default function EntryPage() {
   const [error, setError] = useState("");
   const [stepError, setStepError] = useState("");
   const [scores, setScores] = useState<CategoryScores | null>(null);
-  const [scoringSettings, setScoringSettings] = useState<{
-    strictness: "lenient" | "balanced" | "strict";
-    ageYears: number | null;
-  }>({ strictness: "balanced", ageYears: null });
   const [existingId, setExistingId] = useState<string | null>(null);
   const [routines, setRoutines] = useState<WeightRoutine[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -783,15 +774,6 @@ export default function EntryPage() {
   useEffect(() => {
     fetchTodayEntry();
   }, [fetchTodayEntry]);
-
-  useEffect(() => {
-    fetch("/api/scoring-settings", { credentials: "include", cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) setScoringSettings(data);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     try {
@@ -1469,12 +1451,12 @@ export default function EntryPage() {
               description="Keep this binary and honest."
             />
             <div className="space-y-2">
-              <FieldLabel>Notes</FieldLabel>
+              <FieldLabel>Journal</FieldLabel>
               <textarea
-                rows={4}
+                rows={8}
                 value={getString("notes")}
                 onChange={(event) => setDraftField("notes", event.target.value)}
-                placeholder="Short reflection, misses, wins, context."
+                placeholder="How did today go? Wins, misses, what you felt, what you're grateful for. Spark reviews this tonight."
                 className="w-full resize-none rounded-xl border border-[#334155] bg-[#111827] px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
               />
             </div>
@@ -1499,16 +1481,11 @@ export default function EntryPage() {
     : STEP_ORDER.slice(0, currentStepIndex + 1);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-5 md:px-6 md:py-6 pb-20 lg:pb-6">
-      <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
-        <ArrowLeft className="w-4 h-4" /> Dashboard
-      </Link>
+    <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.2em] text-slate-500">
-            Daily Work
+            Journal
           </p>
           <h1 className="mt-2 text-3xl font-bold text-slate-100">
             {mode === "entry" ? "Log the day honestly" : "Plan today before it drifts"}
@@ -1521,35 +1498,6 @@ export default function EntryPage() {
         </div>
 
         <div className="space-y-3">
-          <div className="inline-flex rounded-2xl border border-[#1f2937] bg-[#0f172a] p-1">
-            {[
-              ["entry", "Daily Entry"],
-              ["planner", "Plan Today"],
-            ].map(([value, label]) => {
-              const active = mode === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => {
-                    const url = new URL(window.location.href);
-                    if (value === "planner") url.searchParams.set("mode", "plan");
-                    else url.searchParams.delete("mode");
-                    window.history.replaceState({}, "", url.toString());
-                    setMode(value as "entry" | "planner");
-                  }}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-                    active
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-400 hover:text-slate-100"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
           {mode === "entry" && (
             <div className="min-w-[260px] rounded-3xl border border-[#1f2937] bg-[#0f172a] px-5 py-4">
               <div className="mb-2 flex items-center justify-between">
@@ -1592,13 +1540,6 @@ export default function EntryPage() {
 
       {mode === "entry" ? (
       <>
-      <div className="mb-5 rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
-        Grading mode: <span className="font-semibold capitalize">{scoringSettings.strictness}</span>.
-        {" "}
-        {scoringSettings.ageYears !== null
-          ? `Financial scoring uses age ${scoringSettings.ageYears}.`
-          : "Add age in Settings if you want financial scoring to distinguish student-mode from adult income-mode."}
-      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
@@ -1728,14 +1669,13 @@ export default function EntryPage() {
             <div className="mb-3 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-blue-300" />
               <p className="text-sm font-semibold text-slate-100">
-                Strict scoring rules
+                How you&apos;re scored
               </p>
             </div>
             <div className="space-y-3 text-sm text-slate-400">
-              <p>Current mode is <span className="font-semibold capitalize text-slate-200">{scoringSettings.strictness}</span>, so thresholds for sleep, deep work, steps, and training scale up or down from the balanced baseline.</p>
-              <p>Physical score comes directly from sleep, movement, training quality, and calorie awareness.</p>
-              <p>Discipline and focus combine the daily entry with habit completion and get penalized by overdue active plans.</p>
-              <p>Financial score is age-aware and treats income progress differently for students versus working adults.</p>
+              <p>The scores below are a live, rule-based estimate while the day is running.</p>
+              <p>At 11:30pm Spark reads everything you logged — tasks, routines, workouts, meals, money and this journal — and scores physical, mental, financial, spiritual and work out of 10, with a reason for each.</p>
+              <p>It also rates the journal and leaves feedback for tomorrow.</p>
             </div>
           </div>
 
@@ -1776,10 +1716,10 @@ export default function EntryPage() {
         </section>
       )}
 
-      {chatReady && <DailyCoachChat />}
+      <JournalFeedback />
       </>
       ) : (
-        <DailyWorkPlanner />
+        null
       )}
     </div>
   );

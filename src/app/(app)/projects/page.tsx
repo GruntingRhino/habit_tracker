@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowLeft,
   Calendar,
   CheckCircle2,
   ChevronRight,
@@ -481,15 +480,7 @@ export default function ProjectsPage() {
   const activeMeta = FILTER_META[filter];
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-5 pb-20 md:px-6 md:py-8 lg:pb-8">
-      <Link
-        href="/dashboard"
-        className="inline-flex items-center gap-1.5 text-sm transition-colors"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Dashboard
-      </Link>
+    <div className="mx-auto max-w-5xl ">
 
       <div className="mt-5 rounded-[32px] border border-[rgba(120,145,220,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0)),#0f1525] p-5 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.95)] md:p-7">
         <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">

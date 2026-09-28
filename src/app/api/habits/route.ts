@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { calcStreak } from "@/lib/utils";
-import { normalizeHabitCategory } from "@/lib/habit-category";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { habitCategoryToArea, normalizeHabitCategory } from "@/lib/habit-category";
 import { subDays } from "date-fns";
 import { strictObject } from "@/lib/validation";
 
@@ -29,7 +27,7 @@ const habitPostSchema = strictObject({
 });
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -80,7 +78,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -101,11 +99,11 @@ export async function POST(req: NextRequest) {
         name: parsed.data.name,
         description: parsed.data.description,
         category: normalizeHabitCategory(parsed.data.category),
+        area: habitCategoryToArea(parsed.data.category),
         targetDays: parsed.data.targetDays,
         color: parsed.data.color,
       },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(habit, { status: 201 });
   } catch (error) {

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { strictObject } from "@/lib/validation";
 
 interface RouteParams { params: Promise<{ id: string }> }
@@ -37,7 +35,7 @@ async function ownsExercise(exerciseId: string, routineId: string) {
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: routineId } = await params;
 
@@ -68,7 +66,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         order: (last?.order ?? -1) + 1,
       },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(exercise, { status: 201 });
   } catch (error) {
@@ -78,7 +75,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PUT(req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: routineId } = await params;
 
@@ -109,7 +106,6 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       where: { routineId },
       orderBy: { order: "asc" },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ exercises, count: exercises.length });
   } catch (error) {
@@ -119,7 +115,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: routineId } = await params;
 
@@ -136,7 +132,6 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     }
 
     await prisma.weightExercise.delete({ where: { id: exerciseId } });
-    await markCoachContextDirty(session.user.id);
     return NextResponse.json({ message: "deleted" });
   } catch (error) {
     reportError({ context: "exercises DELETE", error, userId: session.user.id });

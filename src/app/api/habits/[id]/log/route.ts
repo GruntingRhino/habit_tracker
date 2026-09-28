@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { getStartOfDay } from "@/lib/utils";
 import { reportError } from "@/lib/monitoring";
 import { strictObject } from "@/lib/validation";
@@ -20,7 +18,7 @@ const habitLogPostSchema = strictObject({
 });
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -96,7 +94,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
       return { log: nextLog, scores: nextScores };
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ log, scores }, { status: 201 });
   } catch (error) {

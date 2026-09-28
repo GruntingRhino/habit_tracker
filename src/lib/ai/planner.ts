@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { chat, parseJson, LLM_MODEL } from "@/lib/ai/llm";
 import { describeItem, getOpenItems, type OpenItem } from "@/lib/ai/context";
 import { getStartOfDay } from "@/lib/utils";
+import { SCORED_AREAS } from "@/lib/areas";
 import { reportError } from "@/lib/monitoring";
 import { addDays, format } from "date-fns";
 
@@ -81,7 +82,7 @@ export async function planDay(
 
   const lastScore = await prisma.categoryScore.findFirst({ where: { userId, date: { lt: day } }, orderBy: { date: "desc" } });
   const weak = lastScore
-    ? (["physical", "mental", "financial", "spiritual", "work"] as const)
+    ? SCORED_AREAS
         .map((a) => [a, lastScore[a]] as const)
         .sort((a, b) => a[1] - b[1])
         .slice(0, 2)

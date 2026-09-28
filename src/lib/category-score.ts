@@ -208,7 +208,10 @@ export async function recomputeCategoryScoreForDate(
   };
 
   const spiritual = roundScore(entry?.rightWithGod ? 7 : entry ? 3 : 0);
+  // Mental absorbs focus/discipline (work & school); overall is the mean of the four areas.
   const work = roundScore((nextScores.discipline + nextScores.focus) / 2);
+  const mental4 = roundScore((nextScores.mental + work) / 2);
+  const overall4 = roundScore((nextScores.physical + mental4 + nextScores.financial + spiritual) / 4);
 
   const existing = await db.categoryScore.findFirst({
     where: { userId, date: scoreDate },
@@ -226,11 +229,11 @@ export async function recomputeCategoryScoreForDate(
         financial: nextScores.financial,
         discipline: nextScores.discipline,
         focus: nextScores.focus,
-        mental: nextScores.mental,
+        mental: mental4,
         appearance: 0,
         spiritual,
         work,
-        overall: nextScores.overall,
+        overall: overall4,
         finalized: !isToday,
       },
     });
@@ -245,11 +248,11 @@ export async function recomputeCategoryScoreForDate(
       financial: nextScores.financial,
       discipline: nextScores.discipline,
       focus: nextScores.focus,
-      mental: nextScores.mental,
+      mental: mental4,
       appearance: 0,
       spiritual,
       work,
-      overall: nextScores.overall,
+      overall: overall4,
       finalized: !isToday,
     },
   });

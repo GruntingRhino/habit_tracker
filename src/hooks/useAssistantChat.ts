@@ -22,7 +22,8 @@ export interface ChatMsg {
   pending?: boolean;
 }
 
-export function useAssistantChat() {
+/** sessionOnly: start empty and show only this visit's messages (history stays in the DB). */
+export function useAssistantChat({ sessionOnly = false }: { sessionOnly?: boolean } = {}) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
@@ -35,8 +36,25 @@ export function useAssistantChat() {
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (sessionOnly) {
+      setReady(true);
+      return;
+    }
+    let alive = true;
+    fetch("/api/chat")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list: ChatMsg[]) => {
+        if (!alive) return;
+        setMessages(list);
+        setReady(true);
+      })
+      .catch(() => setReady(true));
+    return () => {
+      alive = false;
+    };
+  }, [sessionOnly]);
+
+  const clear = useCallback(() => setMessages([]), []);
 
   const send = useCallback(async (text: string) => {
     const value = text.trim();
@@ -80,7 +98,7 @@ export function useAssistantChat() {
     }
   }, []);
 
-  return { messages, loading, ready, error, send, undo, refresh };
+  return { messages, loading, ready, error, send, undo, refresh, clear };
 }
 
 /** Re-run `fn` whenever the assistant changes data (so lists refresh after chat captures). */

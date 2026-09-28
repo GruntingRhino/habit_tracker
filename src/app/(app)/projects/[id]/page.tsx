@@ -787,7 +787,7 @@ export default function ProjectDetailPage() {
   );
 
   return (
-    <div className="px-4 py-5 md:px-6 md:py-6 max-w-6xl mx-auto pb-20 lg:pb-6">
+    <div className="max-w-6xl mx-auto">
       {/* Back */}
       <Link
         href="/projects"

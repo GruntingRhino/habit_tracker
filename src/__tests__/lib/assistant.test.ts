@@ -119,3 +119,24 @@ describe("remind me override", () => {
     expect(r.items[0].title).toBe("drink water");
   });
 });
+
+describe("reminder + note overrides", () => {
+  it("turns a routine guess into a one-off reminder", () => {
+    const r = sanitize({ intent: "capture", items: [{ kind: "routine", title: "Stretch", area: "physical" }] }, "remind me in 6 minutes to stretch");
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toMatchObject({ kind: "reminder", title: "Stretch", when: "remind me in 6 minutes to stretch" });
+    expect(r.items[0].repeat).toBeUndefined();
+  });
+
+  it("detects recurring reminders", () => {
+    const r = sanitize({ intent: "capture", items: [{ kind: "routine", title: "Take vitamins", area: "physical" }] }, "remind me every day at 8am to take vitamins");
+    expect(r.items[0]).toMatchObject({ kind: "reminder", repeat: "daily" });
+  });
+
+  it("routes note phrasing to notes", () => {
+    for (const t of ["note: garage code is 4412", "jot this down: book recs from Sam", "write down that my passport expires in march", "save this: wifi is bluebird22"]) {
+      const r = sanitize({ intent: "capture", items: [{ kind: "todo", title: "x", area: "general" }] }, t);
+      expect(r.items[0].kind).toBe("note");
+    }
+  });
+});

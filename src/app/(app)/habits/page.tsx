@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import {
   Plus,
   Flame,
@@ -11,7 +10,6 @@ import {
   Loader2,
   CheckSquare,
   AlertCircle,
-  ArrowLeft,
   Sparkles,
   Check,
 } from "lucide-react";
@@ -783,12 +781,7 @@ export default function HabitsPage() {
   }
 
   return (
-    <div className="px-4 py-5 md:px-6 md:py-6 max-w-5xl mx-auto pb-20 lg:pb-6">
-      <Link href="/today" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
-        <ArrowLeft className="w-4 h-4" /> Today
-      </Link>
+    <div className="max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

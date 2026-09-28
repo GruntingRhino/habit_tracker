@@ -16,21 +16,18 @@ export default function JournalFeedback() {
   useEffect(() => {
     fetch("/api/today")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { scores?: Score[] } | null) => {
-        const latest = [...(d?.scores ?? [])].reverse().find((s) => s.journalFeedback);
-        setScore(latest ?? null);
-      })
+      .then((d: { scores?: Score[] } | null) => setScore([...(d?.scores ?? [])].reverse().find((s) => s.journalFeedback) ?? null))
       .catch(() => undefined);
   }, []);
 
   if (!score?.journalFeedback) return null;
   return (
-    <section className="mt-8 rounded-2xl p-5" style={{ background: "var(--accent-muted)", border: "1px solid rgba(79,127,255,.25)" }}>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--blue-200)" }}>
+    <section className="mt-10">
+      <p className="min-label mb-2">
         Spark on your journal · {format(new Date(score.date), "EEE MMM d")}
         {score.journalScore != null ? ` · ${score.journalScore}/10` : ""}
       </p>
-      <p className="text-sm" style={{ color: "var(--ink-200)" }}>
+      <p className="text-sm leading-relaxed" style={{ color: "var(--ink-300)" }}>
         {score.journalFeedback}
       </p>
     </section>

@@ -1,7 +1,8 @@
 export const AREAS = ["physical", "mental", "financial", "spiritual", "work", "general"] as const;
 export type Area = (typeof AREAS)[number];
 
-export const SCORED_AREAS = ["physical", "mental", "financial", "spiritual", "work"] as const;
+/** The four life areas scored /10 each night. Work/school effort counts toward mental. */
+export const SCORED_AREAS = ["physical", "mental", "financial", "spiritual"] as const;
 export type ScoredArea = (typeof SCORED_AREAS)[number];
 
 export const PRIORITIES = ["low", "medium", "high", "urgent"] as const;

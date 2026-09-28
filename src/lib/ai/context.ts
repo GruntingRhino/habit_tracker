@@ -90,7 +90,7 @@ export async function buildSnapshot(userId: string) {
   if (scores.length)
     lines.push(
       `Recent scores /10:\n${scores
-        .map((s) => `- ${format(s.date, "EEE MMM d")}: overall ${s.overall.toFixed(1)}, physical ${s.physical.toFixed(1)}, mental ${s.mental.toFixed(1)}, financial ${s.financial.toFixed(1)}, spiritual ${s.spiritual.toFixed(1)}, work ${s.work.toFixed(1)}`)
+        .map((s) => `- ${format(s.date, "EEE MMM d")}: overall ${s.overall.toFixed(1)}, physical ${s.physical.toFixed(1)}, mental ${s.mental.toFixed(1)}, financial ${s.financial.toFixed(1)}, spiritual ${s.spiritual.toFixed(1)}`)
         .join("\n")}`
     );
   lines.push(`To-dos completed in last 7 days: ${weekDone}`);

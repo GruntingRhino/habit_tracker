@@ -34,10 +34,9 @@ const JUDGE_SCHEMA = {
 const JUDGE_SYSTEM = `You are Abhay's honest life coach. Score his day from 0 to 10 in each area using ONLY the facts given.
 Scale: 10 exceptional, 8 strong, 6 decent, 4 weak, 2 very poor, 0 nothing at all. 5 when there is little data for that area.
 - physical: training, sleep (7-9h ideal), steps, eating logged, physical routines/tasks
-- mental: mental routines, reading/learning, screen time (less is better), mood, stress handling in journal
+- mental: focus and discipline — work/school tasks and projects done, deep work, reading/learning, mental routines, screen time (less is better), mood, stress handling
 - financial: spending vs saving, income work, money tasks done
 - spiritual: prayer/faith routines, "right with God", spiritual tasks, gratitude
-- work: deep work hours, work/school tasks and project tasks completed, overdue work
 Be fair but demanding; don't inflate. Each reason: max 12 words, cite a concrete fact.
 Journal: score 0-10 for honesty, reflection and intention (0 if no journal). journalFeedback: 2-3 sentences, warm but direct, one concrete suggestion for tomorrow. If no journal, encourage him to write one tonight.
 Reply with minified JSON only.`;
@@ -63,11 +62,12 @@ async function collectFacts(userId: string, day: Date) {
   ]);
 
   const byArea: Record<string, string[]> = Object.fromEntries(SCORED_AREAS.map((a) => [a, []]));
-  const push = (area: string | null | undefined, line: string) => (byArea[area ?? ""] ?? byArea.work).push(line);
+  // Work/school and general items count toward mental (focus + discipline).
+  const push = (area: string | null | undefined, line: string) => (byArea[area ?? ""] ?? byArea.mental).push(line);
 
-  for (const t of todosDone) push(t.area === "general" ? "work" : t.area, `done: ${t.title}`);
+  for (const t of todosDone) push(t.area, `done: ${t.title}`);
   for (const t of tasksDone) push(t.area ?? t.project.area, `done: ${t.title} (${t.project.title})`);
-  for (const t of todosDueOpen) push(t.area === "general" ? "work" : t.area, `NOT done (due): ${t.title}`);
+  for (const t of todosDueOpen) push(t.area, `NOT done (due): ${t.title}`);
   for (const h of habits) push(h.area === "general" ? "mental" : h.area, `routine ${h.logs[0]?.completed ? "done" : "missed"}: ${h.name}`);
   for (const w of workouts) push("physical", `workout logged: ${w.routine.name}`);
   if (meals.length) push("physical", `meals logged: ${meals.map((m) => `${m.category} ${m.name}`).join(", ")}`);
@@ -79,14 +79,14 @@ async function collectFacts(userId: string, day: Date) {
     if (entry.caloriesEaten != null) push("physical", `calories ${entry.caloriesEaten}`);
     if (entry.screenTimeHours != null) push("mental", `screen time ${entry.screenTimeHours}h`);
     if (entry.overallDayRating != null) push("mental", `self-rated day ${entry.overallDayRating}/10`);
-    if (entry.deepWorkHours != null) push("work", `deep work ${entry.deepWorkHours}h`);
-    if (entry.tasksPlanned != null) push("work", `tasks ${entry.tasksCompleted ?? 0}/${entry.tasksPlanned}`);
+    if (entry.deepWorkHours != null) push("mental", `deep work ${entry.deepWorkHours}h`);
+    if (entry.tasksPlanned != null) push("mental", `tasks ${entry.tasksCompleted ?? 0}/${entry.tasksPlanned}`);
     if (entry.moneySpent != null) push("financial", `spent $${entry.moneySpent}`);
     if (entry.moneySaved != null) push("financial", `saved $${entry.moneySaved}`);
     if (entry.incomeActivity) push("financial", "worked on income");
     push("spiritual", entry.rightWithGod ? "felt right with God" : "did not mark right with God");
   }
-  if (remindersDone) push("work", `${remindersDone} reminders acted on`);
+  if (remindersDone) push("mental", `${remindersDone} reminders acted on`);
 
   const facts = SCORED_AREAS.map((a) => `${a}: ${byArea[a].length ? byArea[a].join("; ") : "nothing logged"}`).join("\n");
   const journal = entry?.notes?.trim().slice(0, 1500) || null;
@@ -145,7 +145,7 @@ export async function judgeDay(userId: string, date = new Date(), opts: { think?
   if (!judgement) {
     const base = await recomputeCategoryScoreForDate(userId, day);
     judgement = {
-      scores: { physical: base.physical, mental: base.mental, financial: base.financial, spiritual: base.spiritual, work: base.work },
+      scores: { physical: base.physical, mental: base.mental, financial: base.financial, spiritual: base.spiritual },
       overall: base.overall,
       reasons: {},
       journalScore: null,

@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "LiveImproved",
     short_name: "Live",
     description: "Private life tracker",
-    start_url: "/today",
+    start_url: "/chat",
     display: "standalone",
     orientation: "portrait",
     background_color: "#0a0e1a",

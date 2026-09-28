@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { Bell, Check, RefreshCw, Sparkles } from "lucide-react";
-import { AREA_META, SCORED_AREAS, normalizeArea } from "@/lib/areas";
+import { AREA_META, SCORED_AREAS } from "@/lib/areas";
+import { AreaDot, Checkbox, Empty, PageHeader, Section } from "@/components/ui";
 import { useOnDataChanged } from "@/hooks/useAssistantChat";
 
 interface PlanItem {
@@ -32,98 +32,57 @@ interface Score {
 }
 
 interface TodayData {
-  date: string;
-  plan: { items: PlanItem[]; summary: string | null; pending: boolean; model: string | null };
-  routines: { id: string; name: string; area: string; timeOfDay: string; done: boolean }[];
+  plan: { items: PlanItem[]; summary: string | null; pending: boolean };
+  routines: { id: string; name: string; area: string; done: boolean }[];
   meals: { id: string; name: string; category: string; status: string }[];
   reminders: { id: string; text: string; fireAt: string }[];
   scores: Score[];
 }
 
-function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl p-5" style={{ background: "var(--bg-elev-1)", border: "1px solid var(--stroke-1)" }}>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-400)" }}>
-          {title}
-        </h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function CheckRow({ done, onClick, children, sub, color }: { done: boolean; onClick: () => void; children: React.ReactNode; sub?: string; color: string }) {
-  return (
-    <button onClick={onClick} className="group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-white/[.03]">
-      <span
-        className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-all"
-        style={{ border: `1.5px solid ${done ? "var(--good)" : "var(--stroke-3)"}`, background: done ? "var(--good)" : "transparent" }}
-      >
-        <Check className={`h-3 w-3 ${done ? "opacity-100" : "opacity-0 group-hover:opacity-60"}`} style={{ color: done ? "#000" : "var(--ink-300)" }} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className={`flex items-center gap-2 text-sm ${done ? "line-through" : ""}`} style={{ color: done ? "var(--ink-500)" : "var(--ink-100)" }}>
-          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: color }} />
-          {children}
-        </span>
-        {sub && !done && (
-          <span className="mt-0.5 block text-xs" style={{ color: "var(--ink-500)" }}>
-            {sub}
-          </span>
-        )}
-      </span>
-    </button>
-  );
-}
-
-function scoreColor(v: number) {
-  return v >= 7 ? "var(--good)" : v >= 4.5 ? "var(--warn)" : "var(--bad)";
+async function fetchToday(): Promise<TodayData | null> {
+  const res = await fetch("/api/today");
+  return res.ok ? res.json() : null;
 }
 
 export default function TodayPage() {
   const [data, setData] = useState<TodayData | null>(null);
   const [replanning, setReplanning] = useState(false);
+  const [showReasons, setShowReasons] = useState(false);
+  const [allRoutines, setAllRoutines] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/today");
-    if (res.ok) setData(await res.json());
+    const d = await fetchToday();
+    if (d) setData(d);
   }, []);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/today")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((d: TodayData | null) => {
-        if (alive && d) setData(d);
-      })
-      .catch(() => undefined);
+    fetchToday().then((d) => alive && d && setData(d));
     return () => {
       alive = false;
     };
   }, []);
   useOnDataChanged(load);
 
-  // While the model is still drafting the plan, poll until it lands.
   useEffect(() => {
     if (!data?.plan.pending) return;
-    const t = setTimeout(load, 8000);
+    const t = setTimeout(load, 6000);
     return () => clearTimeout(t);
   }, [data, load]);
 
   async function togglePlanItem(item: PlanItem) {
     setData((d) => d && { ...d, plan: { ...d.plan, items: d.plan.items.map((i) => (i.id === item.id ? { ...i, done: !i.done } : i)) } });
+    const json = { "Content-Type": "application/json" };
     if (item.type === "todo") {
-      await fetch(`/api/todos/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: item.done ? "open" : "done" }) });
+      await fetch(`/api/todos/${item.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ status: item.done ? "open" : "done" }) });
     } else if (item.type === "task" && item.projectId) {
       await fetch(`/api/projects/${item.projectId}/tasks/${item.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: json,
         body: JSON.stringify({ status: item.done ? "todo" : "completed", completedAt: item.done ? null : new Date().toISOString() }),
       });
     } else if (item.type === "project") {
-      await fetch(`/api/projects/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: item.done ? "active" : "completed" }) });
+      await fetch(`/api/projects/${item.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ status: item.done ? "active" : "completed" }) });
     }
   }
 
@@ -139,186 +98,155 @@ export default function TodayPage() {
     setReplanning(false);
   }
 
-  if (!data) return <p style={{ color: "var(--ink-500)" }}>Loading…</p>;
+  if (!data) return <div className="min-page min-sub">Loading…</div>;
 
   const todayKey = format(new Date(), "yyyy-MM-dd");
-  const judged = [...data.scores].reverse().find((s) => s.judgedBy && format(new Date(s.date), "yyyy-MM-dd") !== todayKey);
-  const latest = judged ?? [...data.scores].reverse().find((s) => format(new Date(s.date), "yyyy-MM-dd") !== todayKey);
-  const doneCount = data.plan.items.filter((i) => i.done).length;
+  const past = data.scores.filter((s) => format(new Date(s.date), "yyyy-MM-dd") !== todayKey);
+  const latest = [...past].reverse().find((s) => s.judgedBy) ?? past[past.length - 1];
+  const done = data.plan.items.filter((i) => i.done).length;
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <div className="mb-6">
-        <p className="text-sm" style={{ color: "var(--ink-400)" }}>
-          {format(new Date(), "EEEE, MMMM d")}
+    <div className="min-page">
+      <PageHeader title="Today" sub={format(new Date(), "EEEE, MMMM d")} />
+      {data.plan.summary && (
+        <p className="-mt-5 mb-8 text-sm" style={{ color: "var(--ink-400)" }}>
+          {data.plan.summary}
         </p>
-        <h1 className="text-3xl font-semibold" style={{ color: "var(--ink-100)" }}>
-          Today
-        </h1>
-        {data.plan.summary && (
-          <p className="mt-1 flex items-center gap-2 text-sm" style={{ color: "var(--blue-200)" }}>
-            <Sparkles className="h-4 w-4" /> {data.plan.summary}
-          </p>
-        )}
-      </div>
+      )}
 
-      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <div className="space-y-5">
-          <Card
-            title={`Focus · ${doneCount}/${data.plan.items.length}`}
-            action={
-              <button onClick={replan} disabled={replanning} className="inline-flex items-center gap-1.5 text-xs disabled:opacity-50" style={{ color: "var(--ink-400)" }}>
-                <RefreshCw className={`h-3.5 w-3.5 ${replanning ? "animate-spin" : ""}`} />
-                {replanning ? "Planning…" : "Replan"}
-              </button>
-            }
-          >
-            {data.plan.pending && (
-              <p className="mb-2 text-xs" style={{ color: "var(--ink-500)" }}>
-                Draft by priority — Spark is building your real plan…
-              </p>
-            )}
-            {data.plan.items.length === 0 ? (
-              <p className="py-4 text-sm" style={{ color: "var(--ink-500)" }}>
-                Nothing planned. Tell the <Link href="/chat" className="underline">chat</Link> what you need to get done.
-              </p>
-            ) : (
-              <div className="space-y-0.5">
-                {data.plan.items.map((item) => (
-                  <CheckRow
-                    key={item.id}
-                    done={item.done}
-                    onClick={() => togglePlanItem(item)}
-                    color={AREA_META[normalizeArea(item.area)].color}
-                    sub={item.reason}
-                  >
+      <Section
+        label={data.plan.items.length ? `Focus  ${done}/${data.plan.items.length}` : "Focus"}
+        action={
+          <button onClick={replan} disabled={replanning} className="min-link disabled:opacity-50">
+            {replanning ? "Planning…" : "Replan"}
+          </button>
+        }
+      >
+        {data.plan.pending && <p className="min-sub mb-1">Draft — Spark is refining this…</p>}
+        {data.plan.items.length === 0 ? (
+          <Empty>
+            Nothing planned. Tell <Link href="/chat" className="underline">Chat</Link> what you need to do.
+          </Empty>
+        ) : (
+          <ul>
+            {data.plan.items.map((item) => (
+              <li key={item.id} className="min-row">
+                <Checkbox checked={item.done} onClick={() => togglePlanItem(item)} label={item.done ? "Mark not done" : "Mark done"} />
+                <div className="min-w-0 flex-1">
+                  <p className={`text-[15px] ${item.done ? "line-through" : ""}`} style={{ color: item.done ? "var(--ink-600)" : "var(--ink-100)" }}>
                     {item.title}
-                    {item.type === "project" && (
-                      <span className="text-[10px] uppercase" style={{ color: "var(--ink-500)" }}>
-                        project
-                      </span>
-                    )}
-                  </CheckRow>
+                  </p>
+                  {item.reason && !item.done && <p className="min-sub">{item.reason}</p>}
+                </div>
+                <AreaDot area={item.area} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {data.routines.length > 0 && (
+        <Section label={`Routines  ${data.routines.filter((r) => r.done).length}/${data.routines.length}`} action={<Link href="/habits" className="min-link">Edit</Link>}>
+          <ul>
+            {[...data.routines]
+              .sort((a, b) => Number(a.done) - Number(b.done))
+              .slice(0, allRoutines ? undefined : 6)
+              .map((r) => (
+              <li key={r.id} className="min-row">
+                <Checkbox checked={r.done} onClick={() => toggleRoutine(r.id, r.done)} label={r.name} />
+                <span className="flex-1 text-[15px]" style={{ color: r.done ? "var(--ink-600)" : "var(--ink-200)" }}>
+                  {r.name}
+                </span>
+                <AreaDot area={r.area} />
+              </li>
+              ))}
+          </ul>
+          {data.routines.length > 6 && (
+            <button onClick={() => setAllRoutines((v) => !v)} className="min-link mt-2">
+              {allRoutines ? "Show less" : `Show all ${data.routines.length}`}
+            </button>
+          )}
+        </Section>
+      )}
+
+      {(data.reminders.length > 0 || data.meals.length > 0) && (
+        <Section label="Later today">
+          <ul>
+            {data.reminders.map((r) => (
+              <li key={r.id} className="min-row text-[15px]">
+                <span className="w-16 text-sm tabular-nums" style={{ color: "var(--ink-500)" }}>
+                  {format(new Date(r.fireAt), "h:mm a")}
+                </span>
+                <span style={{ color: "var(--ink-200)" }}>{r.text}</span>
+              </li>
+            ))}
+            {data.meals.map((m) => (
+              <li key={m.id} className="min-row text-[15px]">
+                <span className="w-16 text-sm capitalize" style={{ color: "var(--ink-500)" }}>
+                  {m.category}
+                </span>
+                <span style={{ color: m.status === "eaten" ? "var(--ink-600)" : "var(--ink-200)" }}>{m.name}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      <Section label={latest ? `Score · ${format(new Date(latest.date), "EEE MMM d")}` : "Score"} action={<Link href="/entry" className="min-link">Journal</Link>}>
+        {!latest ? (
+          <Empty>Your first score arrives tonight at 11:30.</Empty>
+        ) : (
+          <>
+            <button onClick={() => setShowReasons((v) => !v)} className="w-full text-left">
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-semibold tabular-nums" style={{ color: "var(--ink-100)" }}>
+                  {latest.overall.toFixed(1)}
+                </span>
+                <span className="min-sub">/ 10</span>
+              </div>
+              <div className="mt-3 grid grid-cols-5 gap-2">
+                {SCORED_AREAS.map((a) => (
+                  <div key={a}>
+                    <p className="text-lg font-medium tabular-nums" style={{ color: "var(--ink-200)" }}>
+                      {Math.round(latest[a])}
+                    </p>
+                    <p className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--ink-500)" }}>
+                      <AreaDot area={a} />
+                      {AREA_META[a].label}
+                    </p>
+                  </div>
                 ))}
               </div>
-            )}
-          </Card>
-
-          <Card title="Routines" action={<Link href="/habits" className="text-xs" style={{ color: "var(--ink-400)" }}>Manage</Link>}>
-            {data.routines.length === 0 ? (
-              <p className="text-sm" style={{ color: "var(--ink-500)" }}>
-                No routines for today. Try &ldquo;read the Bible every morning&rdquo; in chat.
-              </p>
-            ) : (
-              <div className="grid gap-0.5 sm:grid-cols-2">
-                {data.routines.map((r) => (
-                  <CheckRow key={r.id} done={r.done} onClick={() => toggleRoutine(r.id, r.done)} color={AREA_META[normalizeArea(r.area)].color}>
-                    {r.name}
-                  </CheckRow>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {(data.meals.length > 0 || data.reminders.length > 0) && (
-            <Card title="Also today">
-              <ul className="space-y-2 text-sm">
-                {data.reminders.map((r) => (
-                  <li key={r.id} className="flex items-center gap-2" style={{ color: "var(--ink-200)" }}>
-                    <Bell className="h-3.5 w-3.5" style={{ color: "var(--blue-200)" }} />
-                    {r.text}
-                    <span className="text-xs" style={{ color: "var(--ink-500)" }}>
-                      {format(new Date(r.fireAt), "h:mm a")}
-                    </span>
-                  </li>
-                ))}
-                {data.meals.map((m) => (
-                  <li key={m.id} className="flex items-center gap-2" style={{ color: "var(--ink-200)" }}>
-                    <span>🍽</span> <span className="capitalize" style={{ color: "var(--ink-400)" }}>{m.category}:</span> {m.name}
-                    {m.status === "eaten" && <Check className="h-3.5 w-3.5" style={{ color: "var(--good)" }} />}
+            </button>
+            {showReasons && latest.rationale && (
+              <ul className="mt-4 space-y-1.5">
+                {SCORED_AREAS.filter((a) => latest.rationale?.[a]).map((a) => (
+                  <li key={a} className="text-sm" style={{ color: "var(--ink-400)" }}>
+                    <span style={{ color: "var(--ink-200)" }}>{AREA_META[a].label}.</span> {latest.rationale?.[a]}
                   </li>
                 ))}
               </ul>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-5">
-          <Card title={latest ? `Scores · ${format(new Date(latest.date), "EEE MMM d")}` : "Scores"}>
-            {!latest ? (
-              <p className="text-sm" style={{ color: "var(--ink-500)" }}>
-                Your first score arrives tonight at 11:30pm.
-              </p>
-            ) : (
-              <>
-                <div className="mb-4 flex items-baseline gap-2">
-                  <span className="text-5xl font-semibold tabular-nums" style={{ color: "var(--ink-100)" }}>
-                    {latest.overall.toFixed(1)}
-                  </span>
-                  <span className="text-sm" style={{ color: "var(--ink-500)" }}>
-                    / 10 overall{latest.judgedBy ? "" : " · rule-based"}
-                  </span>
-                </div>
-                <ul className="space-y-2.5">
-                  {SCORED_AREAS.map((a) => (
-                    <li key={a}>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="h-2 w-2 rounded-full" style={{ background: AREA_META[a].color }} />
-                        <span className="flex-1" style={{ color: "var(--ink-200)" }}>
-                          {AREA_META[a].label}
-                        </span>
-                        <span className="font-semibold tabular-nums" style={{ color: scoreColor(latest[a]) }}>
-                          {Math.round(latest[a])}
-                        </span>
-                      </div>
-                      {latest.rationale?.[a] && (
-                        <p className="ml-4 text-xs" style={{ color: "var(--ink-500)" }}>
-                          {latest.rationale[a]}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                {latest.journalFeedback && (
-                  <div className="mt-4 rounded-xl p-3 text-sm" style={{ background: "var(--accent-muted)", color: "var(--ink-200)" }}>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--blue-200)" }}>
-                      Journal{latest.journalScore != null ? ` · ${latest.journalScore}/10` : ""}
-                    </p>
-                    {latest.journalFeedback}
-                  </div>
-                )}
-              </>
             )}
-          </Card>
-
-          {data.scores.length > 1 && (
-            <Card title="Overall · last 14 days">
-              <div className="flex h-24 items-end gap-[2px]" role="img" aria-label="Overall score per day for the last 14 days">
-                {data.scores.map((s) => (
+            {latest.journalFeedback && (
+              <p className="mt-5 text-sm leading-relaxed" style={{ color: "var(--ink-400)" }}>
+                {latest.journalFeedback}
+              </p>
+            )}
+            {past.length > 1 && (
+              <div className="mt-6 flex h-10 items-end gap-[3px]" role="img" aria-label="Overall score, last 14 days">
+                {past.map((s) => (
                   <div
                     key={s.date}
-                    title={`${format(new Date(s.date), "EEE MMM d")}: ${s.overall.toFixed(1)}/10`}
-                    className="flex-1 rounded-t-[4px] transition-opacity hover:opacity-80"
-                    style={{ height: `${Math.max(4, s.overall * 10)}%`, background: "var(--accent)" }}
+                    title={`${format(new Date(s.date), "MMM d")}: ${s.overall.toFixed(1)}`}
+                    className="flex-1 rounded-[2px]"
+                    style={{ height: `${Math.max(6, s.overall * 10)}%`, background: "var(--ink-600)" }}
                   />
                 ))}
               </div>
-              <div className="mt-1 flex justify-between text-[10px]" style={{ color: "var(--ink-500)" }}>
-                <span>{format(new Date(data.scores[0].date), "MMM d")}</span>
-                <span>{format(new Date(data.scores[data.scores.length - 1].date), "MMM d")}</span>
-              </div>
-            </Card>
-          )}
-
-          <Link
-            href="/entry"
-            className="block rounded-2xl p-4 text-sm transition-colors hover:bg-white/[.03]"
-            style={{ border: "1px dashed var(--stroke-2)", color: "var(--ink-300)" }}
-          >
-            📝 Write tonight&apos;s journal →
-          </Link>
-        </div>
-      </div>
+            )}
+          </>
+        )}
+      </Section>
     </div>
   );
 }

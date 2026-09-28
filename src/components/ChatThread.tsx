@@ -2,55 +2,53 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUp, Undo2 } from "lucide-react";
-import { AREA_META, normalizeArea } from "@/lib/areas";
+import { ArrowUp } from "lucide-react";
+import { AreaDot } from "@/components/ui";
 import { useAssistantChat, type ChatMsg } from "@/hooks/useAssistantChat";
 
-const SUGGESTIONS = [
+const EXAMPLES = [
+  "Remind me in 6 minutes to stretch",
+  "Note: garage code is 4412",
+  "I have to finish the thesis, file taxes and plan the retreat",
   "What's on today?",
-  "Help me prioritize",
-  "Remind me tomorrow at 8am to ",
-  "Today I felt ",
 ];
 
-function ActionCards({ msg, onUndo }: { msg: ChatMsg; onUndo: (id: string) => void }) {
-  const actions = (msg.actions ?? []).filter(
-    (a) => !(a.type === "todo" && msg.actions?.some((b) => b.type === "reminder" && b.title === a.title))
-  );
-  if (!actions.length) return null;
+const TYPE_LABEL: Record<string, string> = {
+  todo: "To-do",
+  project: "Project",
+  task: "Task",
+  routine: "Routine",
+  reminder: "Reminder",
+  meal: "Meal",
+  workout: "Workout",
+  journal: "Journal",
+  note: "Note",
+};
+
+// Lines the server writes for created items; the UI shows them as rows instead.
+const ACTION_LINE = /^\S+ (To-do|Project|Task|Routine|Reminder|Meal|Workout|Journal|Note|✅ Done):/;
+
+function AssistantBody({ msg, onUndo }: { msg: ChatMsg; onUndo: (id: string) => void }) {
+  const actions = msg.actions ?? [];
+  const text = actions.length ? msg.content.split("\n").filter((l) => !ACTION_LINE.test(l)).join("\n").trim() : msg.content;
   return (
-    <div className="mt-2 space-y-1.5">
-      {actions.map((a) => {
-        const area = AREA_META[normalizeArea(a.area)];
-        return (
-          <Link
-            key={`${a.type}-${a.id}`}
-            href={a.href}
-            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-colors hover:bg-white/5"
-            style={{ border: "1px solid var(--stroke-2)", background: "rgba(255,255,255,.02)" }}
-          >
-            <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: area.color }} />
-            <span className="uppercase tracking-wider text-[10px]" style={{ color: "var(--ink-500)" }}>
-              {a.op === "complete" ? "done" : a.type}
-            </span>
-            <span className="flex-1 truncate" style={{ color: "var(--ink-200)" }}>
-              {a.title}
-            </span>
-            {a.detail && (
-              <span className="truncate text-[11px]" style={{ color: "var(--ink-500)" }}>
-                {a.detail}
-              </span>
-            )}
-          </Link>
-        );
-      })}
-      <button
-        onClick={() => onUndo(msg.id)}
-        className="inline-flex items-center gap-1 text-[11px] transition-colors hover:text-white"
-        style={{ color: "var(--ink-500)" }}
-      >
-        <Undo2 className="h-3 w-3" /> Undo
-      </button>
+    <div className="max-w-[92%] text-[15px] leading-relaxed" style={{ color: "var(--ink-200)" }}>
+      {actions.length > 0 && (
+        <div className="mb-1">
+          {actions.map((a) => (
+            <Link key={`${a.type}-${a.id}`} href={a.href} className="flex items-center gap-2.5 py-1 text-sm hover:opacity-80">
+              <AreaDot area={a.area} />
+              <span style={{ color: "var(--ink-500)" }}>{a.op === "complete" ? "Done" : TYPE_LABEL[a.type] ?? a.type}</span>
+              <span className="truncate" style={{ color: "var(--ink-100)" }}>{a.title}</span>
+              {a.detail && <span className="truncate text-xs" style={{ color: "var(--ink-500)" }}>{a.detail}</span>}
+            </Link>
+          ))}
+          <button onClick={() => onUndo(msg.id)} className="min-link mt-1 text-xs">
+            Undo
+          </button>
+        </div>
+      )}
+      {text && <p className="whitespace-pre-wrap">{text}</p>}
     </div>
   );
 }
@@ -65,93 +63,57 @@ export default function ChatThread({ compact = false }: { compact?: boolean }) {
     bottomRef.current?.scrollIntoView({ behavior: ready ? "smooth" : "auto" });
   }, [messages, loading, ready]);
 
-  function submit() {
-    const value = input.trim();
-    if (!value || loading) return;
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
+
+  function submit(value = input) {
+    const text = value.trim();
+    if (!text || loading) return;
     setInput("");
-    void send(value);
+    void send(text);
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className={`flex-1 min-h-0 overflow-y-auto ${compact ? "p-3" : "px-1 py-4"} space-y-3`}>
+      <div className={`min-h-0 flex-1 space-y-5 overflow-y-auto ${compact ? "p-4" : "py-2"}`}>
         {ready && messages.length === 0 && (
-          <div className="py-10 text-center text-sm" style={{ color: "var(--ink-400)" }}>
-            Dump anything here — &ldquo;I have to finish the thesis, file taxes and plan the retreat&rdquo; —
-            <br />
-            and it gets filed into the right place.
+          <div className="space-y-2 pt-4">
+            <p className="min-sub mb-3">Tell it anything — it files it for you.</p>
+            {EXAMPLES.map((e) => (
+              <button key={e} onClick={() => submit(e)} className="block text-left text-sm hover:text-[var(--ink-100)]" style={{ color: "var(--ink-400)" }}>
+                “{e}”
+              </button>
+            ))}
           </div>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap ${m.pending ? "opacity-60" : ""}`}
-              style={
-                m.role === "user"
-                  ? { background: "var(--accent-muted)", border: "1px solid rgba(79,127,255,.3)", color: "var(--ink-100)" }
-                  : { background: "var(--bg-elev-2)", border: "1px solid var(--stroke-1)", color: "var(--ink-200)" }
-              }
-            >
-              {m.role === "assistant" && m.actions?.length ? null : m.content}
-              {m.role === "assistant" && m.actions?.length ? (
-                <>
-                  {m.content
-                    .split("\n")
-                    .filter((line) => !/^\S+ (To-do|Project|Task|Routine|Reminder|Meal|Workout|Journal|Note|✅ Done):/.test(line))
-                    .join("\n")
-                    .trim() || "Filed:"}
-                  <ActionCards msg={m} onUndo={undo} />
-                </>
-              ) : null}
-              {m.source === "telegram" && (
-                <span className="ml-2 text-[10px]" style={{ color: "var(--ink-500)" }}>
-                  via Telegram
-                </span>
-              )}
+        {messages.map((m) =>
+          m.role === "user" ? (
+            <div key={m.id} className="flex justify-end">
+              <p
+                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[15px] ${m.pending ? "opacity-60" : ""}`}
+                style={{ background: "rgba(255,255,255,.06)", color: "var(--ink-100)" }}
+              >
+                {m.content}
+              </p>
             </div>
-          </div>
-        ))}
+          ) : (
+            <AssistantBody key={m.id} msg={m} onUndo={undo} />
+          )
+        )}
         {loading && (
-          <div className="flex justify-start">
-            <div className="rounded-2xl px-3.5 py-2.5 text-sm" style={{ background: "var(--bg-elev-2)", color: "var(--ink-400)" }}>
-              <span className="inline-flex gap-1">
-                <span className="animate-pulse">●</span>
-                <span className="animate-pulse [animation-delay:150ms]">●</span>
-                <span className="animate-pulse [animation-delay:300ms]">●</span>
-              </span>
-              <span className="ml-2 text-xs">Spark is sorting that out…</span>
-            </div>
-          </div>
+          <p className="animate-pulse text-sm" style={{ color: "var(--ink-500)" }}>
+            Thinking…
+          </p>
         )}
-        {error && <p className="text-center text-xs" style={{ color: "var(--bad)" }}>{error}</p>}
+        {error && <p className="text-sm" style={{ color: "var(--bad)" }}>{error}</p>}
         <div ref={bottomRef} />
       </div>
 
-      {!compact && (
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              onClick={() => {
-                if (s.endsWith(" ")) {
-                  setInput(s);
-                  inputRef.current?.focus();
-                } else void send(s);
-              }}
-              disabled={loading}
-              className="flex-shrink-0 rounded-full px-3 py-1 text-xs disabled:opacity-40"
-              style={{ background: "var(--accent-muted)", border: "1px solid rgba(79,127,255,.25)", color: "var(--blue-200)" }}
-            >
-              {s.trim()}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div
-        className={`flex items-end gap-2 rounded-2xl p-2 ${compact ? "m-3 mt-0" : ""}`}
-        style={{ background: "var(--bg-elev-1)", border: "1px solid var(--stroke-2)" }}
-      >
+      <div className={`flex items-end gap-2 rounded-3xl py-1.5 pl-4 pr-1.5 ${compact ? "m-3" : "mt-3"}`} style={{ background: "rgba(255,255,255,.05)" }}>
         <textarea
           ref={inputRef}
           value={input}
@@ -162,19 +124,19 @@ export default function ChatThread({ compact = false }: { compact?: boolean }) {
               submit();
             }
           }}
-          rows={compact ? 1 : 2}
-          placeholder="Tasks, projects, reminders, meals, workouts, how your day went…"
-          className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-[var(--ink-500)]"
+          rows={1}
+          placeholder="Message"
+          className="max-h-40 flex-1 resize-none bg-transparent py-1.5 text-[15px] outline-none placeholder:text-[var(--ink-600)]"
           style={{ color: "var(--ink-100)" }}
         />
         <button
-          onClick={submit}
+          onClick={() => submit()}
           disabled={loading || !input.trim()}
           aria-label="Send"
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl disabled:opacity-30"
-          style={{ background: "linear-gradient(135deg, var(--blue-400), var(--cyan-400))" }}
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-opacity disabled:opacity-20"
+          style={{ background: "var(--ink-100)", color: "var(--bg-base)" }}
         >
-          <ArrowUp className="h-4 w-4 text-white" />
+          <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
         </button>
       </div>
     </div>

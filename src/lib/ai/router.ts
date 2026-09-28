@@ -172,17 +172,46 @@ function sanitize(result: RouteResult, text: string): RouteResult {
   if (result.intent === "capture" && result.items.length === 0) {
     return { intent: "chat", items: [] };
   }
-  // A "remind me" message must produce a reminder, whatever the model decided.
+  // "remind me …" always becomes a timed reminder (never a routine/todo), whatever the model decided.
   if (/\bremind me\b/i.test(text)) {
-    if (result.intent !== "capture" || result.items.length === 0) {
-      let title = text.replace(/.*?\bremind me\b\s*/i, "");
-      for (const m of chrono.parse(title)) title = title.replace(m.text, " ");
-      title = title.replace(/^\s*(to|that|about)\s+/i, "").replace(/\s+/g, " ").trim() || text;
-      result = { intent: "capture", items: [{ kind: "reminder", title: title.slice(0, 300), area: keywordArea(title) ?? "general", when: text }] };
-    }
-    result.items = result.items.map((item, i) =>
-      i === 0 && item.kind === "todo" ? { ...item, kind: "reminder" } : item
-    );
+    const repeat = /\b(every ?day|daily|each day|every (morning|night|evening))\b/i.test(text)
+      ? "daily"
+      : /\b(weekdays|every weekday)\b/i.test(text)
+        ? "weekdays"
+        : /\b(weekly|every week|every (mon|tues|wednes|thurs|fri|satur|sun)day)\b/i.test(text)
+          ? "weekly"
+          : undefined;
+    let title = text.replace(/.*?\bremind me\b\s*/i, "");
+    for (const m of chrono.parse(title)) title = title.replace(m.text, " ");
+    title = title
+      .replace(/\b(every ?day|daily|each day|weekdays|every weekday|weekly|every week)\b/gi, " ")
+      .replace(/^\s*(to|that|about)\s+/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const modelItem = result.items.find((i) => i.kind === "reminder") ?? result.items[0];
+    result = {
+      intent: "capture",
+      items: [
+        {
+          kind: "reminder",
+          title: (modelItem?.title || title || text).slice(0, 300),
+          area: keywordArea(title) ?? modelItem?.area ?? "general",
+          when: text,
+          repeat,
+        },
+      ],
+    };
+    return result;
+  }
+
+  // "note: …", "jot this down", "write down", "save this", "remember that" → Notes.
+  if (/^\s*(notes?\s*[:\-]|jot( this| that)? down|write( this| that)? down|save (this|that)|remember (this|that)|keep in mind)/i.test(text)) {
+    const body = text.replace(/^\s*(notes?\s*[:\-]|jot( this| that)? down|write( this| that)? down( that)?|save (this|that)|remember (this|that)|keep in mind( that)?)\s*[:\-]?\s*/i, "").trim();
+    const modelTitle = result.items[0]?.title;
+    return {
+      intent: "capture",
+      items: [{ kind: "note", title: (modelTitle || body || text).slice(0, 120), area: keywordArea(body) ?? "general" }],
+    };
   }
   return result;
 }

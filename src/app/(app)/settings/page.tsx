@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { PageHeader, Section } from "@/components/ui";
 
 interface Status {
   model: string;
@@ -11,20 +11,20 @@ interface Status {
   owner: string | null;
 }
 
-const SCHEDULE = [
-  ["Every minute", "Send due reminders to Telegram"],
-  ["6:30 am", "Spark plans your day"],
-  ["7:00 am", "Morning brief on Telegram"],
-  ["9:00 pm", "Evening check-in + journal prompt"],
-  ["11:30 pm", "Spark scores your day /10 and reviews the journal"],
-  ["Sunday 6:00 pm", "Weekly review digest"],
+const SCHEDULE: [string, string][] = [
+  ["Every minute", "Reminders → Telegram"],
+  ["6:30 am", "Plan the day"],
+  ["7:00 am", "Morning brief"],
+  ["9:00 pm", "Evening check-in"],
+  ["11:30 pm", "Score the day, review journal"],
+  ["Sun 6:00 pm", "Weekly review"],
 ];
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2.5 text-sm" style={{ borderBottom: "1px solid var(--stroke-1)" }}>
-      <span style={{ color: "var(--ink-400)" }}>{label}</span>
-      <span className="text-right" style={{ color: "var(--ink-100)" }}>
+    <div className="min-row justify-between text-sm">
+      <span style={{ color: "var(--ink-500)" }}>{label}</span>
+      <span className="text-right" style={{ color: "var(--ink-200)" }}>
         {children}
       </span>
     </div>
@@ -32,7 +32,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function Dot({ ok }: { ok: boolean }) {
-  return <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: ok ? "var(--good)" : "var(--bad)" }} />;
+  return <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: ok ? "var(--good)" : "var(--bad)" }} />;
 }
 
 export default function SettingsPage() {
@@ -46,60 +46,43 @@ export default function SettingsPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="text-2xl font-semibold" style={{ color: "var(--ink-100)" }}>
-        Settings
-      </h1>
+    <div className="min-page">
+      <PageHeader title="Settings" />
 
-      <section className="rounded-2xl p-5" style={{ background: "var(--bg-elev-1)", border: "1px solid var(--stroke-1)" }}>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-400)" }}>
-          System
-        </h2>
+      <Section label="System">
         {status ? (
           <>
             <Row label="Model">
               <Dot ok={status.up} />
-              {status.model} {status.up ? "· loaded" : "· offline"}
+              {status.model}
             </Row>
             <Row label="Telegram">
               <Dot ok={status.telegram} />
-              {status.telegram ? "Connected" : "Not configured"}
+              {status.telegram ? "Connected" : "Not set up"}
             </Row>
-            <Row label="Access">Tailscale only · {status.owner ?? "owner"}</Row>
+            <Row label="Access">Tailscale · {status.owner}</Row>
             <Row label="Timezone">{status.timezone}</Row>
           </>
         ) : (
-          <p className="text-sm" style={{ color: "var(--ink-500)" }}>
-            Loading…
-          </p>
+          <p className="min-sub">Loading…</p>
         )}
-      </section>
+      </Section>
 
-      <section className="rounded-2xl p-5" style={{ background: "var(--bg-elev-1)", border: "1px solid var(--stroke-1)" }}>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-400)" }}>
-          Schedule
-        </h2>
+      <Section label="Schedule">
         {SCHEDULE.map(([when, what]) => (
           <Row key={when} label={when}>
             {what}
           </Row>
         ))}
-        <p className="mt-3 text-xs" style={{ color: "var(--ink-500)" }}>
-          Telegram commands: /today, /replan, /score. Any other message is filed just like the chat.
-        </p>
-      </section>
+        <p className="min-sub mt-3">Telegram: /today · /replan · /score. Anything else is filed like Chat.</p>
+      </Section>
 
-      <section className="rounded-2xl p-5" style={{ background: "var(--bg-elev-1)", border: "1px solid var(--stroke-1)" }}>
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink-400)" }}>
-          Data
-        </h2>
-        <a href="/api/export" className="btn btn-outline btn-sm inline-flex items-center gap-2">
-          <Download className="h-4 w-4" /> Export everything (JSON)
+      <Section label="Data">
+        <a href="/api/export" className="min-link" style={{ color: "var(--ink-100)" }}>
+          Export everything (JSON)
         </a>
-        <p className="mt-2 text-xs" style={{ color: "var(--ink-500)" }}>
-          The database is also backed up nightly on the server (14 days kept).
-        </p>
-      </section>
+        <p className="min-sub mt-1">Backed up nightly on the server, 14 days kept.</p>
+      </Section>
     </div>
   );
 }

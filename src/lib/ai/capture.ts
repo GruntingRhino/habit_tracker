@@ -115,14 +115,17 @@ export async function applyCapture(
       }
       case "reminder": {
         const fireAt = when?.date ?? null;
-        const todo = await prisma.todo.create({ data: { userId, title: item.title, area, priority, dueAt: fireAt, source } });
         if (fireAt) {
           const reminder = await prisma.reminder.create({
-            data: { userId, text: item.title, fireAt, recurrence: item.repeat ?? "none", todoId: todo.id },
+            data: { userId, text: item.title, fireAt, recurrence: item.repeat ?? "none" },
           });
-          actions.push({ op: "create", type: "reminder", id: reminder.id, title: item.title, area, href: "/todos", detail: `Telegram · ${fmt(fireAt)}` });
+          const repeat = item.repeat && item.repeat !== "none" ? ` · ${item.repeat}` : "";
+          actions.push({ op: "create", type: "reminder", id: reminder.id, title: item.title, area, href: "/todos", detail: `${fmt(fireAt)}${repeat}` });
+        } else {
+          // No usable time: keep it as a to-do and ask when.
+          const todo = await prisma.todo.create({ data: { userId, title: item.title, area, priority, source } });
+          actions.push({ op: "create", type: "todo", id: todo.id, title: todo.title, area, href: "/todos", detail: "no time given" });
         }
-        actions.push({ op: "create", type: "todo", id: todo.id, title: todo.title, area, href: "/todos", detail: fireAt ? undefined : "no time given" });
         break;
       }
       case "meal": {
@@ -178,7 +181,10 @@ export async function applyCapture(
         return actions;
       }
       case "note": {
-        const note = await prisma.note.create({ data: { userId, title: item.title.slice(0, 120), content: originalText } });
+        const content = originalText
+          .replace(/^\s*(notes?\s*[:\-]|jot( this| that)? down|write( this| that)? down( that)?|save (this|that)|remember (this|that)|keep in mind( that)?)\s*[:\-]?\s*/i, "")
+          .trim();
+        const note = await prisma.note.create({ data: { userId, title: item.title.slice(0, 120), content: content || originalText } });
         actions.push({ op: "create", type: "note", id: note.id, title: note.title, area, href: "/notes" });
         break;
       }

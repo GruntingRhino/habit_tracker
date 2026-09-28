@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 echo "› building web"
 npm run build >/dev/null
 echo "› bundling worker"
-ESB="node_modules/.bin/esbuild --bundle --platform=node --target=node22 --format=esm --tsconfig=tsconfig.json --log-level=warning"
+ESB="node_modules/.bin/esbuild --alias:node-fetch=./worker/native-fetch.cjs --alias:abort-controller=./worker/native-abort.cjs --bundle --platform=node --target=node22 --format=esm --tsconfig=tsconfig.json --log-level=warning"
 BANNER="import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
 $ESB worker/index.ts --outfile=dist/worker.mjs --banner:js="$BANNER"
 $ESB worker/run-job.ts --outfile=dist/run-job.mjs --banner:js="$BANNER"

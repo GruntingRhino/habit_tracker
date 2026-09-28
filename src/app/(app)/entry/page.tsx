@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import {
   Activity,
   AlertCircle,
-  ArrowLeft,
   Bot,
   Brain,
   CalendarDays,
@@ -1483,12 +1481,7 @@ export default function EntryPage() {
     : STEP_ORDER.slice(0, currentStepIndex + 1);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-5 md:px-6 md:py-6 pb-20 lg:pb-6">
-      <Link href="/today" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
-        <ArrowLeft className="w-4 h-4" /> Today
-      </Link>
+    <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.2em] text-slate-500">

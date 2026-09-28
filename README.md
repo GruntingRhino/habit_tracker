@@ -49,4 +49,5 @@ npm test
   - The KV cache is quantized to q8 and flash attention is on.
 - **Stable prompts:** system prompts never change, so Ollama reuses its prompt cache. After the first call, the ~700-token router prompt costs about 0.4s instead of about 25s.
 - **Structured output:** every call is schema-constrained JSON. Dates are resolved in code (`chrono-node`), never by the model.
-- **Speed:** thinking mode is used only by the nightly planner and judge. Routing takes about 4s at the median and 10s at p90.
+- **Speed:** thinking mode is off everywhere. On 2 cores it spent 7–9 minutes and ran out of budget before answering. Routing takes about 4s at the median and 10s at p90, planning about 5s, and the nightly judge about 25s.
+- **Streaming:** responses are streamed, because Node's fetch gives up after 300s if no headers arrive.

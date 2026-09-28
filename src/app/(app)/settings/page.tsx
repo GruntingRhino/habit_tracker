@@ -13,7 +13,7 @@ interface Status {
 
 const SCHEDULE = [
   ["Every minute", "Send due reminders to Telegram"],
-  ["6:30 am", "Spark plans your day (thinking mode)"],
+  ["6:30 am", "Spark plans your day"],
   ["7:00 am", "Morning brief on Telegram"],
   ["9:00 pm", "Evening check-in + journal prompt"],
   ["11:30 pm", "Spark scores your day /10 and reviews the journal"],

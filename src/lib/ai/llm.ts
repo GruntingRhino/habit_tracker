@@ -48,7 +48,9 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
       body: JSON.stringify({
         model: LLM_MODEL,
         messages: opts.messages,
-        stream: false,
+        // Streamed so response headers arrive at once: Node fetch aborts after 300s
+        // without headers, and thinking-mode jobs can run longer than that.
+        stream: true,
         think: opts.think ?? false,
         keep_alive: -1,
         ...(opts.schema ? { format: opts.schema } : {}),
@@ -59,17 +61,42 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
         },
       }),
     });
-    if (!res.ok) throw new LlmError(`Ollama ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as {
-      message?: { content?: string; thinking?: string };
-      eval_count?: number;
-      prompt_eval_count?: number;
-    };
+    if (!res.ok || !res.body) throw new LlmError(`Ollama ${res.status}: ${await res.text()}`);
+
+    let content = "";
+    let thinking = "";
+    let evalCount = 0;
+    let promptEvalCount = 0;
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      buffer += decoder.decode(chunk, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        const part = JSON.parse(line) as {
+          message?: { content?: string; thinking?: string };
+          done?: boolean;
+          eval_count?: number;
+          prompt_eval_count?: number;
+          error?: string;
+        };
+        if (part.error) throw new LlmError(part.error);
+        content += part.message?.content ?? "";
+        thinking += part.message?.thinking ?? "";
+        if (part.done) {
+          evalCount = part.eval_count ?? 0;
+          promptEvalCount = part.prompt_eval_count ?? 0;
+        }
+      }
+    }
     return {
-      content: data.message?.content ?? "",
-      thinking: data.message?.thinking,
-      evalCount: data.eval_count ?? 0,
-      promptEvalCount: data.prompt_eval_count ?? 0,
+      content,
+      thinking: thinking || undefined,
+      evalCount,
+      promptEvalCount,
       durationMs: Date.now() - started,
     };
   } catch (error) {

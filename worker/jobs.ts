@@ -51,7 +51,7 @@ export async function sendDueReminders() {
 
 export async function planToday() {
   const owner = await getOwner();
-  await planDay(owner.id, { force: true, think: true });
+  await planDay(owner.id, { force: true });
 }
 
 export async function morningBrief() {
@@ -68,7 +68,7 @@ export async function eveningReview() {
 
 export async function nightlyJudge(date = new Date()) {
   const owner = await getOwner();
-  await judgeDay(owner.id, date, { think: true });
+  await judgeDay(owner.id, date, { think: false });
   const score = await prisma.categoryScore.findUnique({ where: { userId_date: { userId: owner.id, date: getStartOfDay(date) } } });
   if (score) await sendToOwner(formatScores(score));
 }

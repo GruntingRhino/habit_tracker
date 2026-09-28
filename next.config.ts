@@ -1,6 +1,5 @@
+import path from "path";
 import type { NextConfig } from "next";
-
-const CAPACITOR_ORIGIN = process.env.CAPACITOR_ORIGIN;
 
 const securityHeaders = [
   {
@@ -40,25 +39,11 @@ const securityHeaders = [
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
   },
-  ...(CAPACITOR_ORIGIN
-    ? [
-        {
-          key: "Access-Control-Allow-Origin",
-          value: CAPACITOR_ORIGIN,
-        },
-        {
-          key: "Access-Control-Allow-Methods",
-          value: "GET, POST, PATCH, PUT, DELETE, OPTIONS",
-        },
-        {
-          key: "Access-Control-Allow-Headers",
-          value: "Content-Type, Authorization",
-        },
-      ]
-    : []),
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  outputFileTracingRoot: path.join(__dirname),
   async headers() {
     return [
       {

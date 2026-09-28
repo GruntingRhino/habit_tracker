@@ -19,6 +19,49 @@ interface Meal {
   servings: number | null;
   notes: string | null;
   order: number;
+  status: "saved" | "planned" | "eaten";
+  plannedFor: string | null;
+}
+
+function MealLog({ meals, kind, onChange }: { meals: Meal[]; kind: "planned" | "eaten"; onChange: () => void }) {
+  const list = meals
+    .filter((m) => m.status === kind)
+    .sort((a, b) => (b.plannedFor ?? "").localeCompare(a.plannedFor ?? ""))
+    .slice(0, 60);
+  async function patch(id: string, data: Record<string, unknown>) {
+    await fetch(`/api/meals/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    onChange();
+  }
+  async function remove(id: string) {
+    await fetch(`/api/meals/${id}`, { method: "DELETE" });
+    onChange();
+  }
+  if (!list.length) {
+    return (
+      <p className="py-12 text-center text-sm text-slate-500">
+        {kind === "planned" ? "No planned meals. Tell the chat \"I want salmon bowls for dinner this week\"." : "Nothing logged yet. Tell the chat what you ate."}
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {list.map((m) => (
+        <li key={m.id} className="group flex items-center gap-3 rounded-xl border border-[#1f2937] bg-[#0f172a] px-4 py-3">
+          <span className="w-20 text-xs capitalize text-slate-500">{m.category}</span>
+          <span className="flex-1 text-sm text-slate-100">{m.name}</span>
+          {m.plannedFor && <span className="text-xs text-slate-500">{new Date(m.plannedFor).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>}
+          {kind === "planned" && (
+            <button onClick={() => patch(m.id, { status: "eaten", plannedFor: new Date().toISOString() })} className="rounded-lg bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300">
+              Ate it
+            </button>
+          )}
+          <button onClick={() => remove(m.id)} className="opacity-0 transition-opacity group-hover:opacity-100" aria-label="Delete">
+            <Trash2 className="h-3.5 w-3.5 text-slate-500" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 const CATEGORIES = [
@@ -490,6 +533,7 @@ export default function MealsPage() {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalCategory, setModalCategory] = useState<string | null>(null);
+  const [tab, setTab] = useState<"planned" | "eaten" | "saved">("planned");
 
   const fetchMeals = useCallback(async () => {
     try {
@@ -501,7 +545,8 @@ export default function MealsPage() {
 
   useEffect(() => { fetchMeals(); }, [fetchMeals]);
 
-  const totalDailyCals = meals.reduce((sum, m) => sum + (m.calories ?? 0), 0);
+  const library = meals.filter((m) => m.status === "saved");
+  const totalDailyCals = library.reduce((sum, m) => sum + (m.calories ?? 0), 0);
 
   if (loading) {
     return (
@@ -513,10 +558,10 @@ export default function MealsPage() {
 
   return (
     <div className="px-4 py-5 md:px-6 md:py-6 max-w-4xl mx-auto pb-20 lg:pb-6">
-      <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
+      <Link href="/today" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
         onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
         onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
-        <ArrowLeft className="w-4 h-4" /> Dashboard
+        <ArrowLeft className="w-4 h-4" /> Today
       </Link>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -526,8 +571,7 @@ export default function MealsPage() {
             Meals
           </h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            {meals.length} meal{meals.length !== 1 ? "s" : ""}
-            {totalDailyCals > 0 && <span> · ~{totalDailyCals} kcal total</span>}
+            Planned meals, what you ate, and your recipe library.
           </p>
         </div>
         <button
@@ -539,18 +583,38 @@ export default function MealsPage() {
         </button>
       </div>
 
-      {/* 4 category sections */}
+      <div className="mb-5 inline-flex rounded-xl border border-[#1f2937] bg-[#0f172a] p-1">
+        {([
+          ["planned", "Planned"],
+          ["eaten", "Eaten"],
+          ["saved", "Library"],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`rounded-lg px-3 py-1.5 text-sm ${tab === key ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-100"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab !== "saved" ? (
+        <MealLog meals={meals} kind={tab} onChange={fetchMeals} />
+      ) : (
       <div className="space-y-5">
+        {totalDailyCals > 0 && <p className="text-xs text-slate-500">{library.length} saved · ~{totalDailyCals} kcal total</p>}
         {CATEGORIES.map((cat) => (
           <CategorySection
             key={cat.key}
             category={cat}
-            meals={meals.filter((m) => m.category === cat.key)}
+            meals={library.filter((m) => m.category === cat.key)}
             onAdd={() => setModalCategory(cat.key)}
             onDeleted={(id) => setMeals((prev) => prev.filter((m) => m.id !== id))}
           />
         ))}
       </div>
+      )}
 
       {modalCategory && (
         <AddMealModal

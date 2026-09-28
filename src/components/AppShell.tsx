@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import Sidebar from "./Sidebar";
 import FloatingCoach from "./FloatingCoach";
-import DailyEntryReminder from "./DailyEntryReminder";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,8 +16,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       className="flex h-screen overflow-hidden"
       style={{ background: "var(--bg-base)" }}
     >
-      <DailyEntryReminder />
-
       {/* ── Desktop sidebar (always visible) ── */}
       <div className="hidden lg:block flex-shrink-0 h-full">
         <Sidebar />

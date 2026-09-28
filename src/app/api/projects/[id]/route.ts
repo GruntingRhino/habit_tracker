@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { strictObject } from "@/lib/validation";
 
 interface RouteParams {
@@ -26,7 +24,7 @@ const projectPatchSchema = strictObject({
 });
 
 export async function GET(_req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -58,7 +56,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -99,7 +97,6 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
             : undefined,
       },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -112,7 +109,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -126,7 +123,6 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     }
 
     await prisma.project.delete({ where: { id } });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json({ message: "deleted" });
   } catch (error) {

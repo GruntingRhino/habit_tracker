@@ -4,8 +4,8 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "LiveImproved",
     short_name: "LiveImproved",
-    description: "Track, analyze, and improve your daily habits",
-    start_url: "/dashboard",
+    description: "Private life tracker",
+    start_url: "/today",
     display: "standalone",
     orientation: "portrait",
     background_color: "#060d1c",

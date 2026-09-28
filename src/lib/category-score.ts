@@ -6,7 +6,6 @@ import {
   type CategoryScores,
   type DailyEntryInput,
 } from "@/lib/scoring";
-import { extractScoringSettings } from "@/lib/scoring-settings";
 import { normalizeHabitCategory } from "@/lib/habit-category";
 import { getStartOfDay } from "@/lib/utils";
 import { subDays } from "date-fns";
@@ -116,7 +115,7 @@ export async function recomputeCategoryScoreForDate(
   const scoreDate = getStartOfDay(date);
   const isToday = getStartOfDay(new Date()).getTime() === scoreDate.getTime();
 
-  const [entry, activeHabits, allLogs, completedThisWeek, overdueCount, totalActive, coachProfile] =
+  const [entry, activeHabits, allLogs, completedThisWeek, overdueCount, totalActive] =
     await Promise.all([
       db.dailyEntry.findFirst({
         where: { userId, date: scoreDate },
@@ -156,10 +155,6 @@ export async function recomputeCategoryScoreForDate(
       db.project.count({
         where: { userId, status: "active" },
       }),
-      db.coachProfile.findUnique({
-        where: { userId },
-        select: { preferences: true },
-      }),
     ]);
 
   let completedHabits = 0;
@@ -191,7 +186,6 @@ export async function recomputeCategoryScoreForDate(
         habitCompletionRate,
         projectStats: { completedThisWeek, overdueCount, totalActive },
         recentStreak,
-        scoringSettings: extractScoringSettings(coachProfile?.preferences),
         categoryHabitRates: Object.fromEntries(
           Object.entries(categoryStats).map(([key, stats]) => [
             key,
@@ -213,9 +207,15 @@ export async function recomputeCategoryScoreForDate(
     ),
   };
 
+  const spiritual = roundScore(entry?.rightWithGod ? 7 : entry ? 3 : 0);
+  const work = roundScore((nextScores.discipline + nextScores.focus) / 2);
+
   const existing = await db.categoryScore.findFirst({
     where: { userId, date: scoreDate },
   });
+
+  // Once the model has judged a day, its scores are authoritative.
+  if (existing?.judgedBy) return existing;
 
   if (existing) {
     return db.categoryScore.update({
@@ -228,6 +228,8 @@ export async function recomputeCategoryScoreForDate(
         focus: nextScores.focus,
         mental: nextScores.mental,
         appearance: 0,
+        spiritual,
+        work,
         overall: nextScores.overall,
         finalized: !isToday,
       },
@@ -245,6 +247,8 @@ export async function recomputeCategoryScoreForDate(
       focus: nextScores.focus,
       mental: nextScores.mental,
       appearance: 0,
+      spiritual,
+      work,
       overall: nextScores.overall,
       finalized: !isToday,
     },

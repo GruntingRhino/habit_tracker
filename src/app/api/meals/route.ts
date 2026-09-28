@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { strictObject } from "@/lib/validation";
 
 const VALID_MEAL_CATEGORIES = ["breakfast", "lunch", "dinner", "snack"] as const;
@@ -19,7 +17,7 @@ const mealPostSchema = strictObject({
 });
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
@@ -35,7 +33,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
@@ -65,7 +63,6 @@ export async function POST(req: NextRequest) {
         order: (last?.order ?? -1) + 1,
       },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(meal, { status: 201 });
   } catch (error) {

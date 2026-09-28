@@ -91,9 +91,6 @@ html {
 
 body {
   background: var(--bg-base);
-  background-image:
-    radial-gradient(800px 600px at 10% 0%, rgba(47, 100, 255, .14), transparent 60%),
-    radial-gradient(700px 500px at 95% 100%, rgba(44, 182, 255, .08), transparent 60%);
   color: var(--ink-200);
   font-family: var(--font-sans);
   font-feature-settings: 'ss01', 'cv11', 'cv02';
@@ -105,8 +102,7 @@ body {
 ::selection { background: rgba(79, 127, 255, .35); color: white; }
 
 /* ─── Display / heading font (Claude Design: Instrument Serif) ───────────────*/
-.font-display,
-h1, h2 {
+.font-display {
   font-family: 'Instrument Serif', 'Cormorant Garamond', Georgia, serif;
   font-weight: 400;
   letter-spacing: -0.02em;
@@ -375,3 +371,22 @@ h1, h2 {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── Minimal primitives (private build) ─────────────────────────────────────*/
+.min-page { max-width: 44rem; margin: 0 auto; }
+.min-h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink-100); }
+.min-sub { font-size: .8125rem; color: var(--ink-500); }
+.min-label { font-size: .6875rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-500); }
+.min-row { display: flex; align-items: center; gap: .75rem; padding: .7rem 0; border-bottom: 1px solid var(--stroke-1); }
+.min-row:last-child { border-bottom: 0; }
+.min-input {
+  width: 100%; background: transparent; color: var(--ink-100); font-size: .9375rem;
+  border: 0; border-bottom: 1px solid var(--stroke-2); padding: .65rem 0; outline: none;
+}
+.min-input:focus { border-bottom-color: var(--accent); }
+.min-input::placeholder { color: var(--ink-600); }
+.min-link { font-size: .8125rem; color: var(--ink-400); transition: color .15s; }
+.min-link:hover { color: var(--ink-100); }
+.min-tab { font-size: .875rem; color: var(--ink-500); padding-bottom: .35rem; border-bottom: 1.5px solid transparent; transition: color .15s; }
+.min-tab[data-active="true"] { color: var(--ink-100); border-bottom-color: var(--ink-100); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }

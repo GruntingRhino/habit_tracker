@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { normalizeHabitCategory } from "@/lib/habit-category";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
+import { habitCategoryToArea, normalizeHabitCategory } from "@/lib/habit-category";
 import { strictObject } from "@/lib/validation";
 
 interface RouteParams {
@@ -29,7 +27,7 @@ const habitPatchSchema = strictObject({
 });
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -59,12 +57,12 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         name: body.name ?? undefined,
         description: body.description ?? undefined,
         category: body.category ? normalizeHabitCategory(body.category) : undefined,
+        area: body.category ? habitCategoryToArea(body.category) : undefined,
         targetDays: body.targetDays ?? undefined,
         color: body.color ?? undefined,
         isActive: body.isActive ?? undefined,
       },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -77,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -96,7 +94,6 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
       where: { id },
       data: { isActive: false },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(updated);
   } catch (error) {

@@ -22,7 +22,7 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   title: "LiveImproved",
-  description: "Track sleep, focus, training, money, and task execution in one system.",
+  description: "Private life tracker",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -42,7 +42,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        <meta name="theme-color" content="#060d1c" />
+        <meta name="theme-color" content="#0a0e1a" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
       <body className={`${inter.variable} ${syne.variable} ${instrumentSerif.variable} antialiased`}>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import {
   Plus,
   Flame,
@@ -11,7 +10,6 @@ import {
   Loader2,
   CheckSquare,
   AlertCircle,
-  ArrowLeft,
   Sparkles,
   Check,
 } from "lucide-react";
@@ -88,6 +86,10 @@ const HABIT_CATEGORY_META: Record<string, { title: string; description: string }
   mental: {
     title: "Mental",
     description: "Reflection, journaling, calm, gratitude, emotional hygiene.",
+  },
+  spiritual: {
+    title: "Spiritual",
+    description: "Prayer, scripture, church, faith and gratitude to God.",
   },
 };
 
@@ -779,16 +781,11 @@ export default function HabitsPage() {
   }
 
   return (
-    <div className="px-4 py-5 md:px-6 md:py-6 max-w-5xl mx-auto pb-20 lg:pb-6">
-      <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm mb-5 transition-colors" style={{ color: "#3d5a7a" }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
-        <ArrowLeft className="w-4 h-4" /> Dashboard
-      </Link>
+    <div className="max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">Habits</h1>
+          <h1 className="text-2xl font-bold text-slate-100">Routines</h1>
           <p className="text-slate-400 text-sm mt-0.5">
             {habits.length} active habit{habits.length !== 1 ? "s" : ""}
           </p>
@@ -806,7 +803,7 @@ export default function HabitsPage() {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Add Habit
+            Add Routine
           </button>
         </div>
       </div>

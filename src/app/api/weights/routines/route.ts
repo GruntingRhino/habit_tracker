@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { strictObject } from "@/lib/validation";
 
 const routinePostSchema = strictObject({
@@ -13,7 +11,7 @@ const routinePostSchema = strictObject({
 });
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
@@ -34,7 +32,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
@@ -61,7 +59,6 @@ export async function POST(req: NextRequest) {
       },
       include: { exercises: true, sessions: { take: 1 }, _count: { select: { sessions: true } } },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(routine, { status: 201 });
   } catch (error) {

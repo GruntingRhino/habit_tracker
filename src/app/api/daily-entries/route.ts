@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import {
   dailyEntryPayloadSchema,
   normalizeDailyEntryPayload,
@@ -17,7 +15,7 @@ function asUpdateValue<T>(value: T | null | undefined): T | null | undefined {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -47,7 +45,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -138,7 +136,6 @@ export async function POST(req: NextRequest) {
     }
 
     const savedScores = await recomputeCategoryScoreForDate(userId, entryDate);
-    await markCoachContextDirty(userId);
 
     return NextResponse.json(
       { entry, scores: savedScores },

@@ -1,0 +1,18 @@
+[Unit]
+Description=LiveImproved worker (Telegram bot + scheduler)
+After=network-online.target postgresql.service ollama.service
+Wants=postgresql.service
+
+[Service]
+User=opc
+WorkingDirectory=/home/opc/apps/liveimproved
+EnvironmentFile=/etc/liveimproved.env
+Environment=NODE_ENV=production NODE_NO_WARNINGS=1
+ExecStart=/usr/local/bin/liveimproved-node --max-old-space-size=256 dist/worker.mjs
+Restart=always
+RestartSec=5
+MemoryMax=450M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

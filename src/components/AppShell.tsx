@@ -1,79 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
 import Sidebar from "./Sidebar";
+import MobileNav from "./MobileNav";
 import FloatingCoach from "./FloatingCoach";
-import DailyEntryReminder from "./DailyEntryReminder";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [openPath, setOpenPath] = useState<string | null>(null);
-  const open = openPath === pathname;
-
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ background: "var(--bg-base)" }}
-    >
-      <DailyEntryReminder />
-
-      {/* ── Desktop sidebar (always visible) ── */}
-      <div className="hidden lg:block flex-shrink-0 h-full">
+    <div className="flex h-[100dvh] overflow-hidden" style={{ background: "var(--bg-base)" }}>
+      <div className="hidden h-full lg:block">
         <Sidebar />
       </div>
-
-      {/* ── Mobile backdrop ── */}
-      {open && (
-        <div
-          className="fixed inset-0 z-40 lg:hidden"
-          style={{
-            background: "rgba(5, 7, 13, 0.8)",
-            backdropFilter: "blur(4px)",
-          }}
-          onClick={() => setOpenPath(null)}
-        />
-      )}
-
-      {/* ── Mobile sidebar (slides in from left) ── */}
-      <div
-        className="fixed inset-y-0 left-0 z-50 w-[min(86vw,260px)] lg:hidden transition-transform duration-300 ease-out"
-        style={{ transform: open ? "translateX(0)" : "translateX(-100%)" }}
+      <main
+        className="relative flex-1 overflow-y-auto px-5 pt-[calc(env(safe-area-inset-top,0px)+24px)] pb-[calc(env(safe-area-inset-bottom,0px)+96px)] lg:px-12 lg:pt-12 lg:pb-16"
       >
-        <Sidebar onClose={() => setOpenPath(null)} />
-      </div>
-
-      {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto relative" style={{ padding: "32px 40px 80px" }}>
         {children}
       </main>
-
-      {/* ── Floating AI Coach (bottom-right) ── */}
       <FloatingCoach />
-
-      {/* ── Mobile FAB toggle (bottom-left) ── */}
-      <button
-        onClick={() =>
-          setOpenPath((current) => (current === pathname ? null : pathname))
-        }
-        aria-label={open ? "Close menu" : "Open menu"}
-        className="fixed bottom-4 left-4 z-50 lg:hidden h-12 w-12 rounded-full flex items-center justify-center transition-all duration-200 sm:bottom-5 sm:left-5"
-        style={{
-          background: open
-            ? "linear-gradient(135deg, #334d6e, #1e3050)"
-            : "linear-gradient(135deg, var(--blue-400), var(--cyan-400))",
-          boxShadow: open
-            ? "0 0 12px rgba(30,48,80,0.6), 0 4px 12px rgba(0,0,0,0.4)"
-            : "0 0 20px rgba(79,127,255,0.45), 0 4px 12px rgba(0,0,0,0.4)",
-        }}
-      >
-        {open ? (
-          <X className="w-5 h-5 text-white" />
-        ) : (
-          <Menu className="w-5 h-5 text-white" />
-        )}
-      </button>
+      <MobileNav />
     </div>
   );
 }

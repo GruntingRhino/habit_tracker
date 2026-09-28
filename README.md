@@ -1,53 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LiveImproved (private)
 
-## Getting Started
+A single-user life tracker that runs on `hermes-oracle` and is reachable only over Tailscale.
+A local **Spark-X2.5 1.7B** model (`sparkx2.5:1.7b` in Ollama) files what you type into
+to-dos, projects, routines, reminders, meals, workouts and the journal. It also plans each day and scores it out of 10.
 
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+phone / PC ──tailnet──► tailscale serve :443 ──► Next.js 127.0.0.1:3000 ─┐
+Telegram ◄── long-poll ── liveimproved-worker (reminders, briefs, judge) ├─► Postgres 127.0.0.1:5432
+                                   └──────────► Ollama 127.0.0.1:11434 ──┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Access
+- `src/proxy.ts` rejects every request that doesn't carry `Tailscale-User-Login: $OWNER_LOGIN`. Tailscale Serve adds that header, and the app only listens on localhost, so the header can't be forged from outside.
+- There's no login screen and no signup.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Where things live
+| Piece | Path |
+|---|---|
+| Model client, router, capture/undo, planner, judge | `src/lib/ai/` |
+| Chat API (web) | `src/app/api/chat` |
+| Telegram bot + scheduler | `worker/` |
+| systemd units, backup | `deploy/` |
+| Env (server) | `/etc/liveimproved.env` |
+| Backups | `~/liveimproved-backups` (nightly, 14 days) |
 
-## iOS App Shell
+## Schedule (America/New_York)
+- Every minute: send due reminders.
+- 6:30: plan the day.
+- 7:00: morning brief.
+- 21:00: evening check-in.
+- 23:30: score the day and review the journal.
+- Sunday 18:00: weekly digest.
 
-This repo now includes a Capacitor iOS shell in `ios/App`.
-
-Basic workflow:
-
+## Everyday commands
 ```bash
-export CAPACITOR_SERVER_URL=https://your-hosted-app-origin
-npm run cap:sync
-npm run cap:ios
+scripts/deploy.sh                                   # build locally, ship, restart
+ssh hermes-oracle 'journalctl -fu liveimproved-worker'
+ssh hermes-oracle 'cd ~/apps/liveimproved && set -a && . /etc/liveimproved.env && liveimproved-node dist/run-job.mjs judge'
+OLLAMA_BASE_URL=http://127.0.0.1:11435 npm run bench:llm   # with: ssh -L 11435:127.0.0.1:11434 hermes-oracle
+npm test
 ```
 
-The public App Store path and wake-alarm constraints are documented in:
-
-- `docs/ios-app-store-release.md`
-- `docs/wake-alarm-ios-plan.md`
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Model tuning
+- **Quantization:** Q4_K_M. It was the fastest of the quants tested on the 2-core Neoverse-N1 box: about 10 tok/s generation, and about 30 tok/s for a prompt it hasn't seen before.
+- **Ollama settings:** `/etc/systemd/system/ollama.service.d/liveimproved.conf`.
+  - `KEEP_ALIVE=-1` keeps the model loaded permanently.
+  - The context window is 4096 tokens.
+  - The KV cache is quantized to q8 and flash attention is on.
+- **Stable prompts:** system prompts never change, so Ollama reuses its prompt cache. After the first call, the ~700-token router prompt costs about 0.4s instead of about 25s.
+- **Structured output:** every call is schema-constrained JSON. Dates are resolved in code (`chrono-node`), never by the model.
+- **Speed:** thinking mode is used only by the nightly planner and judge. Routing takes about 4s at the median and 10s at p90.

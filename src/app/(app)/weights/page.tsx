@@ -745,10 +745,10 @@ export default function RoutinesPage() {
       {/* ── Left sidebar: routine list ── */}
       <div className="w-full md:w-60 flex-shrink-0 border-b md:border-b-0 md:border-r border-[#1e293b] flex flex-col md:h-full">
         <div className="px-4 py-2 border-b border-[#1e293b]">
-          <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#3d5a7a" }}
+          <Link href="/today" className="inline-flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#3d5a7a" }}
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#7a9eff")}
             onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#3d5a7a")}>
-            <ArrowLeft className="w-3.5 h-3.5" /> Dashboard
+            <ArrowLeft className="w-3.5 h-3.5" /> Today
           </Link>
         </div>
         <div className="flex items-center justify-between px-4 py-3 md:py-4 border-b border-[#1e293b]">

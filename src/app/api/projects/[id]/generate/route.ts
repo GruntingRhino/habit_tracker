@@ -1,144 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
-import {
-  generateProjectChecklist,
-  isAIAvailable,
-  ProjectTask,
-} from "@/lib/ollama";
-import {
-  buildScopedRateLimitKeys,
-  extractClientIp,
-  isRateLimited,
-} from "@/lib/rate-limit";
+import { breakDownProject } from "@/lib/ai/breakdown";
+
+export const maxDuration = 300;
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-const FALLBACK_TASKS: Omit<ProjectTask, "order">[] = [
-  {
-    title: "Define project requirements",
-    description: "Document all requirements, goals and success criteria for the project.",
-    priority: "high",
-    estimatedMinutes: 60,
-  },
-  {
-    title: "Research and planning",
-    description: "Research relevant technologies, approaches and create an execution plan.",
-    priority: "high",
-    estimatedMinutes: 90,
-  },
-  {
-    title: "Initial setup and scaffolding",
-    description: "Set up the project structure, tooling and initial boilerplate.",
-    priority: "medium",
-    estimatedMinutes: 45,
-  },
-  {
-    title: "Core implementation",
-    description: "Implement the main features and functionality of the project.",
-    priority: "high",
-    estimatedMinutes: 180,
-  },
-  {
-    title: "Testing and review",
-    description: "Test all functionality, fix bugs and review for quality.",
-    priority: "medium",
-    estimatedMinutes: 60,
-  },
-];
-
+/** Spark breaks the project into concrete tasks and appends them. */
 export async function POST(_req: NextRequest, { params }: RouteParams) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  const session = await getOwnerSession();
   try {
-    const limit = await isRateLimited(
-      buildScopedRateLimitKeys(
-        "project-generate",
-        session.user.id,
-        extractClientIp(_req.headers)
-      )
-    );
-    if (limit) {
-      return NextResponse.json(
-        { error: "Too many task-generation requests. Try again shortly." },
-        { status: 429 }
-      );
-    }
-
     const { id: projectId } = await params;
+    const project = await prisma.project.findFirst({ where: { id: projectId, userId: session.user.id } });
+    if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const project = await prisma.project.findUnique({ where: { id: projectId } });
-    if (!project || project.userId !== session.user.id) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
+    const drafts = await breakDownProject(project.title, project.specs ?? project.description ?? project.notes);
+    if (!drafts.length) return NextResponse.json({ error: "The model couldn't break this down. Try adding a description." }, { status: 502 });
 
-    let taskTemplates: ProjectTask[];
-    let aiGenerated = false;
-
-    const aiUp = await isAIAvailable();
-
-    if (aiUp) {
-      try {
-        taskTemplates = await generateProjectChecklist(
-          project.title,
-          project.specs ?? project.description ?? ""
-        );
-        aiGenerated = true;
-      } catch {
-        // AI available but generation failed — use fallback
-        taskTemplates = FALLBACK_TASKS.map((t, idx) => ({ ...t, order: idx }));
-      }
-    } else {
-      taskTemplates = FALLBACK_TASKS.map((t, idx) => ({ ...t, order: idx }));
-    }
-
-    // Delete existing AI-generated tasks if regenerating? Leave existing; just append with correct order.
-    const lastTask = await prisma.projectTask.findFirst({
-      where: { projectId },
-      orderBy: { order: "desc" },
-    });
-    const orderOffset = (lastTask?.order ?? -1) + 1;
-
+    const last = await prisma.projectTask.findFirst({ where: { projectId }, orderBy: { order: "desc" } });
+    const offset = (last?.order ?? -1) + 1;
     const created = await prisma.$transaction(
-      taskTemplates.map((task, idx) =>
+      drafts.map((t, i) =>
         prisma.projectTask.create({
-          data: {
-            projectId,
-            title: task.title,
-            description: task.description,
-            priority: task.priority,
-            estimatedMinutes: task.estimatedMinutes,
-            order: orderOffset + (task.order ?? idx),
-            status: "todo",
-          },
+          data: { projectId, title: t.title, priority: t.priority, estimatedMinutes: t.estimatedMinutes, order: offset + i, status: "todo", area: project.area },
         })
       )
     );
-    await markCoachContextDirty(session.user.id);
-
-    return NextResponse.json(
-      {
-        tasks: created,
-        aiGenerated,
-        message: aiGenerated
-          ? "Tasks generated by AI"
-          : "Tasks generated from default template (Ollama unavailable)",
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ tasks: created, aiGenerated: true }, { status: 201 });
   } catch (error) {
     reportError({ context: "projects generate POST", error, userId: session.user.id });
-    return NextResponse.json(
-      { error: "Failed to generate tasks" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to generate tasks" }, { status: 500 });
   }
 }

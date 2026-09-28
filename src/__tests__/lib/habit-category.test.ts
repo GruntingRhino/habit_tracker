@@ -11,7 +11,7 @@ describe("normalizeHabitCategory", () => {
     expect(normalizeHabitCategory("health")).toBe("physical");
     expect(normalizeHabitCategory("appearance")).toBe("physical");
     expect(normalizeHabitCategory("social")).toBe("mental");
-    expect(normalizeHabitCategory("spiritual")).toBe("mental");
+    expect(normalizeHabitCategory("spiritual")).toBe("spiritual");
   });
 });
 

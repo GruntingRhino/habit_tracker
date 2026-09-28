@@ -2,37 +2,40 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
 import {
-  LayoutDashboard,
-  BookOpen,
+  Sun,
+  MessageSquare,
+  ListTodo,
   FolderKanban,
+  Repeat,
+  UtensilsCrossed,
+  Dumbbell,
+  BookOpen,
   StickyNote,
   Settings,
   Brain,
-  LogOut,
-  User,
-  Users,
-  Flame,
+  Lock,
 } from "lucide-react";
-import PetWidget from "@/components/PetWidget";
 
 const navLinks = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/entry",     label: "Daily Entry", icon: BookOpen },
-  { href: "/projects",  label: "Projects", icon: FolderKanban },
-  { href: "/social",    label: "Social", icon: Users },
-  { href: "/settings",  label: "Settings", icon: Settings },
+  { href: "/today",    label: "Today", icon: Sun },
+  { href: "/chat",     label: "Chat", icon: MessageSquare },
+  { href: "/todos",    label: "To-dos", icon: ListTodo },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/habits",   label: "Routines", icon: Repeat },
+  { href: "/meals",    label: "Meals", icon: UtensilsCrossed },
+  { href: "/weights",  label: "Workouts", icon: Dumbbell },
+  { href: "/entry",    label: "Journal", icon: BookOpen },
+  { href: "/notes",    label: "Notes", icon: StickyNote },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 interface SidebarProps {
   onClose?: () => void;
-  streak?: number;
 }
 
-export default function Sidebar({ onClose, streak = 0 }: SidebarProps) {
+export default function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
-  const { data: session } = useSession();
 
   return (
     <aside
@@ -60,7 +63,7 @@ export default function Sidebar({ onClose, streak = 0 }: SidebarProps) {
       </div>
 
       {/* ── Navigation ──────────────────────────────────────────────── */}
-      <nav className="flex flex-col gap-1 flex-1">
+      <nav className="flex flex-col gap-1 flex-1 overflow-y-auto">
         {navLinks.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + "/");
 
@@ -106,119 +109,12 @@ export default function Sidebar({ onClose, streak = 0 }: SidebarProps) {
         })}
       </nav>
 
-      {/* ── Streak card ─────────────────────────────────────────────── */}
-      {streak > 0 && (
-        <div
-          className="mx-1 p-3.5 rounded-[14px] mb-6"
-          style={{
-            background: "rgba(79, 127, 255, .06)",
-            border: "1px solid rgba(79, 127, 255, .18)",
-          }}
-        >
-          <div
-            className="text-[10px] uppercase mb-1.5"
-            style={{
-              letterSpacing: ".18em",
-              color: "var(--blue-200)",
-            }}
-          >
-            <span className="inline-flex items-center gap-1">
-              <Flame className="w-[11px] h-[11px]" /> Current streak
-            </span>
-          </div>
-          <div
-            className="text-[28px] leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              color: "var(--ink-100)",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {streak} days
-          </div>
-          <div
-            className="text-[11px] mt-1.5"
-            style={{ color: "var(--ink-400)" }}
-          >
-            Don&apos;t break the chain · log today.
-          </div>
-        </div>
-      )}
-
-      {/* ── Pet Widget ────────────────────────────────────────────── */}
-      <div className="mt-auto mb-3">
-        <PetWidget />
-      </div>
-
-      {/* ── User section ────────────────────────────────────────────── */}
       <div
-        className="flex items-center gap-2.5 p-2.5 rounded-[14px] cursor-pointer"
-        style={{
-          background: "rgba(255,255,255,.02)",
-          border: "1px solid var(--stroke-1)",
-        }}
-        onClick={() => {
-          window.location.href = "/settings";
-        }}
+        className="mt-4 flex items-center gap-2 px-3 text-[11px]"
+        style={{ color: "var(--ink-500)" }}
       >
-        <div
-          className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
-          style={{
-            background: "linear-gradient(135deg, #4f7fff, #2cb6ff)",
-            color: "white",
-            fontSize: "12px",
-            fontWeight: 600,
-          }}
-        >
-          {session?.user?.name
-            ? session.user.name.charAt(0).toUpperCase()
-            : "U"}
-        </div>
-        <div className="flex-1 min-w-0">
-          {session?.user?.name && (
-            <p
-              className="text-xs font-medium truncate"
-              style={{ color: "var(--ink-100)" }}
-            >
-              {session.user.name}
-            </p>
-          )}
-          <p
-            className="text-[11px] truncate"
-            style={{ color: "var(--ink-500)" }}
-          >
-            {session?.user?.email ?? ""}
-          </p>
-        </div>
-        <Settings
-          className="w-4 h-4 cursor-pointer transition-colors"
-          style={{ color: "var(--ink-500)" }}
-          onMouseEnter={(e) =>
-            ((e.currentTarget as unknown as HTMLElement).style.color = "var(--ink-200)")
-          }
-          onMouseLeave={(e) =>
-            ((e.currentTarget as unknown as HTMLElement).style.color = "var(--ink-500)")
-          }
-        />
+        <Lock className="w-3 h-3" /> Private · Tailscale only
       </div>
-
-      <button
-        onClick={() => signOut({ callbackUrl: "/login" })}
-        className="flex items-center gap-2 w-full px-3 py-2.5 mt-2 rounded-xl text-sm transition-all duration-150"
-        style={{ color: "var(--ink-400)" }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.color = "var(--bad)";
-          (e.currentTarget as HTMLElement).style.background =
-            "rgba(255, 95, 109, .08)";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.color = "var(--ink-400)";
-          (e.currentTarget as HTMLElement).style.background = "transparent";
-        }}
-      >
-        <LogOut className="w-4 h-4" />
-        Sign out
-      </button>
     </aside>
   );
 }

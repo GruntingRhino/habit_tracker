@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
+import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
-import { markCoachContextDirty } from "@/lib/coach-context-cache";
 import { strictObject } from "@/lib/validation";
 
 const VALID_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
@@ -20,7 +18,7 @@ const projectPostSchema = strictObject({
 });
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -52,7 +50,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getOwnerSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -78,7 +76,6 @@ export async function POST(req: NextRequest) {
         deadline: parsed.data.deadline ? new Date(parsed.data.deadline) : undefined,
       },
     });
-    await markCoachContextDirty(session.user.id);
 
     return NextResponse.json(project, { status: 201 });
   } catch (error) {

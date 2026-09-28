@@ -22,7 +22,7 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   title: "LiveImproved",
-  description: "Track sleep, focus, training, money, and task execution in one system.",
+  description: "Private life tracker",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

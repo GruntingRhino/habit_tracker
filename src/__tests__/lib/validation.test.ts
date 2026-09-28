@@ -1,39 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { wakeAlarmSettingsSchema } from "@/lib/wake-alarm";
-
-// ── Wake alarm schema ────────────────────────────────────────────────────────
-
-describe("wakeAlarmSettingsSchema", () => {
-  const valid = {
-    enabled: true,
-    time: "06:30",
-    repeatDays: ["mon", "tue", "wed"],
-    missionType: "steps",
-    challengeTarget: 40,
-    wakeUpCheckMinutes: 3,
-    strictMode: true,
-  };
-
-  it("accepts valid settings", () => {
-    expect(wakeAlarmSettingsSchema.safeParse(valid).success).toBe(true);
-  });
-
-  it("rejects invalid time format", () => {
-    const r = wakeAlarmSettingsSchema.safeParse({ ...valid, time: "6:30" });
-    expect(r.success).toBe(false);
-  });
-
-  it("rejects empty repeatDays", () => {
-    const r = wakeAlarmSettingsSchema.safeParse({ ...valid, repeatDays: [] });
-    expect(r.success).toBe(false);
-  });
-
-  it("rejects challengeTarget out of range", () => {
-    expect(wakeAlarmSettingsSchema.safeParse({ ...valid, challengeTarget: 0 }).success).toBe(false);
-    expect(wakeAlarmSettingsSchema.safeParse({ ...valid, challengeTarget: 501 }).success).toBe(false);
-  });
-});
 
 // ── Inline Zod schemas mirroring API routes ─────────────────────────────────
 

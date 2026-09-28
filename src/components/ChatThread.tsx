@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, X } from "lucide-react";
 import { AreaDot } from "@/components/ui";
 import { useAssistantChat, type ChatMsg } from "@/hooks/useAssistantChat";
 
@@ -53,8 +53,15 @@ function AssistantBody({ msg, onUndo }: { msg: ChatMsg; onUndo: (id: string) => 
   );
 }
 
-export default function ChatThread({ compact = false }: { compact?: boolean }) {
-  const { messages, loading, ready, error, send, undo } = useAssistantChat();
+interface ChatThreadProps {
+  compact?: boolean;
+  /** Shown behind the thread; fades back once the conversation starts. */
+  background?: React.ReactNode;
+}
+
+export default function ChatThread({ compact = false, background }: ChatThreadProps) {
+  const { messages, loading, ready, error, send, undo, clear } = useAssistantChat({ sessionOnly: Boolean(background) });
+  const chatting = messages.length > 0 || loading;
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -78,9 +85,29 @@ export default function ChatThread({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className={`min-h-0 flex-1 space-y-5 overflow-y-auto ${compact ? "p-4" : "py-2"}`}>
-        {ready && messages.length === 0 && (
+    <div className="relative flex h-full min-h-0 flex-col">
+      {background && (
+        <div
+          aria-hidden={chatting}
+          className={`absolute inset-x-0 top-0 bottom-16 flex items-center justify-center transition-all duration-700 ease-out ${
+            chatting ? "pointer-events-none scale-[0.97] opacity-[0.07] blur-[2px]" : "opacity-100"
+          }`}
+        >
+          {background}
+        </div>
+      )}
+      {background && chatting && !loading && (
+        <button
+          onClick={clear}
+          aria-label="Back to scores"
+          className="absolute right-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full"
+          style={{ color: "var(--ink-500)" }}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+      <div className={`relative min-h-0 flex-1 space-y-5 overflow-y-auto ${compact ? "p-4" : background && chatting ? "pb-2 pt-10" : "py-2"}`}>
+        {ready && messages.length === 0 && !background && (
           <div className="space-y-2 pt-4">
             <p className="min-sub mb-3">Tell it anything — it files it for you.</p>
             {EXAMPLES.map((e) => (
@@ -113,7 +140,7 @@ export default function ChatThread({ compact = false }: { compact?: boolean }) {
         <div ref={bottomRef} />
       </div>
 
-      <div className={`flex items-end gap-2 rounded-3xl py-1.5 pl-4 pr-1.5 ${compact ? "m-3" : "mt-3"}`} style={{ background: "rgba(255,255,255,.05)" }}>
+      <div className={`relative flex items-end gap-2 rounded-3xl py-1.5 pl-4 pr-1.5 ${compact ? "m-3" : "mt-3"}`} style={{ background: "rgba(255,255,255,.06)" }}>
         <textarea
           ref={inputRef}
           value={input}

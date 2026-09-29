@@ -128,14 +128,15 @@ describe.skipIf(!enabled)("brain loop", () => {
 
     const row = await prisma.categoryScore.findUniqueOrThrow({ where: { userId_date: { userId, date: getStartOfDay(clock) } } });
     const r = readRationale(row.rationale);
-    // Financial: baseline 8 for one good fact; the model's 10 is within 2, its bogus fact 42 and option Z are dropped.
-    expect(row.financial).toBe(10);
+    // Financial: baseline 8 for one good fact; the model's 10 is capped at +1, its bogus fact 42 and option Z are dropped.
+    expect(row.financial).toBe(9);
     expect(r.financial.why).toEqual(["✓ Done: “Pay rent”"]);
     expect(r.financial.improve).toBe("Log what you spent or saved today (Journal → Quick log)");
-    // Physical: the model's 0 is clamped to baseline 3 - 2 = 1; the "why" is the real missed habit.
+    // Physical: habit not done yet (neutral mid-day) + no training this week → baseline 2; the model's 0 is capped at -1.
     expect(row.physical).toBe(1);
-    expect(r.physical.why).toEqual(["✗ Habit not done yet: “Stretch”"]);
-    expect(r.physical.improve).toBe("Do your habit “Stretch”");
+    expect(r.physical.why).toContain("✗ No training so far this week");
+    expect(r.physical.all).toContain("• Habit not done yet: “Stretch”");
+    expect(r.physical.improve).toBe("Get a workout or training session in and log it");
     // No data for spiritual: no score, not a guess.
     expect(r.spiritual.noData).toBe(true);
     expect(row.finalized).toBe(false);
@@ -264,6 +265,54 @@ describe.skipIf(!enabled)("brain loop", () => {
     const { consolidateCategory } = await import("../consolidate");
     const r = await consolidateCategory(new BrainStore(dir), userId, "learning", ["New stat line."], {}, { useModel: true });
     expect(r.content.summary).toBeNull();
+  });
+
+  it("physical takes in training, nutrition, sleep and steps — live and final", async () => {
+    const { buildFacts } = await import("../scores");
+    const u = await prisma.user.create({ data: { email: `phys-${Date.now()}@test.local`, nutritionTargets: { calories: 2500, protein: 150, carbs: 300, fat: 80 } } });
+    try {
+      const day = getStartOfDay(new Date());
+      const at = (h: number) => new Date(day.getTime() + h * 3_600_000);
+      const routine = await prisma.weightRoutine.create({ data: { userId: u.id, name: "Push day" } });
+      await prisma.workoutSession.create({
+        data: { userId: u.id, routineId: routine.id, date: at(17), exerciseLogs: { create: [{ exerciseName: "Bench press", weight: 185, sets: 4, reps: "6" }, { exerciseName: "Dips", sets: 3, reps: "10" }] } },
+      });
+      await prisma.meal.createMany({
+        data: [
+          { userId: u.id, name: "Eggs and toast", category: "breakfast", status: "eaten", plannedFor: at(8), calories: 450, protein: 28, carbs: 40, fat: 20, micros: { sodium: 700, fiber: 4, potassium: 400, calcium: 150, iron: 3 } },
+          { userId: u.id, name: "Ramen", category: "dinner", status: "eaten", plannedFor: at(23), calories: 900, protein: 25, carbs: 120, fat: 30, micros: { sodium: 2500, fiber: 3, potassium: 500, iron: 2 } },
+        ],
+      });
+      await prisma.dailyEntry.create({ data: { userId: u.id, date: day, sleepHours: 6, bedtime: "1:15am", steps: 11000 } });
+
+      const live = await buildFacts(u.id, day, { now: at(14) });
+      const phys = live.facts.filter((f) => f.area === "physical").map((f) => f.text);
+      expect(phys.find((t) => t.startsWith("✓ Workout: “Push day” — 2 exercises, 7 sets"))).toBeTruthy();
+      expect(phys).toContain("• 1 training day in the last 7");
+      expect(phys.find((t) => t.includes("Food logged so far: 2 meals, 1350 kcal, P 53 g"))).toBeTruthy();
+      expect(phys.find((t) => t.startsWith("• Calories 1350/2500 so far"))).toBeTruthy();
+      expect(phys.find((t) => t.startsWith("✗ Protein 53/150 g so far"))).toBeTruthy();
+      expect(phys).toContain("✗ Sodium 3200/2300 mg — over the limit");
+      expect(phys.find((t) => t.startsWith("• Vitamins & minerals so far"))).toBeTruthy();
+      expect(phys).toContain("✗ Ate late at night: “Ramen”");
+      expect(phys).toContain("✗ Slept 6 h (under 7)");
+      expect(phys).toContain("✗ Bedtime 1:15am (after 12:30am)");
+      expect(phys).toContain("✓ 11,000 steps");
+      expect(live.options.map((o) => o.text)).toContain("Get ~97 g more protein (you're at 53/150 g)");
+      expect(live.options.map((o) => o.text)).toContain("Go easy on salty and processed food for the rest of today");
+
+      const final = await buildFacts(u.id, day, { final: true });
+      const fp = final.facts.filter((f) => f.area === "physical").map((f) => f.text);
+      expect(fp.find((t) => t.startsWith("✗ Calories 1350/2500 (54% of target) — under"))).toBeTruthy();
+      expect(fp.find((t) => t.startsWith("✗ Protein 53/150 g"))).toBeTruthy();
+      expect(fp.find((t) => t.startsWith("✗ Fiber 7/31 g"))).toBeTruthy();
+      expect(fp.find((t) => t.startsWith("✗ Vitamins & minerals:"))).toBeTruthy();
+      // Every factor is weighed: the workout and steps help, but sleep, food and late eating pull it down.
+      const { baseline } = await import("../scores");
+      expect(baseline(final.facts.filter((f) => f.area === "physical"))).toBeLessThanOrEqual(4);
+    } finally {
+      await prisma.user.delete({ where: { id: u.id } });
+    }
   });
 
   it("nightly judge finalizes the day with 'missed' wording and journal feedback", async () => {

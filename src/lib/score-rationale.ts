@@ -4,6 +4,10 @@ import { SCORED_AREAS, type ScoredArea } from "@/lib/areas";
 export interface AreaRationale {
   why: string[];
   improve: string | null;
+  /** Other things that would help. */
+  more?: string[];
+  /** Every factor that went into the grade, worst first. */
+  all?: string[];
   noData: boolean;
   /** Hash of the facts it was graded on (unchanged facts → the score is kept as is). */
   h?: string;
@@ -19,7 +23,14 @@ export function readRationale(raw: unknown): Rationale {
     const v = r[a];
     if (v && typeof v === "object") {
       const o = v as Partial<AreaRationale>;
-      out[a] = { why: Array.isArray(o.why) ? o.why.map(String) : [], improve: typeof o.improve === "string" ? o.improve : null, noData: !!o.noData, h: o.h };
+      out[a] = {
+        why: Array.isArray(o.why) ? o.why.map(String) : [],
+        improve: typeof o.improve === "string" ? o.improve : null,
+        more: Array.isArray(o.more) ? o.more.map(String) : [],
+        all: Array.isArray(o.all) ? o.all.map(String) : [],
+        noData: !!o.noData,
+        h: o.h,
+      };
     } else {
       out[a] = { why: typeof v === "string" && v ? [v] : [], improve: null, noData: false };
     }

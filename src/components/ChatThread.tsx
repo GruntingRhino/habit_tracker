@@ -186,7 +186,7 @@ export default function ChatThread({ compact = false, background }: ChatThreadPr
         <div
           aria-hidden={chatting}
           className={`absolute inset-x-0 top-10 flex justify-center transition-all duration-500 ease-out ${
-            chatting ? "pointer-events-none opacity-0" : "opacity-100"
+            chatting ? "pointer-events-none opacity-0" : "z-20 opacity-100"
           }`}
         >
           {background}

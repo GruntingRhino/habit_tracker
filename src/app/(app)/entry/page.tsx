@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { format, isToday } from "date-fns";
 import { PageHeader, Section, Empty, Tabs } from "@/components/ui";
 import NotesList from "@/components/NotesList";
+import ProfilePanel from "@/components/ProfilePanel";
 
 interface Entry {
   date: string;
@@ -41,7 +42,8 @@ export default function Page() {
 
 function JournalPage() {
   const params = useSearchParams();
-  const [tab, setTab] = useState<"today" | "notes">(params.get("tab") === "notes" ? "notes" : "today");
+  const initialTab = params.get("tab");
+  const [tab, setTab] = useState<"today" | "notes" | "profile">(initialTab === "notes" || initialTab === "profile" ? initialTab : "today");
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [text, setText] = useState("");
   const [quick, setQuick] = useState<Record<Quick, string>>({ sleepHours: "", screenTimeHours: "", moneySpent: "", moneySaved: "" });
@@ -100,14 +102,14 @@ function JournalPage() {
     <PageHeader
       title="Journal"
       sub={tab === "today" ? `${format(new Date(), "EEE, MMM d")}${status === "saving" ? " · saving…" : status === "saved" ? " · saved" : ""}` : undefined}
-      action={<Tabs value={tab} options={[["today", "Today"], ["notes", "Notes"]]} onChange={setTab} />}
+      action={<Tabs value={tab} options={[["today", "Today"], ["notes", "Notes"], ["profile", "Profile"]]} onChange={setTab} />}
     />
   );
-  if (tab === "notes") {
+  if (tab === "notes" || tab === "profile") {
     return (
       <div className="min-page">
         {header}
-        <NotesList />
+        {tab === "notes" ? <NotesList /> : <ProfilePanel />}
       </div>
     );
   }

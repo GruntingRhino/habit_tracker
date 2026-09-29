@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { profileBrief } from "@/lib/brain/consolidate";
 import { chat, parseJson, type ChatMessage } from "@/lib/ai/llm";
 import { reportError } from "@/lib/monitoring";
 
@@ -79,6 +80,15 @@ function clip(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+// The profile changes at most a few times a day; a short cache keeps chat from re-querying it.
+let briefCache: { userId: string; at: number; text: string | null } | null = null;
+async function cachedProfileBrief(userId: string) {
+  if (briefCache?.userId === userId && Date.now() - briefCache.at < 5 * 60_000) return briefCache.text;
+  const text = await profileBrief(userId).catch(() => null);
+  briefCache = { userId, at: Date.now(), text };
+  return text;
+}
+
 /** Memory + recent turns as chat messages, ready to sit between a system prompt and the new message. */
 export async function conversationContext(conversationId: string, excludeId?: string): Promise<ChatMessage[]> {
   const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -114,7 +124,8 @@ export async function conversationContext(conversationId: string, excludeId?: st
   // Models expect user/assistant alternation starting with the user.
   while (recent[0]?.role === "assistant" && !conv.memory) recent.shift();
 
-  const memory = [conv.memory, planNote(conv.plan as PlanState | null), ...undoneNotes.map((n) => `- ${n}`)].filter(Boolean).join("\n");
+  const about = await cachedProfileBrief(conv.userId);
+  const memory = [about ? `What you know about Abhay (from his profile):\n${about}` : null, conv.memory, planNote(conv.plan as PlanState | null), ...undoneNotes.map((n) => `- ${n}`)].filter(Boolean).join("\n");
   if (!memory) return recent;
   return [
     { role: "user", content: `[notes about this chat so far]\n${memory}` },

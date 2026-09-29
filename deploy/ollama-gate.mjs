@@ -2,9 +2,15 @@
 // Vercel deployment can reach the model. Only the three endpoints the app uses pass through;
 // everything else (pull, delete, create, …) is refused. Responses are streamed unbuffered.
 //
+// It also tells the background brain (worker/brain.ts) what's going on, through two small files:
+//   $BRAIN_DIR/signals/gate.json     {inflight, last}  the app is using the model right now
+//   $BRAIN_DIR/signals/changed.json  {at}              POST /brain/touch: his data just changed
+//
 //   OLLAMA_AUTH_TOKEN=<secret> node ollama-gate.mjs          (listens on 127.0.0.1:11500)
 //   sudo tailscale funnel --bg --https=8443 http://127.0.0.1:11500
 import http from "node:http";
+import fs from "node:fs";
+import { join } from "node:path";
 import { timingSafeEqual } from "node:crypto";
 
 const TOKEN = process.env.OLLAMA_AUTH_TOKEN ?? "";
@@ -12,6 +18,23 @@ const UPSTREAM = new URL(process.env.OLLAMA_UPSTREAM ?? "http://127.0.0.1:11434"
 const PORT = Number(process.env.GATE_PORT ?? 11500);
 const ALLOWED = new Set(["POST /api/chat", "POST /api/generate", "GET /api/ps"]);
 const MAX_BODY = 256 * 1024;
+const SIGNALS = join(process.env.BRAIN_DIR ?? "/var/lib/liveimproved/brain", "signals");
+
+function signal(file, value) {
+  try {
+    fs.mkdirSync(SIGNALS, { recursive: true });
+    fs.writeFileSync(join(SIGNALS, `${file}.tmp`), JSON.stringify(value));
+    fs.renameSync(join(SIGNALS, `${file}.tmp`), join(SIGNALS, file));
+  } catch {
+    // The brain isn't installed: the gate works without it.
+  }
+}
+
+let inflight = 0;
+const activity = (delta) => {
+  inflight = Math.max(0, inflight + delta);
+  signal("gate.json", { inflight, last: Date.now() });
+};
 
 if (TOKEN.length < 32) {
   console.error("OLLAMA_AUTH_TOKEN must be at least 32 characters");
@@ -32,8 +55,24 @@ http
   .createServer((req, res) => {
     const path = (req.url ?? "").split("?")[0];
     if (!authorized(req.headers.authorization)) return reject(res, 401);
+    if (req.method === "POST" && path === "/brain/touch") {
+      signal("changed.json", { at: Date.now() });
+      req.resume();
+      return res.writeHead(204).end();
+    }
     if (!ALLOWED.has(`${req.method} ${path}`)) return reject(res, 404);
     if (Number(req.headers["content-length"] ?? 0) > MAX_BODY) return reject(res, 413);
+
+    const counted = req.method === "POST";
+    if (counted) activity(+1);
+    let finished = false;
+    const done = () => {
+      if (counted && !finished) {
+        finished = true;
+        activity(-1);
+      }
+    };
+    res.on("close", done);
 
     const upstream = http.request(
       {

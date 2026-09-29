@@ -30,6 +30,8 @@ export interface ChatOptions {
   timeoutMs?: number;
   /** Called with each content chunk as it streams in. */
   onToken?: (text: string) => void;
+  /** Aborting it stops the generation (Ollama drops the request when the connection closes). */
+  signal?: AbortSignal;
 }
 
 export interface ChatResult {
@@ -41,10 +43,15 @@ export interface ChatResult {
 }
 
 export class LlmError extends Error {}
+/** The caller cancelled (e.g. background work yielding to a chat). */
+export class LlmAborted extends LlmError {}
 
 export async function chat(opts: ChatOptions): Promise<ChatResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 60_000);
+  const cancel = () => controller.abort();
+  if (opts.signal?.aborted) controller.abort();
+  opts.signal?.addEventListener("abort", cancel);
   const started = Date.now();
   try {
     const res = await fetch(`${BASE_URL}/api/chat`, {
@@ -108,12 +115,14 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
       durationMs: Date.now() - started,
     };
   } catch (error) {
+    if (opts.signal?.aborted) throw new LlmAborted("Cancelled");
     if (error instanceof Error && error.name === "AbortError") {
       throw new LlmError(`Model timed out after ${opts.timeoutMs ?? 60_000}ms`);
     }
     throw error;
   } finally {
     clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", cancel);
   }
 }
 

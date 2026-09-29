@@ -66,7 +66,7 @@ const ROUTE_JSON_SCHEMA = {
 };
 
 // Keep this string byte-for-byte stable: Ollama reuses its KV cache for the prefix.
-const SYSTEM_PROMPT = `You route messages for Abhay's personal life tracker. Reply with minified JSON only.
+export const SYSTEM_PROMPT = `You route messages for Abhay's personal life tracker. Reply with minified JSON only.
 
 intent:
 - capture: he mentions things to track, do, remember, eat, train, or reflect on

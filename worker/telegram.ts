@@ -5,6 +5,7 @@ import { handleMessage, undoMessage, type AssistantReply, type ReplyMeta } from 
 import { planDay } from "@/lib/ai/planner";
 import { getOwner } from "@/lib/owner";
 import { getStartOfDay } from "@/lib/utils";
+import { interactive } from "@/lib/brain/signals";
 import { esc, formatBrief, formatScores } from "./format";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -45,6 +46,9 @@ export function setupBot() {
     if (chatId !== ownerChatId) return;
     await next();
   });
+
+  // While he's talking to the bot the background brain pauses; afterwards it re-checks his scores.
+  bot.use((_ctx, next) => interactive(() => next()));
 
   bot.command("start", (ctx) => ctx.reply("LiveImproved is connected. Text me anything to track it. /today shows your plan, /replan rebuilds it, /score shows last night's scores."));
 

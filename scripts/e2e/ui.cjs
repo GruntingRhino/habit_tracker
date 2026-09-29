@@ -7,7 +7,7 @@ const fs = require("fs");
 const BASE = process.env.APP_URL || "http://127.0.0.1:3101";
 const SHOTS = process.env.SHOTS || __dirname + "/shots";
 fs.mkdirSync(SHOTS, { recursive: true });
-const PAGES = ["/chat", "/todos", "/habits", "/meals", "/entry", "/entry?tab=notes", "/settings"];
+const PAGES = ["/chat", "/todos", "/habits", "/meals", "/entry", "/entry?tab=notes", "/entry?tab=profile", "/settings"];
 const REDIRECTS = [["/projects", /\/todos/], ["/notes", /\/entry\?tab=notes/], ["/weights", /\/habits/]];
 const results = [];
 const ok = (name) => (results.push([true, name]), console.log(`✓ ${name}`));
@@ -204,6 +204,55 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await page.getByRole("button", { name: "Undo" }).last().click();
     await page.getByText("↩︎ Undone").first().waitFor({ timeout: 15000 });
   });
+  // 7. Scores: real buttons, a details panel with facts, and a refresh after a change.
+  await test("scores: tapping an area opens why + how to improve", async () => {
+    await page.goto(BASE + "/chat", { waitUntil: "networkidle" });
+    const chip = page.getByRole("button", { name: /^Physical .*details$/ });
+    await chip.click();
+    await page.getByRole("button", { name: "Close details" }).waitFor({ timeout: 10000 });
+    const panel = await page.locator("div.rounded-xl.border.p-3").innerText();
+    if (!/Stretch|Slept|Workout|No data/.test(panel)) throw new Error(`panel: ${panel}`);
+    if (!/Do your habit|Log|workout|protein/i.test(panel)) throw new Error(`no improvement tip: ${panel}`);
+    if ((await chip.getAttribute("aria-expanded")) !== "true") throw new Error("chip not marked expanded");
+  });
+  await test("scores: a change shows Updating… and the panel refreshes with it", async () => {
+    await page.getByRole("button", { name: /^Physical .*details$/ }).click(); // close
+    await page.getByRole("button", { name: /^Spiritual .*details$/ }).click();
+    const res = await page.evaluate(async () => {
+      const r = await fetch("/api/journal", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rightWithGod: true }) });
+      window.dispatchEvent(new CustomEvent("liveimproved:changed"));
+      return r.status;
+    });
+    if (res !== 200) throw new Error(`journal patch ${res}`);
+    await page.getByText("Updating…").waitFor({ timeout: 8000 });
+    await page.getByText("Marked right with God").waitFor({ timeout: 180000 });
+    await page.getByText("Updating…").waitFor({ state: "detached", timeout: 30000 });
+  });
+
+  // 8. Journal → Profile: quiz answers become beliefs; "that's wrong" removes one.
+  await test("profile: quiz answers show up as beliefs, and ✕ forgets one", async () => {
+    await page.goto(BASE + "/entry?tab=profile", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /Take the personality quiz|Retake quiz/ }).click();
+    await page.getByRole("button", { name: "Watching videos" }).click();
+    await page.getByRole("button", { name: "Doing it hands-on" }).click();
+    await page.getByRole("button", { name: "About 30 minutes" }).click();
+    await page.getByRole("button", { name: "Save answers" }).click();
+    const t0 = Date.now();
+    for (;;) {
+      await page.goto(BASE + "/entry?tab=profile", { waitUntil: "networkidle" });
+      if (await page.getByRole("button", { name: /How you learn best/ }).count()) break;
+      if (Date.now() - t0 > 150000) throw new Error("quiz answers never reached the profile");
+      await page.waitForTimeout(5000);
+    }
+    await page.getByRole("button", { name: /How you learn best/ }).click();
+    const belief = page.getByText("He learns best by: watching videos, doing it hands-on.");
+    await belief.waitFor();
+    await belief.click();
+    await page.getByText("from the quiz").waitFor();
+    await page.getByRole("button", { name: /^That's wrong: He learns best by/ }).click();
+    await belief.waitFor({ state: "detached", timeout: 10000 });
+  });
+
   await test("no browser errors during flows", async () => {
     const errs = page.errors.filter((e) => !/favicon/.test(e));
     if (errs.length) throw new Error(errs.slice(0, 3).join(" | "));

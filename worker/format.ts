@@ -34,7 +34,7 @@ export async function formatBrief(userId: string, kind: "morning" | "evening") {
   if (kind === "morning" && plan.summary) lines.push(`<i>${esc(plan.summary)}</i>`);
   lines.push("");
   if (kind === "evening") {
-    lines.push(`Plan: ${plan.items.length - open.length}/${plan.items.length} done · Routines: ${routines.length - openRoutines.length}/${routines.length}`);
+    lines.push(`Plan: ${plan.items.length - open.length}/${plan.items.length} done · Habits: ${routines.length - openRoutines.length}/${routines.length}`);
     if (open.length) lines.push("", "<b>Still open</b>");
   } else if (plan.items.length) {
     lines.push("<b>Focus</b>");
@@ -44,7 +44,7 @@ export async function formatBrief(userId: string, kind: "morning" | "evening") {
     lines.push(`${done ? "✅" : `${n + 1}.`} ${EMOJI[item.area] ?? "📌"} ${done ? `<s>${esc(item.title)}</s>` : esc(item.title)}${item.reason && !done ? ` — <i>${esc(item.reason)}</i>` : ""}`);
   }
   if (openRoutines.length) {
-    lines.push("", "<b>Routines</b>", openRoutines.map((r) => `${EMOJI[r.area] ?? "🔁"} ${esc(r.name)}`).join("\n"));
+    lines.push("", "<b>Habits</b>", openRoutines.map((r) => `${EMOJI[r.area] ?? "🔁"} ${esc(r.name)}`).join("\n"));
   }
   if (kind === "morning" && meals.length) {
     lines.push("", "<b>Meals</b>", meals.map((m) => `🍽 ${m.category}: ${esc(m.name)}`).join("\n"));

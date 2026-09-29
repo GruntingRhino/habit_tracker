@@ -4,6 +4,8 @@ import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { strictObject } from "@/lib/validation";
+import { microsSchema, nutritionItemSchema } from "@/lib/nutrition-schema";
+import { Prisma } from "@/generated/prisma";
 
 interface RouteParams { params: Promise<{ id: string }> }
 
@@ -13,7 +15,14 @@ const mealPatchSchema = strictObject({
   name: z.string().trim().min(1).max(120).optional(),
   category: z.enum(VALID_MEAL_CATEGORIES).optional(),
   recipe: z.string().trim().max(5000).optional(),
-  calories: z.number().int().min(1).max(10000).nullable().optional(),
+  calories: z.number().int().min(0).max(10000).nullable().optional(),
+  protein: z.number().min(0).max(1000).nullable().optional(),
+  carbs: z.number().min(0).max(2000).nullable().optional(),
+  fat: z.number().min(0).max(1000).nullable().optional(),
+  items: z.array(nutritionItemSchema).max(30).nullable().optional(),
+  nutritionSource: z.enum(["ai", "manual"]).nullable().optional(),
+  micros: microsSchema.nullable().optional(),
+  sourceText: z.string().trim().max(600).nullable().optional(),
   servings: z.number().min(0.25).max(100).optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   status: z.enum(["saved", "planned", "eaten"]).optional(),
@@ -50,6 +59,13 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         category: body.category ?? meal.category,
         recipe: body.recipe !== undefined ? body.recipe : meal.recipe,
         calories: body.calories !== undefined ? body.calories : meal.calories,
+        protein: body.protein !== undefined ? body.protein : meal.protein,
+        carbs: body.carbs !== undefined ? body.carbs : meal.carbs,
+        fat: body.fat !== undefined ? body.fat : meal.fat,
+        items: body.items !== undefined ? (body.items ?? Prisma.DbNull) : undefined,
+        nutritionSource: body.nutritionSource !== undefined ? body.nutritionSource : meal.nutritionSource,
+        micros: body.micros !== undefined ? (body.micros ?? Prisma.DbNull) : undefined,
+        sourceText: body.sourceText !== undefined ? body.sourceText : meal.sourceText,
         servings: body.servings !== undefined ? body.servings : meal.servings,
         notes: body.notes !== undefined ? body.notes : meal.notes,
         status: body.status ?? meal.status,

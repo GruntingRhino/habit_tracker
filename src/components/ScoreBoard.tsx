@@ -37,22 +37,17 @@ export default function ScoreBoard() {
   if (score === undefined) return null;
 
   return (
-    <div className="w-full max-w-sm select-none px-2 text-center">
-      <p className="min-label mb-10">{score ? dayLabel(score.date) : "Your scores"}</p>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-12">
+    <div className="w-full max-w-md select-none text-center">
+      <p className="min-label mb-2">{score ? dayLabel(score.date) : "Your scores"}</p>
+      <div className="flex justify-center gap-6">
         {SCORED_AREAS.map((a) => {
           const value = score ? Math.round(score[a]) : null;
           return (
-            <button key={a} onClick={() => setOpen(open === a ? null : a)} className="flex flex-col items-center">
-              <span className="flex items-baseline">
-                <span className="text-6xl font-extralight tabular-nums tracking-tight" style={{ color: "var(--ink-100)" }}>
-                  {value ?? "–"}
-                </span>
-                <span className="ml-1 text-sm" style={{ color: "var(--ink-600)" }}>
-                  /10
-                </span>
+            <button key={a} onClick={() => setOpen(open === a ? null : a)} className="flex flex-col items-center" aria-label={`${AREA_META[a].label} ${value ?? "no score"}`}>
+              <span className="text-2xl font-light tabular-nums" style={{ color: open === a ? "var(--ink-100)" : "var(--ink-200)" }}>
+                {value ?? "–"}
               </span>
-              <span className="mt-2 flex items-center gap-1.5 text-xs tracking-wide" style={{ color: "var(--ink-400)" }}>
+              <span className="flex items-center gap-1 text-[11px]" style={{ color: "var(--ink-500)" }}>
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: AREA_META[a].color }} />
                 {AREA_META[a].label}
               </span>
@@ -60,14 +55,14 @@ export default function ScoreBoard() {
           );
         })}
       </div>
-      <p className="mx-auto mt-10 min-h-[2.5rem] max-w-xs text-sm leading-relaxed" style={{ color: "var(--ink-500)" }}>
+      <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed" style={{ color: "var(--ink-500)" }}>
         {!score
-          ? "Spark scores your day every night at 11:30."
+          ? "Scored every night at 11:30."
           : open && score.rationale?.[open]
             ? score.rationale[open]
             : score.judgedBy
               ? "Tap a score to see why."
-              : "Live estimate — Spark judges tonight at 11:30."}
+              : "Live estimate; judged tonight at 11:30."}
       </p>
     </div>
   );

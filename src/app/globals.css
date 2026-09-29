@@ -381,15 +381,15 @@ body {
 }
 
 /* ─── Minimal primitives (private build) ─────────────────────────────────────*/
-.min-page { max-width: 44rem; margin: 0 auto; }
-.min-h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink-100); }
+.min-page { max-width: 45rem; margin: 0 auto; }
+.min-h1 { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink-100); }
 .min-sub { font-size: .8125rem; color: var(--ink-500); }
 .min-label { font-size: .6875rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-500); }
-.min-row { display: flex; align-items: center; gap: .75rem; padding: .7rem 0; border-bottom: 1px solid var(--stroke-1); }
+.min-row { display: flex; align-items: center; gap: .625rem; padding: .5rem 0; border-bottom: 1px solid var(--stroke-1); font-size: .875rem; }
 .min-row:last-child { border-bottom: 0; }
 .min-input {
-  width: 100%; background: transparent; color: var(--ink-100); font-size: .9375rem;
-  border: 0; border-bottom: 1px solid var(--stroke-2); padding: .65rem 0; outline: none;
+  width: 100%; background: transparent; color: var(--ink-100); font-size: .875rem;
+  border: 0; border-bottom: 1px solid var(--stroke-2); padding: .5rem 0; outline: none;
 }
 .min-input:focus { border-bottom-color: var(--accent); }
 .min-input::placeholder { color: var(--ink-600); }
@@ -398,3 +398,9 @@ body {
 .min-tab { font-size: .875rem; color: var(--ink-500); padding-bottom: .35rem; border-bottom: 1.5px solid transparent; transition: color .15s; }
 .min-tab[data-active="true"] { color: var(--ink-100); border-bottom-color: var(--ink-100); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.min-chip { font-size: .75rem; color: var(--ink-300); border: 1px solid var(--stroke-2); border-radius: 999px; padding: .2rem .6rem; transition: background .15s; }
+.min-chip:hover { background: rgba(255,255,255,.06); }
+.min-btn { font-size: .8125rem; font-weight: 500; color: var(--bg-base); background: var(--ink-100); border-radius: .5rem; padding: .3rem .75rem; }
+.min-btn:disabled { opacity: .35; }
+.min-field { width: 100%; background: rgba(255,255,255,.03); color: var(--ink-100); font-size: .8125rem; border: 1px solid var(--stroke-1); border-radius: .5rem; padding: .3rem .5rem; outline: none; }
+.min-field:focus { border-color: var(--accent); }

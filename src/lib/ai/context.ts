@@ -54,6 +54,17 @@ export function compareItems(a: { priority: string; due: Date | null }, b: { pri
   return da - db;
 }
 
+/** " → DUE TOMORROW" etc., so the model never has to do date math. */
+function relativeDue(due: Date | null, today: Date) {
+  if (!due) return "";
+  const days = Math.round((getStartOfDay(due).getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return " → OVERDUE";
+  if (days === 0) return " → DUE TODAY";
+  if (days === 1) return " → DUE TOMORROW";
+  if (days < 7) return ` → due in ${days} days`;
+  return "";
+}
+
 export function describeItem(i: OpenItem) {
   const due = i.due ? `, due ${format(i.due, "EEE MMM d")}` : "";
   const proj = i.projectTitle ? ` [${i.projectTitle}]` : i.type === "project" ? " [project]" : "";
@@ -82,11 +93,18 @@ export async function buildSnapshot(userId: string) {
     prisma.todo.count({ where: { userId, status: "done", completedAt: { gte: addDays(today, -7) } } }),
   ]);
   const lines: string[] = [];
-  lines.push(`Now: ${format(new Date(), "EEEE MMM d, h:mm a")}`);
+  const now = new Date();
+  lines.push(`Now: ${format(now, "EEEE MMM d, h:mm a")}. Tomorrow is ${format(addDays(now, 1), "EEEE MMM d")}.`);
+  const [openTodos, openTasks, activeProjects] = await Promise.all([
+    prisma.todo.count({ where: { userId, status: "open" } }),
+    prisma.projectTask.count({ where: { project: { userId, status: { notIn: ["completed", "archived"] } }, status: { notIn: ["completed", "cancelled"] } } }),
+    prisma.project.count({ where: { userId, status: { notIn: ["completed", "archived"] } } }),
+  ]);
+  lines.push(`Counts: ${openTodos} open to-dos, ${activeProjects} active projects with ${openTasks} open tasks.`);
   const planItems = (plan?.items as { title: string }[] | null) ?? [];
   if (planItems.length) lines.push(`Today's plan: ${planItems.map((p) => p.title).join("; ")}`);
   if (routines.length) lines.push(`Routines today: ${routines.map((r) => `${r.name}${r.done ? " ✓" : ""}`).join("; ")}`);
-  if (items.length) lines.push(`Open items:\n${items.map((i) => `- ${describeItem(i)}`).join("\n")}`);
+  if (items.length) lines.push(`Open items:\n${items.map((i) => `- ${describeItem(i)}${relativeDue(i.due, today)}`).join("\n")}`);
   if (scores.length)
     lines.push(
       `Recent scores /10:\n${scores

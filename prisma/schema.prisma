@@ -12,6 +12,7 @@ model User {
   email         String    @unique
   username      String?   @unique
   name          String?
+  nutritionTargets Json?  // {calories, protein, carbs, fat} per day
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -24,6 +25,7 @@ model User {
   workoutSessions WorkoutSession[]
   meals           Meal[]
   chatMessages    ChatMessage[]
+  conversations   Conversation[]
   todos           Todo[]
   reminders       Reminder[]
   dayPlans        DayPlan[]
@@ -98,6 +100,13 @@ model Meal {
   category  String   // breakfast, lunch, dinner, snack
   recipe    String?
   calories  Int?
+  protein   Float?   // grams
+  carbs     Float?   // grams
+  fat       Float?   // grams
+  items     Json?    // nutrition breakdown: [{name, amount, grams, calories, protein, carbs, fat, source}]
+  nutritionSource String? // "ai" (estimated), "manual"
+  micros    Json?    // meal totals: {sugar, fiber, sodium, potassium, magnesium, vitaminC, vitaminA, zinc, calcium, iron, vitaminD}
+  sourceText String?  // what he wrote, so the estimate can be re-run with answered amounts
   servings  Int?     @default(1)
   notes     String?
   order     Int      @default(0)
@@ -251,19 +260,41 @@ model ProjectTask {
   subTasks         ProjectTask[] @relation("SubTasks")
 }
 
-model ChatMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  role      String   // user, assistant
-  content   String
-  actions   Json?    // [{type, id, title, area}] items created by this turn (for undo + cards)
-  awaiting  Json?    // pending clarifying question: {itemRefs: [...], question}
-  source    String   @default("web") // web, telegram
-  createdAt DateTime @default(now())
+model Conversation {
+  id         String        @id @default(cuid())
+  userId     String
+  title      String        @default("New chat")
+  saved      Boolean       @default(false) // starred: kept in history past 30 days
+  source     String        @default("web") // web, telegram
+  memory     String?       // compacted summary of turns older than memoryUpTo (~150 tokens)
+  memoryUpTo DateTime?     // createdAt of the last message folded into memory
+  plan       Json?         // goal-planning state: {goal, qa: [{q, a}], stage, plan}
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id             String        @id @default(cuid())
+  userId         String
+  conversationId String?
+  role           String        // user, assistant
+  content        String
+  actions        Json?         // [{type, id, title, area}] items created by this turn (for undo + cards)
+  awaiting       Json?         // pending clarifying question: {itemRefs: [...], question}
+  meta           Json?         // UI extras: {options: [...]} quick replies, {plan: {...}} plan card
+  source         String        @default("web") // web, telegram
+  createdAt      DateTime      @default(now())
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([conversationId, createdAt])
 }
 
 model Todo {

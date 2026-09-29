@@ -104,7 +104,7 @@ export async function weeklyDigest() {
   lines.push(Object.keys(byArea).length ? Object.entries(byArea).map(([a, n]) => `${a}: ${n}`).join(" · ") : "nothing marked done");
   lines.push(`Open to-dos: ${openCount}`);
   if (habits.length) {
-    lines.push("", "<b>Routines</b>");
+    lines.push("", "<b>Habits</b>");
     for (const h of habits) lines.push(`${esc(h.name)}: ${h.logs.length}/${h.targetDays.length}`);
   }
   if (stale.length) {

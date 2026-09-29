@@ -8,8 +8,12 @@
  * - Generation is ~10 tok/s, so outputs are schema-constrained and kept short.
  */
 
-export const LLM_MODEL = process.env.LLM_MODEL ?? "sparkx2.5:1.7b";
+export const LLM_MODEL = process.env.LLM_MODEL ?? "sparkx2.5-abliterated:1.7b";
 const BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
+// Set when Ollama sits behind deploy/ollama-gate.mjs (the Vercel deployment reaches it over Tailscale Funnel).
+const AUTH: Record<string, string> = process.env.OLLAMA_AUTH_TOKEN
+  ? { Authorization: `Bearer ${process.env.OLLAMA_AUTH_TOKEN}` }
+  : {};
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -24,6 +28,8 @@ export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  /** Called with each content chunk as it streams in. */
+  onToken?: (text: string) => void;
 }
 
 export interface ChatResult {
@@ -43,7 +49,7 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
   try {
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...AUTH },
       signal: controller.signal,
       body: JSON.stringify({
         model: LLM_MODEL,
@@ -84,7 +90,9 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
           error?: string;
         };
         if (part.error) throw new LlmError(part.error);
-        content += part.message?.content ?? "";
+        const piece = part.message?.content ?? "";
+        content += piece;
+        if (piece) opts.onToken?.(piece);
         thinking += part.message?.thinking ?? "";
         if (part.done) {
           evalCount = part.eval_count ?? 0;
@@ -132,7 +140,7 @@ export async function chatJson<T>(opts: ChatOptions & { schema: object }): Promi
 
 export async function isModelUp(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE_URL}/api/ps`, { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${BASE_URL}/api/ps`, { headers: AUTH, signal: AbortSignal.timeout(2000) });
     if (!res.ok) return false;
     const data = (await res.json()) as { models?: { name: string }[] };
     return (data.models ?? []).some((m) => m.name.startsWith(LLM_MODEL));
@@ -144,7 +152,7 @@ export async function isModelUp(): Promise<boolean> {
 export async function warmUp(): Promise<void> {
   await fetch(`${BASE_URL}/api/generate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...AUTH },
     body: JSON.stringify({ model: LLM_MODEL, keep_alive: -1 }),
   }).catch(() => undefined);
 }

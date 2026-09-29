@@ -44,6 +44,15 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname),
+  // Pages folded into others by the consolidation; old links (including ones in chat history) keep working.
+  async redirects() {
+    return [
+      { source: "/projects", destination: "/todos", permanent: false },
+      { source: "/projects/:id", destination: "/todos?project=:id", permanent: false },
+      { source: "/notes", destination: "/entry?tab=notes", permanent: false },
+      { source: "/weights", destination: "/habits#workouts", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

@@ -8,7 +8,7 @@ interface Status {
   up: boolean;
   telegram: boolean;
   timezone: string;
-  owner: string | null;
+  access: string;
 }
 
 const SCHEDULE: [string, string][] = [
@@ -60,7 +60,7 @@ export default function SettingsPage() {
               <Dot ok={status.telegram} />
               {status.telegram ? "Connected" : "Not set up"}
             </Row>
-            <Row label="Access">Tailscale · {status.owner}</Row>
+            <Row label="Access">{status.access}</Row>
             <Row label="Timezone">{status.timezone}</Row>
           </>
         ) : (

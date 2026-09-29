@@ -1,4 +1,8 @@
 import prisma from "@/lib/prisma";
+import { applyPlanToProject } from "@/lib/ai/goalplan";
+import { estimateMealInBackground } from "@/lib/ai/nutrition";
+import { inBackground } from "@/lib/background";
+import { parseFoods } from "@/lib/nutrition-parse";
 import { normalizeArea, normalizePriority } from "@/lib/areas";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
@@ -7,14 +11,15 @@ import { findWhenInText, parseWhenFrom } from "@/lib/ai/when";
 
 /** A change made by the assistant; stored on the chat message so it can be undone. */
 export interface ItemAction {
-  op: "create" | "complete" | "append";
-  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note";
+  op: "create" | "complete" | "append" | "update";
+  /** "plan": a goal plan in progress (id = conversation id); undone by undoMessage, not here. */
+  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan";
   id: string;
   title: string;
   area?: string;
   href: string;
   detail?: string;
-  /** previous value for reversible edits (journal append) */
+  /** previous value for reversible edits (journal append; plan JSON for a plan update) */
   prev?: string | null;
 }
 
@@ -79,14 +84,14 @@ export async function applyCapture(
       case "project": {
         const existing = bestMatch(item.title, projects, 0.8);
         if (existing) {
-          actions.push({ op: "create", type: "project", id: existing.id, title: existing.title, area: existing.area, href: `/projects/${existing.id}`, detail: "already tracked" });
+          actions.push({ op: "create", type: "project", id: existing.id, title: existing.title, area: existing.area, href: `/todos?project=${existing.id}`, detail: "already tracked" });
           break;
         }
         const project = await prisma.project.create({
           data: { userId, title: item.title, area, priority, deadline: when?.date ?? null },
         });
         projects.push({ id: project.id, title: project.title, area: project.area });
-        actions.push({ op: "create", type: "project", id: project.id, title: project.title, area, href: `/projects/${project.id}`, detail: when ? `due ${fmt(when.date)}` : undefined });
+        actions.push({ op: "create", type: "project", id: project.id, title: project.title, area, href: `/todos?project=${project.id}`, detail: when ? `due ${fmt(when.date)}` : undefined });
         break;
       }
       case "task": {
@@ -100,7 +105,7 @@ export async function applyCapture(
         const task = await prisma.projectTask.create({
           data: { projectId: project.id, title: item.title, area, priority, dueDate: when?.date ?? null, order: (last?.order ?? -1) + 1 },
         });
-        actions.push({ op: "create", type: "task", id: task.id, title: task.title, area, href: `/projects/${project.id}`, detail: `in ${project.title}` });
+        actions.push({ op: "create", type: "task", id: task.id, title: task.title, area, href: `/todos?project=${project.id}`, detail: `in ${project.title}` });
         break;
       }
       case "routine": {
@@ -131,21 +136,32 @@ export async function applyCapture(
       case "meal": {
         const eaten = item.done !== false;
         const lower = item.title.toLowerCase() + " " + originalText.toLowerCase();
-        const category = item.meal ?? (/breakfast/.test(lower) ? "breakfast" : /lunch/.test(lower) ? "lunch" : /snack/.test(lower) ? "snack" : "dinner");
+        // The model guesses a slot even when none was said; only trust a slot named in the text.
+        const said = /\b(breakfast|lunch|dinner|snack)\b/.exec(lower)?.[1];
+        const hour = new Date().getHours();
+        const category = said ?? (hour < 11 ? "breakfast" : hour < 16 ? "lunch" : hour < 22 ? "dinner" : "snack");
+        // "Lunch" or "Meal" isn't a name: use the foods instead ("Jasmine rice, salmon, cucumber…").
+        const generic = /^(breakfast|lunch|dinner|brunch|snack|meal|food|dessert|something|stuff)$/i.test(item.title.trim());
+        const foods = generic ? parseFoods(originalText).map((f) => f.text) : [];
+        const mealName = foods.length ? `${foods.slice(0, 3).join(", ")}${foods.length > 3 ? "…" : ""}`.replace(/^./, (c) => c.toUpperCase()) : item.title;
         const meal = await prisma.meal.create({
           data: {
             userId,
-            name: item.title,
+            name: mealName,
+            sourceText: items.filter((i) => i.kind === "meal").length === 1 ? originalText.slice(0, 600) : item.title,
             category,
             status: eaten ? "eaten" : "planned",
             plannedFor: eaten ? new Date() : when?.date ?? null,
           },
         });
+        // Eaten meals get nutrition filled in after the reply (the Nutrition tab shows it).
+        if (eaten) inBackground(() => estimateMealInBackground(meal.id, items.filter((i) => i.kind === "meal").length === 1 ? originalText : item.title));
         actions.push({ op: "create", type: "meal", id: meal.id, title: meal.name, area: "physical", href: "/meals", detail: eaten ? `ate · ${category}` : `planned · ${category}` });
         break;
       }
       case "workout": {
-        if (item.done === false || (when && when.date.getTime() > Date.now())) {
+        // "ran a 5k in 24 minutes" is a duration, not a future time: a done workout is never planned.
+        if (item.done === false || (item.done !== true && when && when.date.getTime() > Date.now())) {
           const todo = await prisma.todo.create({
             data: { userId, title: `Workout: ${item.title}`, area: "physical", priority, dueAt: when?.date ?? null, source },
           });
@@ -163,7 +179,7 @@ export async function applyCapture(
           create: { userId, date: day, workoutCompleted: true, workoutRoutineName: routine.name },
         });
         await recomputeCategoryScoreForDate(userId, day);
-        actions.push({ op: "create", type: "workout", id: session.id, title: routine.name, area: "physical", href: "/weights", detail: "logged" });
+        actions.push({ op: "create", type: "workout", id: session.id, title: routine.name, area: "physical", href: "/habits#workouts", detail: "logged" });
         break;
       }
       case "journal": {
@@ -185,7 +201,7 @@ export async function applyCapture(
           .replace(/^\s*(notes?\s*[:\-]|jot( this| that)? down|write( this| that)? down( that)?|save (this|that)|remember (this|that)|keep in mind( that)?)\s*[:\-]?\s*/i, "")
           .trim();
         const note = await prisma.note.create({ data: { userId, title: item.title.slice(0, 120), content: content || originalText } });
-        actions.push({ op: "create", type: "note", id: note.id, title: note.title, area, href: "/notes" });
+        actions.push({ op: "create", type: "note", id: note.id, title: note.title, area, href: "/entry?tab=notes" });
         break;
       }
       case "todo":
@@ -221,7 +237,7 @@ export async function applyComplete(userId: string, items: RoutedItem[]): Promis
     const task = bestMatch(item.title, tasks);
     if (task) {
       await prisma.projectTask.update({ where: { id: task.id }, data: { status: "completed", completedAt: now } });
-      actions.push({ op: "complete", type: "task", id: task.id, title: task.title, area: task.area ?? undefined, href: `/projects/${task.projectId}` });
+      actions.push({ op: "complete", type: "task", id: task.id, title: task.title, area: task.area ?? undefined, href: `/todos?project=${task.projectId}` });
       continue;
     }
     const habit = bestMatch(item.title, habits.map((h) => ({ ...h, title: h.name })));
@@ -237,7 +253,7 @@ export async function applyComplete(userId: string, items: RoutedItem[]): Promis
     const project = bestMatch(item.title, projects, 0.6);
     if (project) {
       await prisma.project.update({ where: { id: project.id }, data: { status: "completed", completedAt: now } });
-      actions.push({ op: "complete", type: "project", id: project.id, title: project.title, area: project.area, href: `/projects/${project.id}` });
+      actions.push({ op: "complete", type: "project", id: project.id, title: project.title, area: project.area, href: `/todos?project=${project.id}` });
       continue;
     }
     missed.push(item.title);
@@ -251,7 +267,11 @@ export async function undoActions(userId: string, actions: ItemAction[]): Promis
   const today = getStartOfDay(new Date());
   for (const a of [...actions].reverse()) {
     try {
-      if (a.op === "append" && a.type === "journal") {
+      if (a.type === "plan") {
+        // Conversation state; handled by undoMessage.
+      } else if (a.op === "update" && a.type === "project") {
+        if (a.prev) await applyPlanToProject(userId, a.id, JSON.parse(a.prev));
+      } else if (a.op === "append" && a.type === "journal") {
         await prisma.dailyEntry.updateMany({ where: { id: a.id, userId }, data: { notes: a.prev ?? null } });
       } else if (a.op === "complete") {
         if (a.type === "todo") await prisma.todo.updateMany({ where: { id: a.id, userId }, data: { status: "open", completedAt: null } });

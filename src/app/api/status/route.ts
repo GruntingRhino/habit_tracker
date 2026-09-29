@@ -7,6 +7,6 @@ export async function GET() {
     up: await isModelUp(),
     telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_OWNER_CHAT_ID),
     timezone: process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-    owner: process.env.OWNER_LOGIN ?? null,
+    access: process.env.VERCEL === "1" ? "Vercel" : `Tailscale · ${process.env.OWNER_LOGIN ?? "?"}`,
   });
 }

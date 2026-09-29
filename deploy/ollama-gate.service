@@ -1,0 +1,17 @@
+[Unit]
+Description=Token gate for Ollama (published to the LiveImproved Vercel app via Tailscale Funnel)
+After=network-online.target ollama.service
+Wants=ollama.service
+
+[Service]
+User=opc
+WorkingDirectory=/home/opc/apps/liveimproved
+# Needs OLLAMA_AUTH_TOKEN (the same value as the Vercel env var).
+EnvironmentFile=/etc/liveimproved.env
+ExecStart=/usr/local/bin/liveimproved-node ollama-gate.mjs
+Restart=always
+RestartSec=3
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

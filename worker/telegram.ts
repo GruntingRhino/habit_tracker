@@ -1,8 +1,7 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { addDays, addHours } from "date-fns";
 import prisma from "@/lib/prisma";
-import { handleMessage } from "@/lib/ai/assistant";
-import { undoActions, type ItemAction } from "@/lib/ai/capture";
+import { handleMessage, undoMessage, type AssistantReply, type ReplyMeta } from "@/lib/ai/assistant";
 import { planDay } from "@/lib/ai/planner";
 import { getOwner } from "@/lib/owner";
 import { getStartOfDay } from "@/lib/utils";
@@ -75,8 +74,7 @@ export function setupBot() {
     await ctx.replyWithChatAction("typing").catch(() => undefined);
     try {
       const result = await handleMessage(owner.id, ctx.message.text, "telegram");
-      const keyboard = result.actions.length ? new InlineKeyboard().text("↩︎ Undo", `undo:${result.id}`) : undefined;
-      await ctx.reply(esc(result.reply), { parse_mode: "HTML", reply_markup: keyboard });
+      await ctx.reply(esc(result.reply), { parse_mode: "HTML", reply_markup: replyKeyboard(result) });
     } finally {
       clearInterval(typing);
     }
@@ -87,14 +85,22 @@ export function setupBot() {
     const [kind, a, b] = ctx.callbackQuery.data.split(":");
     let note = "";
 
-    if (kind === "undo" && a) {
+    // Tapped a quick-reply option: answer as if typed.
+    if (kind === "opt" && a && b) {
       const msg = await prisma.chatMessage.findFirst({ where: { id: a, userId: owner.id } });
-      const actions = (msg?.actions as ItemAction[] | null) ?? [];
-      if (msg && actions.length) {
-        await undoActions(owner.id, actions);
-        await prisma.chatMessage.update({ where: { id: msg.id }, data: { actions: [], awaiting: undefined } });
-        note = "↩︎ Undone";
-      }
+      const option = (msg?.meta as ReplyMeta | null)?.options?.[Number(b)];
+      await ctx.answerCallbackQuery();
+      if (!option) return;
+      await ctx.editMessageReplyMarkup().catch(() => undefined);
+      await ctx.reply(`<i>› ${esc(option)}</i>`, { parse_mode: "HTML" });
+      await ctx.replyWithChatAction("typing").catch(() => undefined);
+      const result = await handleMessage(owner.id, option, "telegram");
+      await ctx.reply(esc(result.reply), { parse_mode: "HTML", reply_markup: replyKeyboard(result) });
+      return;
+    }
+
+    if (kind === "undo" && a) {
+      if (await undoMessage(owner.id, a)) note = "↩︎ Undone";
     } else if ((kind === "rd" || kind === "rs" || kind === "rt") && a) {
       const reminder = await prisma.reminder.findFirst({ where: { id: a, userId: owner.id } });
       if (reminder) {
@@ -137,4 +143,13 @@ export function setupBot() {
   });
 
   bot.catch((err) => console.error("telegram error", err.error));
+}
+
+function replyKeyboard(result: AssistantReply) {
+  const options = result.meta?.options ?? [];
+  if (!options.length && !result.actions.length) return undefined;
+  const keyboard = new InlineKeyboard();
+  options.forEach((o, i) => keyboard.text(o, `opt:${result.id}:${i}`).row());
+  if (result.actions.length) keyboard.text("↩︎ Undo", `undo:${result.id}`);
+  return keyboard;
 }

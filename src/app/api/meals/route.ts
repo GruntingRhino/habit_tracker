@@ -4,6 +4,7 @@ import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { strictObject } from "@/lib/validation";
+import { microsSchema, nutritionItemSchema } from "@/lib/nutrition-schema";
 
 const VALID_MEAL_CATEGORIES = ["breakfast", "lunch", "dinner", "snack"] as const;
 
@@ -11,9 +12,18 @@ const mealPostSchema = strictObject({
   name: z.string().trim().min(1, "name is required").max(120),
   category: z.enum(VALID_MEAL_CATEGORIES),
   recipe: z.string().trim().max(5000).optional(),
-  calories: z.number().int().min(1).max(10000).optional(),
+  calories: z.number().int().min(0).max(10000).optional(),
+  protein: z.number().min(0).max(1000).optional(),
+  carbs: z.number().min(0).max(2000).optional(),
+  fat: z.number().min(0).max(1000).optional(),
+  items: z.array(nutritionItemSchema).max(30).optional(),
+  nutritionSource: z.enum(["ai", "manual"]).optional(),
+  micros: microsSchema.optional(),
+  sourceText: z.string().trim().max(600).optional(),
   servings: z.number().min(0.25).max(100).default(1),
   notes: z.string().trim().max(1000).optional(),
+  status: z.enum(["saved", "planned", "eaten"]).optional(),
+  plannedFor: z.string().datetime({ offset: true }).optional(),
 });
 
 export async function GET() {
@@ -58,8 +68,17 @@ export async function POST(req: NextRequest) {
         category: parsed.data.category,
         recipe: parsed.data.recipe,
         calories: parsed.data.calories,
+        protein: parsed.data.protein,
+        carbs: parsed.data.carbs,
+        fat: parsed.data.fat,
+        items: parsed.data.items,
+        nutritionSource: parsed.data.nutritionSource,
+        micros: parsed.data.micros,
+        sourceText: parsed.data.sourceText,
         servings: parsed.data.servings,
         notes: parsed.data.notes,
+        status: parsed.data.status,
+        plannedFor: parsed.data.plannedFor ? new Date(parsed.data.plannedFor) : parsed.data.status === "eaten" ? new Date() : undefined,
         order: (last?.order ?? -1) + 1,
       },
     });

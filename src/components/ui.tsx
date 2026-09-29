@@ -5,11 +5,11 @@ import { AREA_META, normalizeArea } from "@/lib/areas";
 
 export function PageHeader({ title, sub, action }: { title: string; sub?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <header className="mb-8 flex items-end justify-between gap-4">
-      <div>
-        {sub && <p className="min-sub mb-1">{sub}</p>}
-        <h1 className="min-h1">{title}</h1>
-      </div>
+    <header className="mb-4 flex items-center justify-between gap-4 pr-9 lg:pr-0">
+      <h1 className="min-h1">
+        {title}
+        {sub && <span className="min-sub ml-2 font-normal">{sub}</span>}
+      </h1>
       {action}
     </header>
   );
@@ -17,8 +17,8 @@ export function PageHeader({ title, sub, action }: { title: string; sub?: React.
 
 export function Section({ label, action, children }: { label: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="mb-10">
-      <div className="mb-2 flex items-center justify-between">
+    <section className="mb-6">
+      <div className="mb-1 flex items-center justify-between">
         <h2 className="min-label">{label}</h2>
         {action}
       </div>
@@ -63,5 +63,23 @@ export function Tabs<T extends string>({ value, options, onChange }: { value: T;
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="py-6 text-sm" style={{ color: "var(--ink-500)" }}>{children}</p>;
+  return <p className="py-3 text-sm" style={{ color: "var(--ink-500)" }}>{children}</p>;
+}
+
+/** An input at the top of a list: type, press Enter. */
+export function InlineAdd({ placeholder, onAdd, className = "" }: { placeholder: string; onAdd: (value: string) => void | Promise<void>; className?: string }) {
+  return (
+    <input
+      placeholder={placeholder}
+      className={`min-input ${className}`}
+      onKeyDown={(e) => {
+        const el = e.currentTarget;
+        if (e.key === "Enter" && el.value.trim()) {
+          const v = el.value.trim();
+          el.value = "";
+          void onAdd(v);
+        }
+      }}
+    />
+  );
 }

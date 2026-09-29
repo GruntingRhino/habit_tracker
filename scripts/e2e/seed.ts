@@ -23,6 +23,10 @@ export async function seed() {
   await prisma.note.deleteMany({ where });
   await prisma.meal.deleteMany({ where });
   await prisma.workoutSession.deleteMany({ where });
+  await prisma.weightRoutine.deleteMany({ where });
+  await prisma.brainNudge.deleteMany({ where });
+  await prisma.profileDoc.deleteMany({ where });
+  await prisma.profileCorrection.deleteMany({ where });
   await prisma.dayPlan.deleteMany({ where });
   const today = getStartOfDay(new Date());
 

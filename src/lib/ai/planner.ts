@@ -44,6 +44,7 @@ Rules:
 - Balance areas: if a life area scored low recently, include one item from it when possible.
 - Prefer concrete next actions over vague projects. Don't overload: fewer, finishable items.
 - reason: max 8 words, why it's on today's list.
+- If "About him" says how long things take him or when he works best, keep the list realistic for that.
 - summary: one encouraging sentence about the day's focus.
 Reply with minified JSON only: {"picks":[{"n":3,"reason":"due today"}],"summary":"..."}`;
 
@@ -56,6 +57,13 @@ export function fallbackPlan(candidates: OpenItem[]): PlanItem[] {
     projectId: c.projectId,
     reason: c.due && c.due.getTime() < Date.now() ? "overdue" : c.priority === "urgent" || c.priority === "high" ? `${c.priority} priority` : undefined,
   }));
+}
+
+/** Computed facts from his profile that matter for a plan: how long things take, when he works best. */
+async function planningProfile(userId: string) {
+  const docs = await prisma.profileDoc.findMany({ where: { userId, category: { in: ["task-durations", "energy"] } }, select: { content: true } }).catch(() => []);
+  const stats = docs.flatMap((d) => ((d.content as { stats?: string[] } | null)?.stats ?? []).slice(0, 2));
+  return stats.join(" ").slice(0, 400);
 }
 
 export async function planDay(
@@ -93,7 +101,8 @@ export async function planDay(
   const numbered = candidates
     .map((c, i) => `${i + 1}. ${describeItem(c)}${c.due && c.due.getTime() < day.getTime() ? " OVERDUE" : ""}`)
     .join("\n");
-  const user = `Today: ${format(day, "EEEE MMM d")}\nWeakest areas lately: ${weak}${opts.note ? `\nHis note: ${opts.note}` : ""}\n\nOpen items:\n${numbered}`;
+  const about = await planningProfile(userId);
+  const user = `Today: ${format(day, "EEEE MMM d")}\nWeakest areas lately: ${weak}${opts.note ? `\nHis note: ${opts.note}` : ""}${about ? `\nAbout him: ${about}` : ""}\n\nOpen items:\n${numbered}`;
 
   try {
     const result = await chat({

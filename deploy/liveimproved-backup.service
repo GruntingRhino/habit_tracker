@@ -5,4 +5,4 @@ Description=LiveImproved nightly database backup
 Type=oneshot
 User=opc
 EnvironmentFile=/etc/liveimproved.env
-ExecStart=/home/opc/apps/liveimproved/backup.sh
+ExecStart=/bin/bash /home/opc/apps/liveimproved/backup.sh

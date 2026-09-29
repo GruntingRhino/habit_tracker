@@ -1,0 +1,19 @@
+[Unit]
+Description=LiveImproved brain (always-on background AI: live scores, profile, nudges)
+After=network-online.target ollama.service ollama-gate.service
+Wants=ollama.service
+
+[Service]
+User=opc
+WorkingDirectory=/home/opc/apps/liveimproved
+EnvironmentFile=/etc/liveimproved.env
+Environment=NODE_ENV=production NODE_NO_WARNINGS=1 BRAIN_DIR=/var/lib/liveimproved/brain
+ExecStart=/usr/local/bin/liveimproved-node --max-old-space-size=200 dist/brain.mjs
+Restart=always
+RestartSec=10
+# Low priority: chat and the Telegram worker always come first.
+Nice=10
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target

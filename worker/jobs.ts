@@ -6,6 +6,8 @@ import { judgeDay } from "@/lib/ai/judge";
 import { SCORED_AREAS } from "@/lib/areas";
 import { getStartOfDay } from "@/lib/utils";
 import { reportError } from "@/lib/monitoring";
+import { readRationale } from "@/lib/score-rationale";
+import { scoreLinks } from "@/lib/brain/jobs";
 import { esc, formatBrief, formatScores } from "./format";
 import { reminderKeyboard, sendToOwner } from "./telegram";
 
@@ -68,7 +70,7 @@ export async function eveningReview() {
 
 export async function nightlyJudge(date = new Date()) {
   const owner = await getOwner();
-  await judgeDay(owner.id, date, { think: false });
+  await judgeDay(owner.id, date);
   const score = await prisma.categoryScore.findUnique({ where: { userId_date: { userId: owner.id, date: getStartOfDay(date) } } });
   if (score) await sendToOwner(formatScores(score));
 }
@@ -94,10 +96,13 @@ export async function weeklyDigest() {
     byArea[a] = (byArea[a] ?? 0) + 1;
   }
 
-  const avg = (k: (typeof SCORED_AREAS)[number] | "overall") =>
-    scores.length ? (scores.reduce((s, x) => s + x[k], 0) / scores.length).toFixed(1) : "–";
+  // Areas with no data that day are left out of the average rather than counted as 0.
+  const avg = (k: (typeof SCORED_AREAS)[number] | "overall") => {
+    const rows = k === "overall" ? scores : scores.filter((x) => !readRationale(x.rationale)[k].noData);
+    return rows.length ? (rows.reduce((s, x) => s + x[k], 0) / rows.length).toFixed(1) : "–";
+  };
 
-  const lines = [`🗓 <b>Weekly review</b> · ${format(weekAgo, "MMM d")}–${format(addDays(today, -1), "MMM d")}`, ""];
+  const lines = [`🗓 <b>Sunday review</b> · ${format(weekAgo, "MMM d")}–${format(addDays(today, -1), "MMM d")}`, ""];
   lines.push(`<b>Average score:</b> ${avg("overall")}/10`);
   lines.push(SCORED_AREAS.map((a) => `${a}: ${avg(a)}`).join(" · "));
   lines.push("", "<b>Completed by area</b>");
@@ -110,6 +115,16 @@ export async function weeklyDigest() {
   if (stale.length) {
     lines.push("", "<b>Stale projects (14+ days untouched)</b>");
     lines.push(stale.map((p) => `• ${esc(p.title)}`).join("\n"));
+  }
+
+  // Sunday review: one pattern and one small experiment for the week.
+  const links = await scoreLinks(userId).catch(() => [] as string[]);
+  if (links.length) lines.push("", "<b>Pattern</b>", esc(links[0]));
+  const weakest = [...SCORED_AREAS].filter((a) => avg(a) !== "–").sort((a, b) => Number(avg(a)) - Number(avg(b)))[0] ?? null;
+  if (weakest) {
+    const tips = scores.flatMap((s) => readRationale(s.rationale)[weakest].improve ?? []);
+    const common = tips.sort((a, b) => tips.filter((t) => t === b).length - tips.filter((t) => t === a).length)[0];
+    lines.push("", "<b>Experiment for this week</b>", `${weakest[0].toUpperCase()}${weakest.slice(1)} was your lowest area (${avg(weakest)}).${common ? ` Try: ${esc(common)}.` : ""}`);
   }
   await sendToOwner(lines.join("\n"));
 }

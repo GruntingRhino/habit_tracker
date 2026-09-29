@@ -29,6 +29,9 @@ model User {
   todos           Todo[]
   reminders       Reminder[]
   dayPlans        DayPlan[]
+  profileDocs     ProfileDoc[]
+  profileCorrections ProfileCorrection[]
+  brainNudges     BrainNudge[]
 }
 
 model DailyEntry {
@@ -350,3 +353,57 @@ model DayPlan {
   @@unique([userId, date])
 }
 
+
+// The distilled "file on you". The full store (evidence, observations, snapshots, up to 1.5 GB)
+// lives on the server's disk under BRAIN_DIR; only these small summaries sync here.
+model ProfileDoc {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String   // see src/lib/brain/categories.ts
+  content   Json     // {summary, beliefs: [{id, text, level, source, evidence: [...]}], stats: [...]}
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+}
+
+// "That's wrong" on a belief. The brain applies it to its files and won't re-learn it from old evidence.
+model ProfileCorrection {
+  id        String    @id @default(cuid())
+  userId    String
+  category  String
+  beliefId  String
+  text      String
+  appliedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Something the background AI noticed: shown in the app, sometimes sent on Telegram.
+model BrainNudge {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String    // stuck-project, streak, nutrient-gap, goal-pulse, tidy, insight, ...
+  key       String    // what it's about (item id, nutrient, ...) — one per kind+key+day
+  day       String    // yyyy-MM-dd
+  title     String
+  body      String?
+  action    Json?     // optional one-tap action: {type: "todo-done" | "reminder-done" | ..., id}
+  status    String    @default("active") // active, dismissed, done
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, key, day])
+  @@index([userId, status, createdAt])
+}
+
+// Small shared state between the brain service and the app (live-score status, heartbeat, quiz).
+model BrainState {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

@@ -5,6 +5,8 @@ import { getTodayRoutines } from "@/lib/ai/context";
 import { planDay } from "@/lib/ai/planner";
 import { SCORED_AREAS } from "@/lib/areas";
 import { getStartOfDay } from "@/lib/utils";
+import { readRationale } from "@/lib/score-rationale";
+import { bestWindow, journalPrompt } from "@/lib/brain/jobs";
 
 const EMOJI: Record<string, string> = { physical: "💪", mental: "🧠", financial: "💰", spiritual: "🙏", work: "💼", general: "📌" };
 
@@ -32,6 +34,10 @@ export async function formatBrief(userId: string, kind: "morning" | "evening") {
   const lines: string[] = [];
   lines.push(kind === "morning" ? `☀️ <b>${format(today, "EEEE, MMM d")}</b>` : `🌙 <b>Evening check-in</b>`);
   if (kind === "morning" && plan.summary) lines.push(`<i>${esc(plan.summary)}</i>`);
+  if (kind === "morning") {
+    const w = await bestWindow(userId).catch(() => null);
+    if (w && w.share >= 0.15) lines.push(`⏱ Your best focus window lately: <b>${w.label}</b>. Put the hardest thing there.`);
+  }
   lines.push("");
   if (kind === "evening") {
     lines.push(`Plan: ${plan.items.length - open.length}/${plan.items.length} done · Habits: ${routines.length - openRoutines.length}/${routines.length}`);
@@ -49,7 +55,7 @@ export async function formatBrief(userId: string, kind: "morning" | "evening") {
   if (kind === "morning" && meals.length) {
     lines.push("", "<b>Meals</b>", meals.map((m) => `🍽 ${m.category}: ${esc(m.name)}`).join("\n"));
   }
-  if (kind === "evening") lines.push("", "📝 How did today go? Reply with a few lines for your journal.");
+  if (kind === "evening") lines.push("", esc(await journalPrompt(userId).catch(() => "📝 How did today go? Reply with a few lines for your journal.")), "<i>Reply with a few lines for your journal.</i>");
 
   const keyboard = new InlineKeyboard();
   let row = 0;
@@ -77,10 +83,17 @@ export function formatScores(s: {
   journalScore: number | null;
   journalFeedback: string | null;
 }) {
-  const reasons = (s.rationale ?? {}) as Record<string, string>;
+  const reasons = readRationale(s.rationale);
   const lines = [`📊 <b>${format(s.date, "EEE MMM d")} — ${s.overall.toFixed(1)}/10</b>`, ""];
   for (const a of SCORED_AREAS) {
-    lines.push(`${EMOJI[a]} ${a[0].toUpperCase()}${a.slice(1)}: <b>${Math.round(s[a])}</b>${reasons[a] ? ` — ${esc(reasons[a])}` : ""}`);
+    const r = reasons[a];
+    const label = `${EMOJI[a]} ${a[0].toUpperCase()}${a.slice(1)}`;
+    if (r.noData) {
+      lines.push(`${label}: – <i>no data yet</i>`);
+      continue;
+    }
+    lines.push(`${label}: <b>${Math.round(s[a])}</b>${r.why.length ? ` — ${esc(r.why.join("; "))}` : ""}`);
+    if (r.improve) lines.push(`   ↑ ${esc(r.improve)}`);
   }
   if (s.journalFeedback) {
     lines.push("", `📝 Journal${s.journalScore != null ? ` ${s.journalScore}/10` : ""}`, esc(s.journalFeedback));

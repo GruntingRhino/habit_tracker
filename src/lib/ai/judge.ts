@@ -1,183 +1,64 @@
 import prisma from "@/lib/prisma";
-import { SCORED_AREAS, type ScoredArea } from "@/lib/areas";
 import { chat, parseJson, LLM_MODEL } from "@/lib/ai/llm";
-import { recomputeCategoryScoreForDate } from "@/lib/category-score";
-import { getDayOfWeek, getStartOfDay } from "@/lib/utils";
+import { buildFacts, gradeDay, type GradeResult } from "@/lib/brain/scores";
+import { getStartOfDay } from "@/lib/utils";
 import { reportError } from "@/lib/monitoring";
-import { addDays, format } from "date-fns";
 
-export interface Judgement {
-  scores: Record<ScoredArea, number>;
-  overall: number;
-  reasons: Partial<Record<ScoredArea, string>>;
-  journalScore: number | null;
-  journalFeedback: string | null;
-  judgedBy: string;
-}
-
-const areaProps = Object.fromEntries(SCORED_AREAS.map((a) => [a, { type: "integer", minimum: 0, maximum: 10 }]));
-const JUDGE_SCHEMA = {
+const JOURNAL_SCHEMA = {
   type: "object",
-  properties: {
-    ...areaProps,
-    reasons: {
-      type: "object",
-      properties: Object.fromEntries(SCORED_AREAS.map((a) => [a, { type: "string" }])),
-      required: [...SCORED_AREAS],
-    },
-    journalScore: { type: "integer", minimum: 0, maximum: 10 },
-    journalFeedback: { type: "string" },
-  },
-  required: [...SCORED_AREAS, "reasons", "journalScore", "journalFeedback"],
+  properties: { journalScore: { type: "integer", minimum: 0, maximum: 10 }, journalFeedback: { type: "string" } },
+  required: ["journalScore", "journalFeedback"],
 };
 
-const JUDGE_SYSTEM = `You are Abhay's honest life coach. Score his day from 0 to 10 in each area using ONLY the facts given.
-Scale: 10 exceptional, 8 strong, 6 decent, 4 weak, 2 very poor, 0 nothing at all. 5 when there is little data for that area.
-- physical: training, sleep (7-9h ideal), steps, eating logged, physical routines/tasks
-- mental: focus and discipline — work/school tasks and projects done, deep work, reading/learning, mental routines, screen time (less is better), mood, stress handling
-- financial: spending vs saving, income work, money tasks done
-- spiritual: prayer/faith routines, "right with God", spiritual tasks, gratitude
-Be fair but demanding; don't inflate. Each reason: max 12 words, cite a concrete fact.
-Journal: score 0-10 for honesty, reflection and intention (0 if no journal). journalFeedback: 2-3 sentences, warm but direct, one concrete suggestion for tomorrow. If no journal, encourage him to write one tonight.
+// Byte-stable for the prompt cache.
+const JOURNAL_SYSTEM = `You are Abhay's honest life coach reading his journal entry for the day.
+journalScore: 0-10 for honesty, reflection and intention.
+journalFeedback: 2-3 sentences, warm but direct, about what he actually wrote, with one concrete suggestion for tomorrow. Never mention anything he didn't write.
 Reply with minified JSON only.`;
 
-async function collectFacts(userId: string, day: Date) {
-  const next = addDays(day, 1);
-  const dow = getDayOfWeek(day);
-  const [entry, todosDone, todosDueOpen, tasksDone, habits, workouts, meals, remindersDone] = await Promise.all([
-    prisma.dailyEntry.findUnique({ where: { userId_date: { userId, date: day } } }),
-    prisma.todo.findMany({ where: { userId, status: "done", completedAt: { gte: day, lt: next } }, select: { title: true, area: true } }),
-    prisma.todo.findMany({ where: { userId, status: "open", dueAt: { lt: next } }, select: { title: true, area: true } }),
-    prisma.projectTask.findMany({
-      where: { project: { userId }, status: "completed", completedAt: { gte: day, lt: next } },
-      select: { title: true, area: true, project: { select: { title: true, area: true } } },
-    }),
-    prisma.habit.findMany({
-      where: { userId, isActive: true, targetDays: { has: dow } },
-      select: { name: true, area: true, logs: { where: { date: day }, select: { completed: true } } },
-    }),
-    prisma.workoutSession.findMany({ where: { userId, date: { gte: day, lt: next } }, select: { routine: { select: { name: true } } } }),
-    prisma.meal.findMany({ where: { userId, status: "eaten", plannedFor: { gte: day, lt: next } }, select: { name: true, category: true } }),
-    prisma.reminder.count({ where: { userId, status: "done", updatedAt: { gte: day, lt: next } } }),
-  ]);
-
-  const byArea: Record<string, string[]> = Object.fromEntries(SCORED_AREAS.map((a) => [a, []]));
-  // Work/school and general items count toward mental (focus + discipline).
-  const push = (area: string | null | undefined, line: string) => (byArea[area ?? ""] ?? byArea.mental).push(line);
-
-  for (const t of todosDone) push(t.area, `done: ${t.title}`);
-  for (const t of tasksDone) push(t.area ?? t.project.area, `done: ${t.title} (${t.project.title})`);
-  for (const t of todosDueOpen) push(t.area, `NOT done (due): ${t.title}`);
-  for (const h of habits) push(h.area === "general" ? "mental" : h.area, `routine ${h.logs[0]?.completed ? "done" : "missed"}: ${h.name}`);
-  for (const w of workouts) push("physical", `workout logged: ${w.routine.name}`);
-  if (meals.length) push("physical", `meals logged: ${meals.map((m) => `${m.category} ${m.name}`).join(", ")}`);
-
-  if (entry) {
-    if (entry.sleepHours != null) push("physical", `sleep ${entry.sleepHours}h`);
-    if (entry.steps != null) push("physical", `steps ${entry.steps}`);
-    if (entry.workoutCompleted && !workouts.length) push("physical", `workout: ${entry.workoutRoutineName ?? entry.workoutDetails ?? "yes"}${entry.workoutDurationMinutes ? ` ${entry.workoutDurationMinutes}min` : ""}`);
-    if (entry.caloriesEaten != null) push("physical", `calories ${entry.caloriesEaten}`);
-    if (entry.screenTimeHours != null) push("mental", `screen time ${entry.screenTimeHours}h`);
-    if (entry.overallDayRating != null) push("mental", `self-rated day ${entry.overallDayRating}/10`);
-    if (entry.deepWorkHours != null) push("mental", `deep work ${entry.deepWorkHours}h`);
-    if (entry.tasksPlanned != null) push("mental", `tasks ${entry.tasksCompleted ?? 0}/${entry.tasksPlanned}`);
-    if (entry.moneySpent != null) push("financial", `spent $${entry.moneySpent}`);
-    if (entry.moneySaved != null) push("financial", `saved $${entry.moneySaved}`);
-    if (entry.incomeActivity) push("financial", "worked on income");
-    push("spiritual", entry.rightWithGod ? "felt right with God" : "did not mark right with God");
-  }
-  if (remindersDone) push("mental", `${remindersDone} reminders acted on`);
-
-  const facts = SCORED_AREAS.map((a) => `${a}: ${byArea[a].length ? byArea[a].join("; ") : "nothing logged"}`).join("\n");
-  const journal = entry?.notes?.trim().slice(0, 1500) || null;
-  return { entry, facts, journal };
-}
-
-function clampScore(v: unknown) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n))) : null;
-}
-
-/** Judge a day with the model and store the result. Falls back to the rule-based score. */
-export async function judgeDay(userId: string, date = new Date(), opts: { think?: boolean } = {}): Promise<Judgement> {
-  const day = getStartOfDay(date);
-  const { entry, facts, journal } = await collectFacts(userId, day);
-  const user = `Day: ${format(day, "EEEE MMM d")}\n\nFacts:\n${facts}\n\nJournal:\n${journal ?? "(none)"}`;
-
-  let judgement: Judgement | null = null;
+export async function judgeJournal(journal: string): Promise<{ journalScore: number | null; journalFeedback: string | null }> {
   try {
     const result = await chat({
       messages: [
-        { role: "system", content: JUDGE_SYSTEM },
-        { role: "user", content: user },
+        { role: "system", content: JOURNAL_SYSTEM },
+        { role: "user", content: journal.slice(0, 1500) },
       ],
-      schema: JUDGE_SCHEMA,
-      think: opts.think ?? false,
+      schema: JOURNAL_SCHEMA,
       temperature: 0.4,
-      maxTokens: opts.think === false ? 500 : 3000,
-      timeoutMs: 12 * 60_000,
+      maxTokens: 220,
+      timeoutMs: 5 * 60_000,
     });
-    const raw = parseJson<Record<string, unknown>>(result.content);
-    if (raw) {
-      const scores = {} as Record<ScoredArea, number>;
-      let ok = true;
-      for (const a of SCORED_AREAS) {
-        const v = clampScore(raw[a]);
-        if (v == null) ok = false;
-        scores[a] = v ?? 5;
-      }
-      if (ok) {
-        const reasons = (raw.reasons ?? {}) as Record<string, string>;
-        judgement = {
-          scores,
-          overall: Math.round((SCORED_AREAS.reduce((s, a) => s + scores[a], 0) / SCORED_AREAS.length) * 10) / 10,
-          reasons: Object.fromEntries(SCORED_AREAS.map((a) => [a, String(reasons[a] ?? "").slice(0, 160)])),
-          journalScore: journal ? clampScore(raw.journalScore) : null,
-          journalFeedback: typeof raw.journalFeedback === "string" ? raw.journalFeedback.slice(0, 800) : null,
-          judgedBy: LLM_MODEL,
-        };
-      }
-    }
+    const raw = parseJson<{ journalScore?: unknown; journalFeedback?: unknown }>(result.content);
+    const n = Number(raw?.journalScore);
+    return {
+      journalScore: Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n))) : null,
+      journalFeedback: typeof raw?.journalFeedback === "string" ? raw.journalFeedback.slice(0, 800) : null,
+    };
+  } catch {
+    return { journalScore: null, journalFeedback: null };
+  }
+}
+
+/**
+ * The nightly (23:30) final grade: the same cited-facts grader as the live scores, graded as a
+ * finished day ("missed", not "not done yet"), plus journal feedback.
+ */
+export async function judgeDay(userId: string, date = new Date()): Promise<GradeResult> {
+  const day = getStartOfDay(date);
+  const facts = await buildFacts(userId, day, { final: true });
+  let result: GradeResult;
+  try {
+    result = await gradeDay(userId, day, { final: true, facts });
   } catch (error) {
     reportError({ context: "judge", error, userId });
+    result = await gradeDay(userId, day, { final: true, facts, useModel: false });
   }
-
-  if (!judgement) {
-    const base = await recomputeCategoryScoreForDate(userId, day);
-    judgement = {
-      scores: { physical: base.physical, mental: base.mental, financial: base.financial, spiritual: base.spiritual },
-      overall: base.overall,
-      reasons: {},
-      journalScore: null,
-      journalFeedback: null,
-      judgedBy: "rules",
-    };
-  }
-
-  await prisma.categoryScore.upsert({
+  const journal = facts.journal
+    ? await judgeJournal(facts.journal)
+    : { journalScore: null, journalFeedback: "No journal today. Two honest lines tonight about what went well and what didn't make tomorrow easier to plan." };
+  await prisma.categoryScore.update({
     where: { userId_date: { userId, date: day } },
-    update: {
-      ...judgement.scores,
-      overall: judgement.overall,
-      rationale: judgement.reasons,
-      journalScore: judgement.journalScore,
-      journalFeedback: judgement.journalFeedback,
-      judgedBy: judgement.judgedBy === "rules" ? null : judgement.judgedBy,
-      dailyEntryId: entry?.id ?? null,
-      finalized: true,
-    },
-    create: {
-      userId,
-      date: day,
-      dailyEntryId: entry?.id,
-      ...judgement.scores,
-      overall: judgement.overall,
-      rationale: judgement.reasons,
-      journalScore: judgement.journalScore,
-      journalFeedback: judgement.journalFeedback,
-      judgedBy: judgement.judgedBy === "rules" ? null : judgement.judgedBy,
-      finalized: true,
-    },
+    data: { ...journal, ...(result.usedModel ? { judgedBy: LLM_MODEL } : {}) },
   });
-  return judgement;
+  return result;
 }

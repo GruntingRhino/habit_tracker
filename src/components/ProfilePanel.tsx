@@ -158,7 +158,7 @@ export default function ProfilePanel() {
                           {openBelief === b.id && (
                             <div className="ml-3.5 mt-0.5 space-y-0.5 border-l pl-2 text-xs" style={{ borderColor: "var(--stroke-2)", color: "var(--ink-500)" }}>
                               <p>
-                                {b.level} confidence · {b.source === "quiz" ? "from the quiz" : b.source === "said" ? "from what you said" : "inferred"}
+                                {b.level} confidence · {b.source === "quiz" ? "from the quiz" : b.source === "imported" ? "imported from your agent" : b.source === "said" ? "from what you said" : "inferred"}
                                 {b.count > 1 ? ` · seen ${b.count}×` : ""}
                               </p>
                               {b.evidence.map((e) => (

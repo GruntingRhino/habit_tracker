@@ -62,6 +62,18 @@ export function bedtimeMinutes(s: string | null | undefined) {
   return (mins - 18 * 60 + 1440) % 1440;
 }
 
+/** Body stats and targets (BrainState "body"): age, height, weight, goal, sleep and step targets. */
+export interface BodyInfo {
+  age?: number | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  goal?: "cut" | "bulk" | "maintain" | "recomp" | null;
+  sleepTargetHours?: number | null;
+  stepsTarget?: number | null;
+  measurementDate?: string | null;
+}
+export const BODY_STATE_KEY = "body";
+
 const GOOD_MICROS: MicroKey[] = ["potassium", "magnesium", "vitaminC", "vitaminA", "zinc", "calcium", "iron"];
 
 /**
@@ -83,7 +95,7 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
   const final = opts.final ?? false;
   const now = opts.now ?? new Date();
   const progress = dayProgress(now, day, final);
-  const [entry, todosDone, todosDue, tasksDone, habits, workouts, recentWorkouts, meals, remindersDone, owner, plan, recentEntries] = await Promise.all([
+  const [entry, todosDone, todosDue, tasksDone, habits, workouts, recentWorkouts, meals, remindersDone, owner, plan, recentEntries, bodyRow, weekMeals] = await Promise.all([
     prisma.dailyEntry.findUnique({ where: { userId_date: { userId, date: day } } }),
     prisma.todo.findMany({ where: { userId, status: "done", completedAt: { gte: day, lt: next } }, select: { id: true, title: true, area: true }, orderBy: { completedAt: "asc" } }),
     prisma.todo.findMany({ where: { userId, status: "open", dueAt: { lt: next } }, select: { title: true, area: true, dueAt: true }, orderBy: { dueAt: "asc" }, take: 30 }),
@@ -110,7 +122,13 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
     prisma.user.findUnique({ where: { id: userId }, select: { nutritionTargets: true } }),
     prisma.dayPlan.findUnique({ where: { userId_date: { userId, date: day } } }),
     prisma.dailyEntry.findMany({ where: { userId, date: { gte: addDays(day, -14), lt: day } }, select: { date: true, moneySpent: true, workoutCompleted: true, sportsTrainingMinutes: true } }),
+    prisma.brainState.findUnique({ where: { key: BODY_STATE_KEY } }),
+    prisma.meal.findMany({ where: { userId, status: "eaten", plannedFor: { gte: addDays(day, -6), lt: day } }, select: { calories: true, protein: true, plannedFor: true } }),
   ]);
+  const body = (bodyRow?.value ?? {}) as BodyInfo;
+  const sleepTarget = body.sleepTargetHours ?? 8;
+  const stepsTarget = body.stepsTarget ?? 8000;
+  const bulking = body.goal === "bulk";
 
   const facts: Fact[] = [];
   const options: Option[] = [];
@@ -173,8 +191,11 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
       const t = targets.calories;
       if (final) {
         const off = kcal / t;
-        fact("physical", `Calories ${kcal}/${t} (${pct(kcal, t)}% of target)${off > 1.15 ? " — over" : off < 0.8 ? " — under" : " — on target"}`, off >= 0.9 && off <= 1.1 ? 1 : off > 1.25 || off < 0.7 ? -1 : 0, 2);
-      } else if (kcal > t * 1.1) {
+        // Bulking: a bit over is fine, under is what hurts. Otherwise both directions count.
+        const [lo, hi, bad] = bulking ? [0.9, 1.2, [0.8, 1.35]] : [0.9, 1.1, [0.7, 1.25]];
+        const label = off > hi ? " — over" : off < lo ? ` — under${bulking ? " your bulk target" : ""}` : " — on target";
+        fact("physical", `Calories ${kcal}/${t} (${pct(kcal, t)}% of target)${label}`, off >= lo && off <= hi ? 1 : off > bad[1] || off < bad[0] ? -1 : 0, 1.5);
+      } else if (kcal > t * (bulking ? 1.3 : 1.1)) {
         fact("physical", `Calories ${kcal}/${t} — already over the day's target`, -1, 2);
         option("physical", "Keep the rest of today's food light — you're over on calories");
       } else {
@@ -202,11 +223,13 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
       const target = (k: MicroKey) => (targets as Record<string, number | null | undefined> | null)?.[k] ?? MICRO_META[k].target;
       for (const k of ["sugar", "sodium"] as MicroKey[]) {
         const v = micros[k] ?? 0;
-        const t = target(k);
+        // Tracked sugar is TOTAL sugar (fruit and milk included); his limit is for added sugar,
+        // so total sugar is judged against the general 50 g line, never tighter.
+        const t = k === "sugar" ? Math.max(target(k), MICRO_META.sugar.target) : target(k);
         if (v > t) {
-          fact("physical", `${MICRO_META[k].label} ${r0(v)}/${t} ${MICRO_META[k].unit} — over the limit`, -1, 1);
+          fact("physical", `${k === "sugar" ? "Total sugar" : MICRO_META[k].label} ${r0(v)}/${t} ${MICRO_META[k].unit} — over the limit`, -1, k === "sugar" ? 0.75 : 1);
           option("physical", `Go easy on ${k === "sugar" ? "sweets and sugary drinks" : "salty and processed food"} for the rest of today`);
-        } else if (final) fact("physical", `${MICRO_META[k].label} ${r0(v)} ${MICRO_META[k].unit} — under the ${t} ${MICRO_META[k].unit} limit`, 1, 0.5);
+        } else if (final) fact("physical", `${k === "sugar" ? "Total sugar" : MICRO_META[k].label} ${r0(v)} ${MICRO_META[k].unit} — under the ${t} ${MICRO_META[k].unit} limit`, 1, 0.5);
       }
       const fiber = micros.fiber ?? 0;
       const ft = target("fiber");
@@ -231,16 +254,42 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
     option("physical", "Log what you eat on the Food page");
   }
 
+  // One day is noisy: the last 7 days of logged food say more about calories and protein.
+  const byDay = new Map<string, { kcal: number; protein: number }>();
+  for (const m of weekMeals) {
+    if (!m.plannedFor) continue;
+    const k = getStartOfDay(m.plannedFor).toISOString();
+    const d = byDay.get(k) ?? { kcal: 0, protein: 0 };
+    d.kcal += m.calories ?? 0;
+    d.protein += m.protein ?? 0;
+    byDay.set(k, d);
+  }
+  if (byDay.size >= 3) {
+    const days = [...byDay.values()];
+    const avgK = r0(days.reduce((a, d) => a + d.kcal, 0) / days.length);
+    const avgP = r0(days.reduce((a, d) => a + d.protein, 0) / days.length);
+    const tk = targets?.calories;
+    const tp = targets?.protein;
+    const kOk = tk ? avgK / tk : null;
+    const pOk = tp ? avgP / tp : null;
+    const good = (kOk == null || kOk >= 0.9) && (pOk == null || pOk >= 0.9) && (kOk != null || pOk != null);
+    const bad = (kOk != null && kOk < 0.8) || (pOk != null && pOk < 0.75);
+    fact("physical", `Last ${days.length} logged days: avg ${avgK}${tk ? `/${tk}` : ""} kcal, ${avgP}${tp ? `/${tp}` : ""} g protein`, good ? 1 : bad ? -1 : 0, 1.5);
+  }
+
   // ---- PHYSICAL: sleep, steps ------------------------------------------------------------------
   if (entry?.sleepHours != null) {
     const sl = entry.sleepHours;
-    fact("physical", `Slept ${sl} h${sl < 6 ? " (well under 7)" : sl < 7 ? " (under 7)" : sl > 9.5 ? " (over 9)" : " (7–9, good)"}`, sl < 6.5 ? -1 : sl >= 7 && sl <= 9.5 ? 1 : 0, 2);
+    const t = sleepTarget;
+    const note = sl < t - 1.5 ? ` (well under your ${t} h target)` : sl < t - 0.5 ? ` (under your ${t} h target)` : sl > t + 1.5 ? " (oversleeping)" : ` (on your ${t} h target)`;
+    fact("physical", `Slept ${sl} h${note}`, sl < t - 1 ? -1 : sl >= t - 0.5 && sl <= t + 1.5 ? 1 : 0, sl < t - 1.5 ? 2.5 : 2);
   } else option("physical", "Log last night's sleep in the Journal");
   const bed = bedtimeMinutes(entry?.bedtime);
   if (bed != null) fact("physical", `Bedtime ${entry!.bedtime}${bed > 6.5 * 60 ? " (after 12:30am)" : bed <= 5 * 60 ? " (before 11pm)" : ""}`, bed > 6.5 * 60 ? -1 : bed <= 5 * 60 ? 1 : 0, 0.75);
   if (entry?.steps != null) {
     const st = entry.steps;
-    fact("physical", `${st.toLocaleString("en-US")} steps`, st >= 8000 ? 1 : st < 3000 && final ? -1 : 0, st >= 10000 ? 1.5 : 1);
+    fact("physical", `${st.toLocaleString("en-US")} steps (target ${stepsTarget.toLocaleString("en-US")})`, st >= stepsTarget ? 1 : st < stepsTarget * 0.5 && final ? -1 : 0, 1);
+    if (st < stepsTarget) option("physical", `Walk ~${(stepsTarget - st).toLocaleString("en-US")} more steps`);
   }
   if (entry?.caloriesEaten != null && !meals.length) fact("physical", `Calories ${entry.caloriesEaten} (quick log)`, 0, 0.5);
 

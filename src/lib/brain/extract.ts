@@ -224,7 +224,7 @@ export function similarity(a: string, b: string) {
   return inter / (A.size + B.size - inter);
 }
 
-export const BASE_CONFIDENCE = { quiz: 0.7, said: 0.5, inferred: 0.4 } as const;
+export const BASE_CONFIDENCE = { imported: 0.8, quiz: 0.7, said: 0.5, inferred: 0.4 } as const;
 
 /**
  * Merge one claim into a category's observations: a near-duplicate is reinforced, a claim that

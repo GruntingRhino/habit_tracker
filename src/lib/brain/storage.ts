@@ -27,14 +27,14 @@ export interface Evidence {
   kind: string;
   text: string;
   /** "said" = his own words, "data" = something he logged/did, "quiz" = a quiz answer. */
-  src: "said" | "data" | "quiz";
+  src: "said" | "data" | "quiz" | "import";
 }
 
 export interface Observation {
   id: string;
   category: CategoryId;
   claim: string;
-  source: "quiz" | "said" | "inferred";
+  source: "quiz" | "said" | "inferred" | "imported";
   evidence: string[];
   /** Copies of a few evidence lines, so a belief can still show why after old evidence is pruned. */
   snippets: { t: string; text: string }[];
@@ -43,7 +43,7 @@ export interface Observation {
   count: number;
   confidence: number;
   status: "active" | "archived" | "rejected";
-  /** Quiz question id, so retaking the quiz replaces the old answer. */
+  /** Quiz question id / imported fact id, so a retake or re-import replaces the old one. */
   key?: string;
 }
 

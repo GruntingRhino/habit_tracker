@@ -295,9 +295,9 @@ describe.skipIf(!enabled)("brain loop", () => {
       expect(phys).toContain("✗ Sodium 3200/2300 mg — over the limit");
       expect(phys.find((t) => t.startsWith("• Vitamins & minerals so far"))).toBeTruthy();
       expect(phys).toContain("✗ Ate late at night: “Ramen”");
-      expect(phys).toContain("✗ Slept 6 h (under 7)");
+      expect(phys).toContain("✗ Slept 6 h (well under your 8 h target)");
       expect(phys).toContain("✗ Bedtime 1:15am (after 12:30am)");
-      expect(phys).toContain("✓ 11,000 steps");
+      expect(phys).toContain("✓ 11,000 steps (target 8,000)");
       expect(live.options.map((o) => o.text)).toContain("Get ~97 g more protein (you're at 53/150 g)");
       expect(live.options.map((o) => o.text)).toContain("Go easy on salty and processed food for the rest of today");
 
@@ -313,6 +313,46 @@ describe.skipIf(!enabled)("brain loop", () => {
     } finally {
       await prisma.user.delete({ where: { id: u.id } });
     }
+  });
+
+  it("uses his body targets: 9 h sleep, 9k steps, bulk-aware calories, weekly averages, total sugar", async () => {
+    const { buildFacts } = await import("../scores");
+    const u = await prisma.user.create({ data: { email: `body-${Date.now()}@test.local`, nutritionTargets: { calories: 2800, protein: 110, carbs: 360, fat: 100, sugar: 30 } } });
+    const prev = await prisma.brainState.findUnique({ where: { key: "body" } });
+    await prisma.brainState.upsert({ where: { key: "body" }, update: { value: { goal: "bulk", sleepTargetHours: 9, stepsTarget: 9000 } }, create: { key: "body", value: { goal: "bulk", sleepTargetHours: 9, stepsTarget: 9000 } } });
+    try {
+      const day = getStartOfDay(new Date());
+      const at = (d: number, h: number) => new Date(day.getTime() + d * 86_400_000 + h * 3_600_000);
+      // 4 earlier days at ~2900 kcal / 115 g, and today 3200 kcal (a bit over — fine on a bulk) with fruit sugar.
+      for (let d = -4; d <= -1; d++) await prisma.meal.create({ data: { userId: u.id, name: "Rice and chicken", category: "lunch", status: "eaten", plannedFor: at(d, 13), calories: 2900, protein: 115 } });
+      await prisma.meal.create({ data: { userId: u.id, name: "Big day of food", category: "lunch", status: "eaten", plannedFor: at(0, 13), calories: 3200, protein: 120, micros: { sugar: 45, sodium: 1800 } } });
+      await prisma.dailyEntry.create({ data: { userId: u.id, date: day, sleepHours: 8, steps: 9500 } });
+      const final = await buildFacts(u.id, day, { final: true });
+      const t = final.facts.filter((f) => f.area === "physical").map((f) => f.text);
+      expect(t.find((x) => x.startsWith("✓ Calories 3200/2800 (114% of target) — on target"))).toBeTruthy();
+      expect(t).toContain("✓ Last 4 logged days: avg 2900/2800 kcal, 115/110 g protein");
+      expect(t).toContain("• Slept 8 h (under your 9 h target)");
+      expect(t).toContain("✓ 9,500 steps (target 9,000)");
+      // 45 g of total sugar (fruit counts in the data) is not judged against the 30 g added-sugar limit.
+      expect(t.find((x) => x.includes("Total sugar 45 g — under the 50 g limit"))).toBeTruthy();
+    } finally {
+      await prisma.user.delete({ where: { id: u.id } });
+      if (prev) await prisma.brainState.update({ where: { key: "body" }, data: { value: prev.value as object } });
+      else await prisma.brainState.delete({ where: { key: "body" } });
+    }
+  });
+
+  it("imported facts become beliefs, and a re-import replaces them", async () => {
+    const { seedImported } = await import("../consolidate");
+    const store = new BrainStore(fs.mkdtempSync(path.join(os.tmpdir(), "brain-imp-")));
+    seedImported(store, [
+      { id: "tone", category: "communication", text: "He prefers direct, concise answers." },
+      { id: "whey", category: "food", text: "Whey seemed to worsen his acne." },
+    ]);
+    expect(store.readObservations("food")[0]).toEqual(expect.objectContaining({ source: "imported", confidence: 0.8, status: "active" }));
+    seedImported(store, [{ id: "tone", category: "communication", text: "He prefers blunt, concise answers." }], new Date(Date.now() + 1000));
+    expect(store.readObservations("communication").filter((o) => o.status === "active").map((o) => o.claim)).toEqual(["He prefers blunt, concise answers."]);
+    expect(store.readObservations("food")[0].status).toBe("archived");
   });
 
   it("nightly judge finalizes the day with 'missed' wording and journal feedback", async () => {

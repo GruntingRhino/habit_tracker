@@ -6,7 +6,7 @@
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 import { chat } from "@/lib/ai/llm";
-import { CATEGORIES, categoryLabel, type Belief, type CategoryId, type Level, type ProfileContent } from "./categories";
+import { CATEGORIES, categoryLabel, isCategory, type Belief, type CategoryId, type Level, type ProfileContent } from "./categories";
 import { grounding, mergeClaim } from "./extract";
 import { effectiveConfidence } from "./prune";
 import { QUIZ, quizClaim, type QuizAnswers } from "./quiz";
@@ -129,6 +129,66 @@ export function seedQuiz(store: BrainStore, answers: QuizAnswers, at = new Date(
   }
   store.appendEvidence(evidence);
   store.writeJson("quiz/answers.json", { answers, at: at.toISOString() });
+  return [...touched];
+}
+
+export interface ImportedFact {
+  id: string;
+  category: string;
+  text: string;
+}
+
+/**
+ * Facts handed over in bulk (e.g. from his other AI agent). Like quiz answers they become beliefs
+ * directly, without the model; a re-import replaces changed facts and drops ones no longer sent.
+ */
+export function seedImported(store: BrainStore, facts: ImportedFact[], at = new Date()) {
+  const touched = new Set<CategoryId>();
+  const sent = new Set(facts.filter((f) => isCategory(f.category)).map((f) => `import:${f.id}`));
+  for (const cat of CATEGORIES.map((c) => c.id)) {
+    const list = store.readObservations(cat);
+    let changed = false;
+    for (const o of list) {
+      if (o.source === "imported" && o.status === "active" && o.key && !sent.has(o.key)) {
+        o.status = "archived";
+        changed = true;
+      }
+    }
+    if (changed) {
+      store.writeObservations(cat, list);
+      touched.add(cat);
+    }
+  }
+  const evidence = [];
+  for (const f of facts) {
+    if (!isCategory(f.category)) continue;
+    const text = f.text.replace(/\s+/g, " ").trim().slice(0, 200);
+    if (!text) continue;
+    const key = `import:${f.id}`;
+    const e = ev(`${key}:${shortHash(text)}`, at, "import", `Imported: ${text}`, "import");
+    evidence.push(e);
+    const list = store.readObservations(f.category);
+    for (const o of list) if (o.key === key && o.status === "active" && o.claim !== text) o.status = "archived";
+    if (!list.some((o) => o.key === key && o.status === "active")) {
+      list.push({
+        id: `o-${shortHash(`${key}:${text}`)}`,
+        category: f.category,
+        claim: text,
+        source: "imported",
+        evidence: [e.id],
+        snippets: [{ t: e.t, text: e.text }],
+        firstSeen: e.t,
+        lastSeen: e.t,
+        count: 1,
+        confidence: 0.8,
+        status: "active",
+        key,
+      });
+    }
+    store.writeObservations(f.category, list);
+    touched.add(f.category);
+  }
+  store.appendEvidence(evidence);
   return [...touched];
 }
 

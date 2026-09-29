@@ -55,7 +55,7 @@ export interface Belief {
   id: string;
   text: string;
   level: Level;
-  source: "quiz" | "said" | "inferred";
+  source: "quiz" | "said" | "inferred" | "imported";
   count: number;
   lastSeen: string;
   /** A few of the events it's based on, so he can see why. */

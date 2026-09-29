@@ -16,7 +16,7 @@ import prisma from "@/lib/prisma";
 import { chat, LlmAborted } from "@/lib/ai/llm";
 import { getStartOfDay } from "@/lib/utils";
 import { CATEGORY_IDS, type CategoryId } from "./categories";
-import { applyCorrections, consolidateCategory, seedQuiz } from "./consolidate";
+import { applyCorrections, consolidateCategory, seedImported, seedQuiz, type ImportedFact } from "./consolidate";
 import { extractChunk, nextChunk, worthExtracting } from "./extract";
 import { ingest, type IngestState } from "./ingest";
 import { isQuietHour, saveNudges, scoreLinks, SCHEDULED, type NewNudge } from "./jobs";
@@ -28,6 +28,7 @@ import { computeStats } from "./stats";
 import { dayKey, type BrainStore, type Evidence } from "./storage";
 
 export const QUIZ_STATE_KEY = "quiz";
+export const IMPORT_STATE_KEY = "imported";
 
 export interface LoopState extends IngestState {
   changeSeen?: number;
@@ -43,6 +44,7 @@ export interface LoopState extends IngestState {
   jobs?: Record<string, string>;
   night?: { day: string; step: number };
   quizAt?: string;
+  importAt?: string;
   hashes?: Record<string, string>;
   summaries?: Record<string, string | null>;
   summaryHashes?: Record<string, string>;
@@ -205,6 +207,13 @@ export class Brain {
         touched.push(...seedQuiz(store, value.answers ?? {}, quiz.updatedAt));
         s.quizAt = quiz.updatedAt.toISOString();
         this.log("quiz answers loaded");
+      }
+      const imported = await prisma.brainState.findUnique({ where: { key: IMPORT_STATE_KEY } });
+      if (imported && imported.updatedAt.toISOString() !== s.importAt) {
+        const value = imported.value as { facts?: ImportedFact[] };
+        touched.push(...seedImported(store, value.facts ?? [], imported.updatedAt));
+        s.importAt = imported.updatedAt.toISOString();
+        this.log(`imported ${value.facts?.length ?? 0} facts`);
       }
       s.dirty = [...new Set([...(s.dirty ?? []), ...touched])];
       if (touched.length) return "corrections";

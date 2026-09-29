@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { parseBodyUpdate, recordBodyUpdate } from "@/lib/body";
 import { Prisma } from "@/generated/prisma";
 import { normalizePriority } from "@/lib/areas";
 import { chat, parseJson } from "@/lib/ai/llm";
@@ -182,6 +183,9 @@ export async function handleMessage(userId: string, text: string, source: Source
       return save(turn, `Which item do you mean? I don't have a numbered list open right now, so tell me its name (e.g. "the essay is due friday").`);
     }
     if (undoneSince.length && ABOUT_UNDO.test(trimmed)) return save(turn, undoAnswer(undoneSince));
+    // Weight / height / age ("134 lb", "i'm 6'1 now"): logged and targets recomputed, no model.
+    const bodyUpdate = !awaiting ? parseBodyUpdate(trimmed) : null;
+    if (bodyUpdate && !/\b(ate|had|eat|lift|bench|squat|deadlift|press|curl|row|x\d|sets?|reps?)\b/i.test(trimmed)) return save(turn, await recordBodyUpdate(userId, bodyUpdate));
     const lastSentence = trimmed.split(/(?<=[.!])\s+/).pop() ?? trimmed;
     if (DID_YOU.test(lastSentence)) return save(turn, await didYouAnswer(turn, lastSentence));
     if (REDO.test(trimmed) && !(plan && PLAN_AGAIN.test(trimmed) && plan.stage !== "done" && plan.stage !== "asking")) {

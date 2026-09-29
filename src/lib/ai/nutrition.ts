@@ -78,9 +78,15 @@ Example: 2 eggs, toast with butter and a coffee
 /** Whole numbers, or one decimal for step 0.1, without float noise (12.600000000000001). */
 const round = (n: number, step = 1) => (step === 1 ? Math.round(n) : Math.round(n * 10) / 10);
 
+/** Amounts are shown in imperial: grams → oz, ml → fl oz (to the nearest ½). */
 function amountLabel(quantity: number, unit: string) {
   const u = normalizeUnit(unit);
   if (!u || u === "serving") return quantity === 1 ? "1 serving" : `${quantity} servings`;
+  const half = (n: number) => Math.max(0.5, Math.round(n * 2) / 2);
+  if (u === "g" || u === "gram" || u === "grams") return `${half(quantity / 28.35)} oz`;
+  if (u === "kg") return `${Math.round(quantity * 2.2046 * 10) / 10} lb`;
+  if (u === "ml") return `${half(quantity / 29.57)} fl oz`;
+  if (u === "floz") return `${quantity} fl oz`;
   const plural = quantity === 1 || ["g", "oz", "ml", "tbsp", "tsp", "lb"].includes(u) ? u : `${u}s`;
   return `${quantity} ${plural}`;
 }

@@ -18,6 +18,9 @@ interface Category {
 
 interface ProfileData {
   categories: Category[];
+  body: { weight: string; height: string | null; age: number | null; goal: string | null; measuredAt: string | null; sleep: number | null; steps: number | null; water: number; lastCheckIn: string | null } | null;
+  targets: Record<string, number | null> | null;
+  explain: string[];
   brain: { at: string; bytes: number; cap: number; queue: number } | null;
   quiz: { answers: Record<string, string | string[]>; updatedAt: string } | null;
 }
@@ -92,6 +95,30 @@ export default function ProfilePanel() {
           {data.quiz ? "Retake quiz" : "Take the personality quiz"}
         </button>
       </p>
+
+      <Section label="Your numbers">
+        {data.body ? (
+          <div className="space-y-1 text-[13px]" style={{ color: "var(--ink-300)" }}>
+            <p style={{ color: "var(--ink-100)" }}>
+              {[data.body.weight, data.body.height, data.body.age ? `age ${data.body.age}` : null, data.body.goal === "bulk" ? "lean bulk" : data.body.goal].filter(Boolean).join(" · ")}
+              {data.body.measuredAt && <span className="min-sub"> · weighed {data.body.measuredAt}</span>}
+            </p>
+            {data.targets && (
+              <p>
+                {data.targets.calories?.toLocaleString("en-US")} kcal · P {data.targets.protein} g · C {data.targets.carbs} g · F {data.targets.fat} g · fiber {data.targets.fiber} g · water ~{data.body.water} oz · sleep {data.body.sleep} h · {data.body.steps?.toLocaleString("en-US")} steps
+              </p>
+            )}
+            {data.explain.map((l) => (
+              <p key={l} className="min-sub">
+                {l}
+              </p>
+            ))}
+            <p className="min-sub">Updates by itself from your weigh-ins (Journal → Weight, or tell the chat “135 lb”) and at the Sunday check-in.</p>
+          </div>
+        ) : (
+          <Empty>Tell the chat your weight and height (“134 lb, 6&apos;0”) to set your targets.</Empty>
+        )}
+      </Section>
 
       {nudges.length > 0 && (
         <Section label="Noticed">

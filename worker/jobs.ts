@@ -8,6 +8,7 @@ import { getStartOfDay } from "@/lib/utils";
 import { reportError } from "@/lib/monitoring";
 import { readRationale } from "@/lib/score-rationale";
 import { scoreLinks } from "@/lib/brain/jobs";
+import { fmtHeight, fmtLb, readBody, updateBody } from "@/lib/body";
 import { esc, formatBrief, formatScores } from "./format";
 import { reminderKeyboard, sendToOwner } from "./telegram";
 
@@ -126,7 +127,30 @@ export async function weeklyDigest() {
     const common = tips.sort((a, b) => tips.filter((t) => t === b).length - tips.filter((t) => t === a).length)[0];
     lines.push("", "<b>Experiment for this week</b>", `${weakest[0].toUpperCase()}${weakest.slice(1)} was your lowest area (${avg(weakest)}).${common ? ` Try: ${esc(common)}.` : ""}`);
   }
+  lines.push("", ...(await weeklyCheckIn(userId)));
   await sendToOwner(lines.join("\n"));
+}
+
+/**
+ * Weekly body check-in: if he weighed in the last 2 days (journal or chat), run the check-in now
+ * (trend → calories, weight → protein etc.); otherwise ask for this morning's weight.
+ */
+export async function weeklyCheckIn(userId: string, now = new Date()) {
+  const body = await readBody();
+  const recent = await prisma.dailyEntry.findFirst({ where: { userId, weightLb: { not: null }, date: { gte: addDays(getStartOfDay(now), -1) } }, orderBy: { date: "desc" } });
+  const lines = ["⚖️ <b>Weekly check-in</b>"];
+  if (recent?.weightLb) {
+    const r = await updateBody(userId, {}, { checkIn: true, now });
+    lines.push(`Weight ${fmtLb(recent.weightLb)}${body.heightIn ? ` · ${fmtHeight(body.heightIn)}` : ""}`);
+    if (r.changed.length) lines.push(`Targets updated: ${esc(r.changed.join(", "))}`);
+    lines.push(...r.lines.map(esc));
+  } else {
+    lines.push(`Last weight: ${body.weightLb ? `${fmtLb(body.weightLb)}${body.measuredAt ? ` (${body.measuredAt})` : ""}` : "none yet"}.`);
+    lines.push("Weigh yourself tomorrow morning (after the bathroom, before eating) and reply like <b>135 lb</b>. Your protein, calories, carbs and fat update from it.");
+  }
+  const measured = body.history?.filter((h) => h.heightIn).pop();
+  if (!measured || now.getTime() - new Date(measured.date).getTime() > 30 * 86_400_000) lines.push("Also: height check (you're still growing) — reply like <b>6'0\"</b>.");
+  return lines;
 }
 
 export const JOBS = {

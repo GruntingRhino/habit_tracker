@@ -11,6 +11,7 @@ interface Entry {
   date: string;
   notes: string | null;
   sleepHours: number | null;
+  weightLb: number | null;
   screenTimeHours: number | null;
   moneySpent: number | null;
   moneySaved: number | null;
@@ -19,9 +20,10 @@ interface Entry {
   journalFeedback: string | null;
 }
 
-type Quick = "sleepHours" | "screenTimeHours" | "moneySpent" | "moneySaved";
+type Quick = "weightLb" | "sleepHours" | "screenTimeHours" | "moneySpent" | "moneySaved";
 
 const QUICK: [Quick, string, string][] = [
+  ["weightLb", "Weight", "lb"],
   ["sleepHours", "Sleep", "h"],
   ["screenTimeHours", "Screen", "h"],
   ["moneySpent", "Spent", "$"],
@@ -46,7 +48,7 @@ function JournalPage() {
   const [tab, setTab] = useState<"today" | "notes" | "profile">(initialTab === "notes" || initialTab === "profile" ? initialTab : "today");
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [text, setText] = useState("");
-  const [quick, setQuick] = useState<Record<Quick, string>>({ sleepHours: "", screenTimeHours: "", moneySpent: "", moneySaved: "" });
+  const [quick, setQuick] = useState<Record<Quick, string>>({ weightLb: "", sleepHours: "", screenTimeHours: "", moneySpent: "", moneySaved: "" });
   const [god, setGod] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,6 +63,7 @@ function JournalPage() {
           setText(today.notes ?? "");
           setGod(today.rightWithGod);
           setQuick({
+            weightLb: today.weightLb?.toString() ?? "",
             sleepHours: today.sleepHours?.toString() ?? "",
             screenTimeHours: today.screenTimeHours?.toString() ?? "",
             moneySpent: today.moneySpent?.toString() ?? "",
@@ -128,7 +131,7 @@ function JournalPage() {
       />
 
       <Section label="Quick log">
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-5 gap-3">
           {QUICK.map(([key, label, unit]) => (
             <label key={key} className="block">
               <span className="min-sub block">{label}</span>
@@ -142,7 +145,7 @@ function JournalPage() {
                   placeholder="–"
                   className="min-input py-0.5 tabular-nums"
                 />
-                {unit === "h" && <span style={{ color: "var(--ink-600)" }}>h</span>}
+                {(unit === "h" || unit === "lb") && <span style={{ color: "var(--ink-600)" }}>{unit}</span>}
               </span>
             </label>
           ))}

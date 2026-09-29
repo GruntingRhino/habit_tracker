@@ -122,7 +122,7 @@ export class Brain {
       return out;
     } catch (error) {
       if (error instanceof LlmAborted) return "aborted";
-      this.log(`${name} failed: ${error instanceof Error ? error.message : error}`);
+      this.log(`${name} failed: ${error instanceof Error ? `${error.name}: ${error.message || "(no message)"} ${error.stack?.split("\n")[1]?.trim() ?? ""}` : String(error)}`);
       this.state.cooldown = { ...this.state.cooldown, [name]: this.now().getTime() + 5 * 60_000 };
       return "failed";
     } finally {
@@ -173,8 +173,10 @@ export class Brain {
           }
           return checkDue ? "fingerprint-same" : null;
         }
-        const r = await this.withModel("regrade", (signal) => gradeDay(userId, today, { facts, useModel, signal }));
+        let r = await this.withModel("regrade", (signal) => gradeDay(userId, today, { facts, useModel, signal }));
         if (r === "aborted") return "regrade-yielded";
+        // Never leave the scores stale: without the model, the fact-based grade still goes in.
+        if (r === "failed") r = await gradeDay(userId, today, { facts, useModel: false }).catch(() => "failed" as const);
         s.fingerprint = facts.fingerprint;
         s.fingerprintDay = dayKey(now);
         s.gradedChange = s.changeSeen;

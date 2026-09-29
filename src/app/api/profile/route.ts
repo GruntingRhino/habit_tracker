@@ -4,15 +4,19 @@ import { Prisma } from "@/generated/prisma";
 import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { CATEGORIES, isCategory, type ProfileContent } from "@/lib/brain/categories";
+import { computeTargets, currentAge, fmtHeight, fmtLb, readBody, waterOz } from "@/lib/body";
 
 /** The distilled profile, one entry per category, plus the brain's status. */
 export async function GET() {
   const { user } = await getOwnerSession();
-  const [docs, beat, quiz] = await Promise.all([
+  const [docs, beat, quiz, body, owner] = await Promise.all([
     prisma.profileDoc.findMany({ where: { userId: user.id } }),
     prisma.brainState.findUnique({ where: { key: "brain" } }),
     prisma.brainState.findUnique({ where: { key: "quiz" } }),
+    readBody(),
+    prisma.user.findUnique({ where: { id: user.id }, select: { nutritionTargets: true } }),
   ]);
+  const explain = body.weightLb ? computeTargets(body, body.weightLb).lines : [];
   const byCat = new Map(docs.map((d) => [d.category, d]));
   return NextResponse.json({
     categories: CATEGORIES.map((c) => {
@@ -21,6 +25,11 @@ export async function GET() {
     }),
     brain: beat?.value ?? null,
     quiz: quiz ? { answers: (quiz.value as { answers?: unknown }).answers ?? {}, updatedAt: quiz.updatedAt } : null,
+    body: body.weightLb
+      ? { weight: fmtLb(body.weightLb), height: body.heightIn ? fmtHeight(body.heightIn) : null, age: currentAge(body), goal: body.goal ?? null, measuredAt: body.measuredAt ?? null, sleep: body.sleepTargetHours ?? null, steps: body.stepsTarget ?? null, water: waterOz(body.weightLb), lastCheckIn: body.lastCheckIn ?? null }
+      : null,
+    targets: owner?.nutritionTargets ?? null,
+    explain,
   });
 }
 

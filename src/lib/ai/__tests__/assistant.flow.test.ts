@@ -590,8 +590,8 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     routes.set("had a bottle of coconut water", { intent: "capture", items: [{ kind: "meal", title: "Coconut water", area: "physical", done: true }] });
     const r = await say("had a bottle of coconut water");
     expect(r.reply).toContain("How big was the bottle of coconut water?");
-    expect(r.meta?.options).toEqual(["250 ml", "330 ml", "500 ml", "1 L", "Typical"]);
-    const done = await say("500 ml");
+    expect(r.meta?.options).toEqual(["8 fl oz", "12 fl oz", "16.9 fl oz", "20 fl oz", "32 fl oz", "Typical"]);
+    const done = await say("16.9 fl oz");
     expect(done.reply).toContain("Updated: 95 kcal");
     const meal = await prisma.meal.findFirst({ where: { userId } });
     expect(meal?.calories).toBe(95);

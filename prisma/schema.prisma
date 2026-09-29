@@ -39,6 +39,7 @@ model DailyEntry {
   userId                  String
   date                    DateTime
   sleepHours              Float?
+  weightLb                Float?   // morning weigh-in
   workoutCompleted        Boolean  @default(false)
   workoutDurationMinutes  Int?
   workoutIntensity        String?

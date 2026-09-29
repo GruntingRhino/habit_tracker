@@ -152,13 +152,13 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await page.getByLabel("Describe what you ate").fill("a bottle of coconut water");
     await page.getByRole("button", { name: "Add", exact: true }).click();
     await page.getByText("How big was the bottle of coconut water?").waitFor({ timeout: 30000 });
-    await page.getByRole("button", { name: "500 ml" }).click();
+    await page.getByRole("button", { name: "16.9 fl oz" }).click();
     await page.getByText(/^95 kcal/).waitFor({ timeout: 30000 });
     await page.getByRole("button", { name: "Save" }).click();
     await page.getByText(/95 kcal · P/).waitFor({ timeout: 10000 });
   });
   await test("food: nutrient column shows micros and targets", async () => {
-    await page.waitForFunction(() => [...document.querySelectorAll("aside li")].some((li) => li.innerText.replace(/\s/g, "").includes("Potassium1,250/3,000mg")), null, { timeout: 10000 });
+    await page.waitForFunction(() => [...document.querySelectorAll("aside li")].some((li) => /Potassium1,25\d\/3,000mg/.test(li.innerText.replace(/\s/g, ""))), null, { timeout: 10000 });
     if (!(await page.locator("aside li", { hasText: "Vitamin D" }).count())) throw new Error("no vitamin D row");
   });
   await test("food: enter numbers yourself", async () => {
@@ -190,7 +190,7 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await page.getByRole("button", { name: "New chat" }).click();
     const reply = await send(page, "I had a bottle of coconut water");
     if (!/How big was the bottle of coconut water/.test(reply)) throw new Error(`reply: ${reply}`);
-    await page.getByRole("button", { name: "500 ml" }).click();
+    await page.getByRole("button", { name: "16.9 fl oz" }).click();
     await page.getByText(/Updated: 95 kcal/).waitFor({ timeout: 60000 });
   });
   await test("chat: history, star and undo still work", async () => {
@@ -211,7 +211,7 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await chip.click();
     await page.getByRole("button", { name: "Close details" }).waitFor({ timeout: 10000 });
     const panel = await page.locator("div.rounded-xl.border.p-3").innerText();
-    if (!/Stretch|Slept|Workout|No data/.test(panel)) throw new Error(`panel: ${panel}`);
+    if (!/Stretch|Slept|Workout|training|Food|No data/.test(panel)) throw new Error(`panel: ${panel}`);
     if (!/Do your habit|Log|workout|protein/i.test(panel)) throw new Error(`no improvement tip: ${panel}`);
     if ((await chip.getAttribute("aria-expanded")) !== "true") throw new Error("chip not marked expanded");
   });

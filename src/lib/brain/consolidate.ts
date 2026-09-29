@@ -11,6 +11,7 @@ import { grounding, mergeClaim } from "./extract";
 import { effectiveConfidence } from "./prune";
 import { QUIZ, quizClaim, type QuizAnswers } from "./quiz";
 import { ev } from "./ingest";
+import { currentAge, fmtHeight, fmtLb, readBody } from "@/lib/body";
 import { shortHash, type BrainStore, type Observation } from "./storage";
 
 export const MAX_PROFILE_BYTES = 6 * 1024;
@@ -227,17 +228,26 @@ export async function consolidateCategory(
   return { changed, content };
 }
 
+/** "Now 134 lb, 6'0", 15, lean bulk; daily targets 2,850 kcal, 107 g protein…" */
+async function bodySummary(userId: string) {
+  const [body, owner] = await Promise.all([readBody(), prisma.user.findUnique({ where: { id: userId }, select: { nutritionTargets: true } })]);
+  if (!body.weightLb) return null;
+  const t = owner?.nutritionTargets as { calories?: number; protein?: number; carbs?: number; fat?: number } | null;
+  const age = currentAge(body);
+  return `Now ${fmtLb(body.weightLb)}${body.heightIn ? `, ${fmtHeight(body.heightIn)}` : ""}${age ? `, age ${age}` : ""}${body.goal ? `, ${body.goal === "bulk" ? "lean bulk" : body.goal}` : ""}${t?.calories ? `; daily targets ${t.calories} kcal, ${t.protein} g protein, ${t.carbs} g carbs, ${t.fat} g fat` : ""}. Use imperial units (lb, ft/in, oz, fl oz, miles) but Celsius for temperature.`;
+}
+
 /** "About Abhay" for the chat: the strongest beliefs, under ~600 characters. */
 export async function profileBrief(userId: string, maxChars = 600): Promise<string | null> {
-  const docs = await prisma.profileDoc.findMany({ where: { userId }, select: { category: true, content: true } });
-  if (!docs.length) return null;
+  const [docs, bodyLine] = await Promise.all([prisma.profileDoc.findMany({ where: { userId }, select: { category: true, content: true } }), bodySummary(userId)]);
+  if (!docs.length && !bodyLine) return null;
   const order = new Map(CATEGORIES.map((c, i) => [c.id as string, i]));
   const beliefs = docs
     .flatMap((d) => ((d.content as unknown as ProfileContent).beliefs ?? []).map((b) => ({ ...b, cat: d.category })))
     .filter((b) => b.level === "high" || (b.level === "medium" && b.source !== "inferred"))
     .sort((a, b) => (a.level === b.level ? (order.get(a.cat) ?? 99) - (order.get(b.cat) ?? 99) : a.level === "high" ? -1 : 1));
-  const lines: string[] = [];
-  let used = 0;
+  const lines: string[] = bodyLine ? [`- ${bodyLine}`] : [];
+  let used = bodyLine?.length ?? 0;
   for (const b of beliefs) {
     const line = `- ${b.text}`;
     if (used + line.length > maxChars || lines.length >= 12) break;

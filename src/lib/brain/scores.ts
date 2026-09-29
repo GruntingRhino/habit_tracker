@@ -15,6 +15,7 @@ import { MICRO_META, sumMicros, type MicroKey, type Micros } from "@/lib/nutriti
 import { readRationale, type AreaRationale, type Rationale } from "@/lib/score-rationale";
 import { getDayOfWeek, getStartOfDay } from "@/lib/utils";
 import { shortHash } from "./storage";
+import { reportError } from "@/lib/monitoring";
 
 export interface Fact {
   n: number;
@@ -516,6 +517,7 @@ export async function gradeDay(userId: string, date: Date, opts: { final?: boole
     } catch (error) {
       if (opts.signal?.aborted) throw error;
       // Model down or confused: the rule-based grade with code-picked reasons stands.
+      reportError({ context: "grade", error, userId });
     }
   }
 

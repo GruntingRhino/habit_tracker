@@ -45,23 +45,42 @@ async function main() {
   const today = getStartOfDay(new Date());
 
   // ---- live grading -------------------------------------------------------------------------
-  await prisma.dailyEntry.upsert({ where: { userId_date: { userId, date: today } }, update: { sleepHours: 6, screenTimeHours: 5 }, create: { userId, date: today, sleepHours: 6, screenTimeHours: 5 } });
+  await prisma.dailyEntry.upsert({
+    where: { userId_date: { userId, date: today } },
+    update: { sleepHours: 6, screenTimeHours: 5, steps: 9000, moneySpent: 45, notes: "Long day. Prayed this morning, grateful for the gym session." },
+    create: { userId, date: today, sleepHours: 6, screenTimeHours: 5, steps: 9000, moneySpent: 45, notes: "Long day. Prayed this morning, grateful for the gym session." },
+  });
+  await prisma.user.update({ where: { id: userId }, data: { nutritionTargets: { calories: 2600, protein: 160, carbs: 300, fat: 85 } } });
+  const at = (h: number) => new Date(today.getTime() + h * 3_600_000);
+  const routine = await prisma.weightRoutine.create({ data: { userId, name: "Pull day" } });
+  await prisma.workoutSession.create({ data: { userId, routineId: routine.id, date: at(16), exerciseLogs: { create: [{ exerciseName: "Deadlift", weight: 275, sets: 3, reps: "5" }, { exerciseName: "Pull-ups", sets: 4, reps: "8" }, { exerciseName: "Rows", weight: 135, sets: 3, reps: "10" }] } } });
+  await prisma.meal.createMany({
+    data: [
+      { userId, name: "Oatmeal with banana", category: "breakfast", status: "eaten", plannedFor: at(8), calories: 420, protein: 14, carbs: 75, fat: 8, micros: { fiber: 8, potassium: 600, magnesium: 90, sodium: 150, sugar: 18 } },
+      { userId, name: "Chicken rice bowl", category: "lunch", status: "eaten", plannedFor: at(13), calories: 750, protein: 55, carbs: 90, fat: 15, micros: { fiber: 4, potassium: 700, sodium: 1100, iron: 3, zinc: 4 } },
+      { userId, name: "Two slices of pizza", category: "dinner", status: "eaten", plannedFor: at(20), calories: 600, protein: 24, carbs: 70, fat: 24, micros: { sodium: 1300, calcium: 400, sugar: 8 } },
+    ],
+  });
   for (const final of [false, true]) {
     const facts = await buildFacts(userId, today, { final });
     const t0 = Date.now();
     const r = await gradeDay(userId, today, { facts, final });
     console.log(`\n=== grade (${final ? "final" : "live"}) — model ${r.usedModel}, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    console.log(facts.facts.map((f) => `  [${f.area}] ${f.n}. ${f.text}`).join("\n"));
+    console.log(facts.facts.map((f) => `  [${f.area}] ${f.n}. ${f.text} (w${f.weight})`).join("\n"));
     const texts = new Set(facts.facts.map((f) => f.text));
     const opts = new Set(facts.options.map((o) => o.text));
     for (const [a, g] of Object.entries(r.rationale)) {
-      console.log(`  ${a}: ${r.scores[a as keyof typeof r.scores] ?? "–"}  why: ${g.why.join(" | ") || "(none)"}  improve: ${g.improve ?? "-"}${g.noData ? "  [no data]" : ""}`);
+      console.log(`  ${a}: ${r.scores[a as keyof typeof r.scores] ?? "–"}\n     why: ${g.why.join(" | ") || "(none)"}\n     improve: ${g.improve ?? "-"}${g.more?.length ? ` / ${g.more.join(" / ")}` : ""}${g.noData ? "  [no data]" : ""}`);
       for (const w of g.why) if (!texts.has(w)) failures.push(`grade why not a fact: ${w}`);
       if (g.improve && !opts.has(g.improve)) failures.push(`grade improve not an option: ${g.improve}`);
     }
     if (!r.usedModel) failures.push("grading fell back to rules (model not used)");
   }
 
+  if (process.env.GRADE_ONLY) {
+    console.log(failures.length ? `\n✗ ${failures.join("\n")}` : "\n✓ grading traceable");
+    process.exit(failures.length ? 1 : 0);
+  }
   // ---- extraction ---------------------------------------------------------------------------
   const store = new BrainStore(fs.mkdtempSync(path.join(os.tmpdir(), "brain-eval-")));
   const all = SAID.map((s, i) => ev(`eval:${i}`, new Date(Date.now() - (SAID.length - i) * 60_000), "said", `He said (evening): "${s}"`, "said"));

@@ -11,6 +11,7 @@ import { Prisma } from "@/generated/prisma";
 import { SCORED_AREAS, type ScoredArea } from "@/lib/areas";
 import { chat, parseJson, LLM_MODEL } from "@/lib/ai/llm";
 import type { NutritionTargets } from "@/lib/nutrition-schema";
+import { MICRO_META, sumMicros, type MicroKey, type Micros } from "@/lib/nutrition-micros";
 import { readRationale, type AreaRationale, type Rationale } from "@/lib/score-rationale";
 import { getDayOfWeek, getStartOfDay } from "@/lib/utils";
 import { shortHash } from "./storage";
@@ -21,6 +22,8 @@ export interface Fact {
   text: string;
   /** +1 good for the score, -1 bad, 0 neutral. */
   polarity: 1 | 0 | -1;
+  /** How much it counts (a workout or a night's sleep outweighs one small to-do). */
+  weight: number;
 }
 
 export interface Option {
@@ -38,122 +41,305 @@ export interface DayFacts {
 }
 
 const q = (s: string) => `“${s.length > 60 ? `${s.slice(0, 59)}…` : s}”`;
+const pct = (v: number, t: number) => Math.round((v / t) * 100);
+const r0 = (n: number) => Math.round(n);
 
-/** Everything knowable about a day, as numbered facts and improvement options per area. */
+/** Share of the waking day (7am–10pm) that has passed, so "so far" targets are fair mid-day. */
+export function dayProgress(now: Date, day: Date, final: boolean) {
+  if (final || getStartOfDay(now).getTime() > day.getTime()) return 1;
+  const h = now.getHours() + now.getMinutes() / 60;
+  return Math.max(0.1, Math.min(1, (h - 7) / 15));
+}
+
+/** "23:30", "11:30pm", "1am" → minutes after 6pm (so after-midnight times sort later). Null if unreadable. */
+export function bedtimeMinutes(s: string | null | undefined) {
+  const m = s?.trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (!m) return null;
+  let h = Number(m[1]) % 24;
+  if (m[3] === "pm" && h < 12) h += 12;
+  if (m[3] === "am" && h === 12) h = 0;
+  const mins = h * 60 + Number(m[2] ?? 0);
+  return (mins - 18 * 60 + 1440) % 1440;
+}
+
+const GOOD_MICROS: MicroKey[] = ["potassium", "magnesium", "vitaminC", "vitaminA", "zinc", "calcium", "iron"];
+
+/**
+ * Everything knowable about a day, as numbered facts and improvement options per area.
+ * Every area takes in all of its factors:
+ * - physical: training (sessions, volume, sports, weekly count, days since last), nutrition
+ *   (calories, protein, carbs, fat vs targets, fiber, sugar, sodium, vitamins and minerals, meal
+ *   regularity, late eating), sleep (hours, bedtime), steps, physical habits and tasks
+ * - mental: tasks done, due and overdue, day-plan completion, deep work, screen time, mood,
+ *   journal depth, reminders, mental/work habits
+ * - financial: spending vs your usual, saving, income work, money tasks
+ * - spiritual: right with God, spiritual habits, prayer/gratitude in the journal
+ * Live (mid-day) grading scales targets to how much of the day has passed.
+ */
 export async function buildFacts(userId: string, date: Date, opts: { final?: boolean; now?: Date } = {}): Promise<DayFacts> {
   const day = getStartOfDay(date);
   const next = addDays(day, 1);
   const dow = getDayOfWeek(day);
   const final = opts.final ?? false;
-  const [entry, todosDone, todosDue, tasksDone, habits, workouts, meals, remindersDone, owner] = await Promise.all([
+  const now = opts.now ?? new Date();
+  const progress = dayProgress(now, day, final);
+  const [entry, todosDone, todosDue, tasksDone, habits, workouts, recentWorkouts, meals, remindersDone, owner, plan, recentEntries] = await Promise.all([
     prisma.dailyEntry.findUnique({ where: { userId_date: { userId, date: day } } }),
-    prisma.todo.findMany({ where: { userId, status: "done", completedAt: { gte: day, lt: next } }, select: { title: true, area: true }, orderBy: { completedAt: "asc" } }),
-    prisma.todo.findMany({ where: { userId, status: "open", dueAt: { lt: next } }, select: { title: true, area: true, dueAt: true }, orderBy: { dueAt: "asc" }, take: 20 }),
+    prisma.todo.findMany({ where: { userId, status: "done", completedAt: { gte: day, lt: next } }, select: { id: true, title: true, area: true }, orderBy: { completedAt: "asc" } }),
+    prisma.todo.findMany({ where: { userId, status: "open", dueAt: { lt: next } }, select: { title: true, area: true, dueAt: true }, orderBy: { dueAt: "asc" }, take: 30 }),
     prisma.projectTask.findMany({
       where: { project: { userId }, status: "completed", completedAt: { gte: day, lt: next } },
-      select: { title: true, area: true, project: { select: { title: true, area: true } } },
+      select: { id: true, title: true, area: true, project: { select: { title: true, area: true } } },
     }),
     prisma.habit.findMany({
-      where: { userId, isActive: true, targetDays: { has: dow } },
+      where: { userId, isActive: true, targetDays: { has: dow }, createdAt: { lt: next } },
       select: { name: true, area: true, logs: { where: { date: day }, select: { completed: true } } },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.workoutSession.findMany({ where: { userId, date: { gte: day, lt: next } }, select: { routine: { select: { name: true } } } }),
-    prisma.meal.findMany({ where: { userId, status: "eaten", plannedFor: { gte: day, lt: next } }, select: { name: true, calories: true, protein: true } }),
+    prisma.workoutSession.findMany({
+      where: { userId, date: { gte: day, lt: next } },
+      select: { routine: { select: { name: true } }, exerciseLogs: { select: { exerciseName: true, weight: true, sets: true, reps: true } } },
+    }),
+    prisma.workoutSession.findMany({ where: { userId, date: { gte: addDays(day, -6), lt: day } }, select: { date: true }, orderBy: { date: "desc" } }),
+    prisma.meal.findMany({
+      where: { userId, status: "eaten", plannedFor: { gte: day, lt: next } },
+      select: { name: true, calories: true, protein: true, carbs: true, fat: true, micros: true, plannedFor: true },
+      orderBy: { plannedFor: "asc" },
+    }),
     prisma.reminder.count({ where: { userId, status: "done", updatedAt: { gte: day, lt: next } } }),
     prisma.user.findUnique({ where: { id: userId }, select: { nutritionTargets: true } }),
+    prisma.dayPlan.findUnique({ where: { userId_date: { userId, date: day } } }),
+    prisma.dailyEntry.findMany({ where: { userId, date: { gte: addDays(day, -14), lt: day } }, select: { date: true, moneySpent: true, workoutCompleted: true, sportsTrainingMinutes: true } }),
   ]);
 
   const facts: Fact[] = [];
   const options: Option[] = [];
-  const fact = (area: string | null | undefined, text: string, polarity: Fact["polarity"]) => {
+  const fact = (area: string | null | undefined, text: string, polarity: Fact["polarity"], weight = 1) => {
     const a = (SCORED_AREAS as readonly string[]).includes(area ?? "") ? (area as ScoredArea) : "mental";
     // Every line starts with ✓ (helps), ✗ (hurts) or • (neutral), so the UI can show it at a glance.
     const marked = /^[✓✗•]/.test(text) ? text : `${polarity > 0 ? "✓" : polarity < 0 ? "✗" : "•"} ${text}`;
-    facts.push({ n: facts.length + 1, area: a, text: marked, polarity });
+    facts.push({ n: facts.length + 1, area: a, text: marked, polarity, weight });
   };
   const option = (area: ScoredArea, text: string) => {
-    if (options.filter((o) => o.area === area).length >= 5 || options.some((o) => o.text === text)) return;
+    if (options.filter((o) => o.area === area).length >= 6 || options.some((o) => o.text === text)) return;
     options.push({ code: String.fromCharCode(65 + options.length), area, text });
   };
   const scoredArea = (a: string | null | undefined): ScoredArea => ((SCORED_AREAS as readonly string[]).includes(a ?? "") ? (a as ScoredArea) : "mental");
+  const soFar = final ? "" : " so far";
 
-  for (const t of todosDone) fact(t.area, `✓ Done: ${q(t.title)}`, 1);
-  for (const t of tasksDone) fact(t.area ?? t.project.area, `✓ Done: ${q(t.title)} (${t.project.title})`, 1);
-  for (const t of todosDue) {
-    const overdue = t.dueAt! < day;
-    fact(t.area, `✗ ${overdue ? "Overdue" : final ? "Not done (was due)" : "Due today, not done yet"}: ${q(t.title)}`, -1);
+  // ---- PHYSICAL: training ---------------------------------------------------------------------
+  let trained = false;
+  for (const w of workouts) {
+    trained = true;
+    const sets = w.exerciseLogs.reduce((sum, x) => sum + (x.sets ?? 1), 0);
+    const top = w.exerciseLogs.slice(0, 3).map((x) => `${x.exerciseName}${x.weight ? ` ${x.weight}` : ""}${x.sets ? ` ${x.sets}×${x.reps ?? ""}` : ""}`).join(", ");
+    const size = w.exerciseLogs.length ? ` — ${w.exerciseLogs.length} exercise${w.exerciseLogs.length === 1 ? "" : "s"}, ${sets} sets${top ? ` (${top})` : ""}` : "";
+    fact("physical", `Workout: ${q(w.routine.name)}${size}`, 1, sets >= 12 ? 3 : 2.5);
+  }
+  if (entry?.workoutCompleted && !workouts.length) {
+    trained = true;
+    const mins = entry.workoutDurationMinutes;
+    fact("physical", `Workout: ${entry.workoutRoutineName ?? entry.workoutDetails ?? "done"}${mins ? ` (${mins} min${entry.workoutIntensity ? `, ${entry.workoutIntensity}` : ""})` : ""}`, 1, mins && mins >= 45 ? 3 : 2.5);
+  }
+  if (entry?.sportsTrainingMinutes) {
+    trained = true;
+    fact("physical", `Sports / fight training ${entry.sportsTrainingMinutes} min`, entry.sportsTrainingMinutes >= 20 ? 1 : 0, entry.sportsTrainingMinutes >= 60 ? 3 : 2);
+  }
+  const trainedDays = new Set([
+    ...recentWorkouts.map((w) => getStartOfDay(w.date).getTime()),
+    ...recentEntries.filter((e) => e.workoutCompleted || (e.sportsTrainingMinutes ?? 0) >= 20).map((e) => getStartOfDay(e.date).getTime()),
+  ]);
+  const weekCount = [...trainedDays].filter((t) => t >= addDays(day, -6).getTime()).length + (trained ? 1 : 0);
+  if (weekCount) fact("physical", `${weekCount} training day${weekCount === 1 ? "" : "s"} in the last 7`, weekCount >= 3 ? 1 : 0, 1);
+  if (!trained) {
+    const last = [...trainedDays].sort((a, b) => b - a)[0];
+    const since = last ? Math.round((day.getTime() - last) / 86_400_000) : null;
+    if (since === 1 && final) fact("physical", "Rest day (trained yesterday)", 0, 1);
+    else if (since == null || since >= 3) fact("physical", since == null ? `No training${soFar} this week` : `No training${soFar} — last session ${since} days ago`, final || since == null || since >= 3 ? -1 : 0, final ? 2 : 1.5);
+    option("physical", "Get a workout or training session in and log it");
+  }
+
+  // ---- PHYSICAL: nutrition --------------------------------------------------------------------
+  const targets = (owner?.nutritionTargets ?? null) as NutritionTargets | null;
+  if (meals.length) {
+    const sum = (k: "calories" | "protein" | "carbs" | "fat") => meals.reduce((t, m) => t + (m[k] ?? 0), 0);
+    const kcal = r0(sum("calories"));
+    const protein = r0(sum("protein"));
+    const carbs = r0(sum("carbs"));
+    const fat = r0(sum("fat"));
+    fact("physical", `Food logged${soFar}: ${meals.length} meal${meals.length === 1 ? "" : "s"}, ${kcal} kcal, P ${protein} g · C ${carbs} g · F ${fat} g`, meals.length >= 2 || !final ? 1 : 0, 0.75);
+
+    if (targets?.calories) {
+      const t = targets.calories;
+      if (final) {
+        const off = kcal / t;
+        fact("physical", `Calories ${kcal}/${t} (${pct(kcal, t)}% of target)${off > 1.15 ? " — over" : off < 0.8 ? " — under" : " — on target"}`, off >= 0.9 && off <= 1.1 ? 1 : off > 1.25 || off < 0.7 ? -1 : 0, 2);
+      } else if (kcal > t * 1.1) {
+        fact("physical", `Calories ${kcal}/${t} — already over the day's target`, -1, 2);
+        option("physical", "Keep the rest of today's food light — you're over on calories");
+      } else {
+        fact("physical", `Calories ${kcal}/${t}${soFar} (${kcal >= t * progress * 0.7 ? "on pace" : "behind pace"})`, 0, 1);
+      }
+    } else fact("physical", `Calories ${kcal}${soFar} (no daily target set)`, 0, 0.5);
+
+    if (targets?.protein) {
+      const t = targets.protein;
+      const ratio = protein / t;
+      if (ratio >= 0.9) fact("physical", `Protein ${protein}/${t} g — target hit`, 1, 1.5);
+      else if (final) fact("physical", `Protein ${protein}/${t} g (${pct(protein, t)}%)`, ratio < 0.7 ? -1 : 0, 1.5);
+      else fact("physical", `Protein ${protein}/${t} g${soFar}${ratio >= progress * 0.8 ? " (on pace)" : " (behind)"}`, ratio >= progress * 0.8 ? 0 : -1, 1);
+      if (ratio < 0.9) option("physical", `Get ~${r0(t - protein)} g more protein (you're at ${protein}/${t} g)`);
+    } else if (final) fact("physical", `Protein ${protein} g`, protein >= 100 ? 1 : protein < 50 ? -1 : 0, 1);
+    for (const [k, v] of [["carbs", carbs], ["fat", fat]] as const) {
+      const t = targets?.[k];
+      if (!t || !final) continue;
+      const ratio = v / t;
+      if (ratio > 1.3 || ratio < 0.5) fact("physical", `${k === "carbs" ? "Carbs" : "Fat"} ${v}/${t} g (${pct(v, t)}%)`, -1, 0.5);
+    }
+
+    const micros = sumMicros(meals.map((m) => m.micros as Micros | null));
+    if (Object.keys(micros).length) {
+      const target = (k: MicroKey) => (targets as Record<string, number | null | undefined> | null)?.[k] ?? MICRO_META[k].target;
+      for (const k of ["sugar", "sodium"] as MicroKey[]) {
+        const v = micros[k] ?? 0;
+        const t = target(k);
+        if (v > t) {
+          fact("physical", `${MICRO_META[k].label} ${r0(v)}/${t} ${MICRO_META[k].unit} — over the limit`, -1, 1);
+          option("physical", `Go easy on ${k === "sugar" ? "sweets and sugary drinks" : "salty and processed food"} for the rest of today`);
+        } else if (final) fact("physical", `${MICRO_META[k].label} ${r0(v)} ${MICRO_META[k].unit} — under the ${t} ${MICRO_META[k].unit} limit`, 1, 0.5);
+      }
+      const fiber = micros.fiber ?? 0;
+      const ft = target("fiber");
+      if (final || fiber >= ft * 0.8) fact("physical", `Fiber ${r0(fiber)}/${ft} g`, fiber >= ft * 0.8 ? 1 : fiber < ft * 0.4 ? -1 : 0, 0.75);
+      const met = GOOD_MICROS.filter((k) => (micros[k] ?? 0) >= target(k) * 0.7 * progress);
+      const low = GOOD_MICROS.filter((k) => !met.includes(k))
+        .sort((a, b) => (micros[a] ?? 0) / target(a) - (micros[b] ?? 0) / target(b))
+        .map((k) => MICRO_META[k].label);
+      fact(
+        "physical",
+        `Vitamins & minerals${soFar}: ${met.length}/${GOOD_MICROS.length} on track${low.length ? ` (low: ${low.slice(0, 4).join(", ")})` : ""}`,
+        met.length >= 5 ? 1 : final && met.length <= 2 ? -1 : 0,
+        1
+      );
+      if (low.length) option("physical", `Add foods rich in ${low.slice(0, 2).join(" and ")}`);
+    }
+    const late = meals.filter((m) => m.plannedFor && (m.plannedFor.getHours() >= 22 || m.plannedFor.getHours() < 4));
+    if (late.length) fact("physical", `Ate late at night: ${late.map((m) => q(m.name)).join(", ")}`, -1, 0.5);
+    if (final && meals.length === 1) fact("physical", "Only one meal logged all day", -1, 0.5);
+  } else {
+    if (final) fact("physical", "No food logged — nutrition can't be judged", 0, 0.5);
+    option("physical", "Log what you eat on the Food page");
+  }
+
+  // ---- PHYSICAL: sleep, steps ------------------------------------------------------------------
+  if (entry?.sleepHours != null) {
+    const sl = entry.sleepHours;
+    fact("physical", `Slept ${sl} h${sl < 6 ? " (well under 7)" : sl < 7 ? " (under 7)" : sl > 9.5 ? " (over 9)" : " (7–9, good)"}`, sl < 6.5 ? -1 : sl >= 7 && sl <= 9.5 ? 1 : 0, 2);
+  } else option("physical", "Log last night's sleep in the Journal");
+  const bed = bedtimeMinutes(entry?.bedtime);
+  if (bed != null) fact("physical", `Bedtime ${entry!.bedtime}${bed > 6.5 * 60 ? " (after 12:30am)" : bed <= 5 * 60 ? " (before 11pm)" : ""}`, bed > 6.5 * 60 ? -1 : bed <= 5 * 60 ? 1 : 0, 0.75);
+  if (entry?.steps != null) {
+    const st = entry.steps;
+    fact("physical", `${st.toLocaleString("en-US")} steps`, st >= 8000 ? 1 : st < 3000 && final ? -1 : 0, st >= 10000 ? 1.5 : 1);
+  }
+  if (entry?.caloriesEaten != null && !meals.length) fact("physical", `Calories ${entry.caloriesEaten} (quick log)`, 0, 0.5);
+
+  // ---- tasks and habits (every area) -----------------------------------------------------------
+  for (const t of todosDone) fact(t.area, `Done: ${q(t.title)}`, 1, 1);
+  for (const t of tasksDone) fact(t.area ?? t.project.area, `Done: ${q(t.title)} (${t.project.title})`, 1, 1);
+  const overdue = todosDue.filter((t) => t.dueAt! < day);
+  const dueToday = todosDue.filter((t) => t.dueAt! >= day);
+  for (const t of dueToday) {
+    fact(t.area, `${final ? "Not done (was due today)" : "Due today, not done yet"}: ${q(t.title)}`, final ? -1 : 0, final ? 1.25 : 0.75);
     option(scoredArea(t.area), `Finish ${q(t.title)}`);
+  }
+  // Old overdue items count once per area, not once per day forever.
+  const overdueBy = new Map<ScoredArea, typeof overdue>();
+  for (const t of overdue) overdueBy.set(scoredArea(t.area), [...(overdueBy.get(scoredArea(t.area)) ?? []), t]);
+  for (const [area, list] of overdueBy) {
+    const oldest = list[0];
+    const days = Math.max(1, Math.round((day.getTime() - getStartOfDay(oldest.dueAt!).getTime()) / 86_400_000));
+    fact(area, list.length === 1 ? `Overdue ${days}d: ${q(oldest.title)}` : `${list.length} overdue items (oldest: ${q(oldest.title)}, ${days}d)`, -1, Math.min(2, 1 + list.length * 0.25));
+    option(area, `Clear ${q(oldest.title)} (overdue ${days}d)`);
   }
   for (const h of habits) {
     const done = h.logs[0]?.completed;
     const area = h.area === "general" || h.area === "work" ? "mental" : h.area;
-    fact(area, done ? `✓ Habit done: ${q(h.name)}` : `✗ Habit ${final ? "missed" : "not done yet"}: ${q(h.name)}`, done ? 1 : -1);
+    fact(area, done ? `Habit done: ${q(h.name)}` : `Habit ${final ? "missed" : "not done yet"}: ${q(h.name)}`, done ? 1 : final ? -1 : 0, done ? 1.25 : final ? 1.25 : 0.75);
     if (!done) option(scoredArea(area), `Do your habit ${q(h.name)}`);
   }
-  for (const w of workouts) fact("physical", `✓ Workout logged: ${q(w.routine.name)}`, 1);
-  if (entry?.workoutCompleted && !workouts.length) fact("physical", `✓ Workout: ${entry.workoutRoutineName ?? entry.workoutDetails ?? "done"}${entry.workoutDurationMinutes ? ` (${entry.workoutDurationMinutes} min)` : ""}`, 1);
-  if (!workouts.length && !entry?.workoutCompleted) option("physical", "Get a workout or training session in and log it");
 
-  const targets = owner?.nutritionTargets as NutritionTargets | null;
-  if (meals.length) {
-    const kcal = meals.reduce((s, m) => s + (m.calories ?? 0), 0);
-    const protein = Math.round(meals.reduce((s, m) => s + (m.protein ?? 0), 0));
-    fact("physical", `Food logged: ${meals.length} meal${meals.length === 1 ? "" : "s"}${kcal ? `, ${kcal} kcal` : ""}${protein ? `, ${protein} g protein` : ""}`, 1);
-    if (targets?.protein && protein < targets.protein * 0.8) {
-      fact("physical", `Protein ${protein}/${targets.protein} g target`, final ? -1 : 0);
-      option("physical", `Get ~${Math.round(targets.protein - protein)} g more protein (you're at ${protein}/${targets.protein} g)`);
-    }
-  } else {
-    option("physical", "Log what you eat on the Food page");
+  // ---- MENTAL ----------------------------------------------------------------------------------
+  const planItems = ((plan?.items ?? []) as { id: string; type: string }[]).filter((i) => i.type === "todo" || i.type === "task");
+  if (planItems.length) {
+    const doneIds = new Set([...todosDone.map((t) => t.id), ...tasksDone.map((t) => t.id)]);
+    const done = planItems.filter((i) => doneIds.has(i.id)).length;
+    const ratio = done / planItems.length;
+    fact("mental", `Day plan: ${done}/${planItems.length} focus items done${soFar}`, ratio >= 0.7 ? 1 : final && ratio < 0.4 ? -1 : 0, 2);
   }
-
-  if (entry?.sleepHours != null) {
-    const s = entry.sleepHours;
-    fact("physical", `Slept ${s} h${s < 6 ? " (well under 7)" : s < 7 ? " (under 7)" : s > 9.5 ? " (over 9)" : " (7–9, good)"}`, s < 6 ? -1 : s >= 7 && s <= 9.5 ? 1 : 0);
-  } else option("physical", "Log last night's sleep in the Journal");
-  if (entry?.steps != null) fact("physical", `${entry.steps.toLocaleString("en-US")} steps`, entry.steps >= 8000 ? 1 : entry.steps < 3000 ? -1 : 0);
-  if (entry?.caloriesEaten != null && !meals.length) fact("physical", `Calories ${entry.caloriesEaten}`, 0);
-
   if (entry?.screenTimeHours != null) {
-    const s = entry.screenTimeHours;
-    fact("mental", `Screen time ${s} h${s > 4 ? " (high)" : s <= 2 ? " (low, good)" : ""}`, s > 4 ? -1 : s <= 2 ? 1 : 0);
-    if (s > 4) option("mental", "Put the phone away for the next hour");
+    const st = entry.screenTimeHours;
+    fact("mental", `Screen time ${st} h${st > 4 ? " (high)" : st <= 2 ? " (low, good)" : ""}`, st > 4 ? -1 : st <= 2 ? 1 : 0, st > 6 ? 2 : 1.5);
+    if (st > 4) option("mental", "Put the phone away for the next hour");
   }
-  if (entry?.deepWorkHours != null) fact("mental", `Deep work ${entry.deepWorkHours} h`, entry.deepWorkHours >= 2 ? 1 : 0);
-  if (entry?.overallDayRating != null) fact("mental", `You rated the day ${entry.overallDayRating}/10`, entry.overallDayRating >= 7 ? 1 : entry.overallDayRating <= 4 ? -1 : 0);
-  if (entry?.tasksPlanned != null) fact("mental", `Tasks ${entry.tasksCompleted ?? 0}/${entry.tasksPlanned}`, (entry.tasksCompleted ?? 0) >= entry.tasksPlanned * 0.7 ? 1 : -1);
-  if (remindersDone) fact("mental", `${remindersDone} reminder${remindersDone === 1 ? "" : "s"} acted on`, 1);
+  if (entry?.deepWorkHours != null) fact("mental", `Deep work ${entry.deepWorkHours} h`, entry.deepWorkHours >= 2 ? 1 : final && entry.deepWorkHours < 0.5 ? -1 : 0, 2);
+  if (entry?.overallDayRating != null) fact("mental", `You rated the day ${entry.overallDayRating}/10`, entry.overallDayRating >= 7 ? 1 : entry.overallDayRating <= 4 ? -1 : 0, 1.5);
+  if (entry?.tasksPlanned != null) fact("mental", `Tasks ${entry.tasksCompleted ?? 0}/${entry.tasksPlanned}`, (entry.tasksCompleted ?? 0) >= entry.tasksPlanned * 0.7 ? 1 : -1, 1.5);
+  if (remindersDone) fact("mental", `${remindersDone} reminder${remindersDone === 1 ? "" : "s"} acted on`, 1, 0.5);
   const journal = entry?.notes?.trim() || null;
-  if (journal) fact("mental", "✓ Journal written", 1);
-  else option("mental", "Write a few lines in your Journal");
+  if (journal) {
+    const words = journal.split(/\s+/).length;
+    fact("mental", words >= 40 ? `Journal written (${words} words, reflective)` : `Journal written (${words} words)`, 1, words >= 40 ? 1.5 : 0.75);
+  } else {
+    if (final) fact("mental", "No journal entry", -1, 0.75);
+    option("mental", "Write a few lines in your Journal");
+  }
 
-  if (entry?.moneySpent != null) fact("financial", `Spent $${entry.moneySpent}`, 0);
-  if (entry?.moneySaved != null) fact("financial", `Saved $${entry.moneySaved}`, entry.moneySaved > 0 ? 1 : 0);
-  if (entry?.incomeActivity) fact("financial", "✓ Worked on income", 1);
+  // ---- FINANCIAL -------------------------------------------------------------------------------
+  const usualSpend = recentEntries.map((e) => e.moneySpent).filter((x): x is number => x != null);
+  const usual = usualSpend.length >= 3 ? usualSpend.reduce((a, b) => a + b, 0) / usualSpend.length : null;
+  if (entry?.moneySpent != null) {
+    const sp = entry.moneySpent;
+    if (usual != null && sp > Math.max(20, usual * 2)) {
+      fact("financial", `Spent $${sp} — ${(sp / Math.max(1, usual)).toFixed(1)}× your usual $${r0(usual)}`, -1, 2);
+      option("financial", "No more spending today");
+    } else if (usual != null) fact("financial", `Spent $${sp} (your usual: $${r0(usual)})`, sp <= usual ? 1 : 0, 1.5);
+    else fact("financial", `Spent $${sp}`, sp === 0 ? 1 : 0, 1);
+  }
+  if (entry?.moneySaved != null) fact("financial", `Saved $${entry.moneySaved}`, entry.moneySaved > 0 ? 1 : 0, 2);
+  if (entry?.incomeActivity) fact("financial", "Worked on income / business", 1, 2);
   if (entry?.moneySpent == null && entry?.moneySaved == null) option("financial", "Log what you spent or saved today (Journal → Quick log)");
+  if (!entry?.incomeActivity) option("financial", "Put 30 minutes into your business or income");
 
-  if (entry?.rightWithGod) fact("spiritual", "✓ Marked right with God", 1);
-  else option("spiritual", "Take a few minutes to pray, then mark “Right with God” in the Journal");
+  // ---- SPIRITUAL -------------------------------------------------------------------------------
+  if (entry?.rightWithGod) fact("spiritual", "Marked right with God", 1, 2);
+  else {
+    if (final && (entry || facts.some((f) => f.area === "spiritual"))) fact("spiritual", "Didn't mark right with God", -1, 1.5);
+    option("spiritual", "Take a few minutes to pray, then mark “Right with God” in the Journal");
+  }
+  const faithWords = journal?.match(/\b(god|pray(ed|ing)?|prayer|bible|church|grateful|thankful|blessed|faith|jesus|lord)\b/gi);
+  if (faithWords?.length) fact("spiritual", `Journal mentions ${[...new Set(faithWords.map((w) => w.toLowerCase()))].slice(0, 3).join(", ")}`, 1, 0.75);
 
-  const fingerprint = shortHash(JSON.stringify([facts.map((f) => f.text), !!journal, final]), 12);
+  const fingerprint = shortHash(JSON.stringify([facts.map((f) => [f.text, f.polarity]), !!journal, final]), 12);
   return { facts, options, journal, entryId: entry?.id ?? null, fingerprint };
 }
 
-/** Rule-based anchor: 5 with no signal, up with good facts, down with bad ones. Null = no data. */
+/** Rule-based anchor: 5 with no signal, up with good facts, down with bad ones, weighted. Null = no data. */
 export function baseline(facts: Fact[]): number | null {
   if (!facts.length) return null;
-  const pos = facts.filter((f) => f.polarity > 0).length;
-  const neg = facts.filter((f) => f.polarity < 0).length;
+  const w = (f: Fact) => f.weight ?? 1;
+  const pos = facts.filter((f) => f.polarity > 0).reduce((s, f) => s + w(f), 0);
+  const neg = facts.filter((f) => f.polarity < 0).reduce((s, f) => s + w(f), 0);
   return Math.max(0, Math.min(10, Math.round(5 + (5 * (pos - neg)) / (pos + neg + 1))));
 }
 
 // Byte-stable for the prompt cache.
-export const GRADE_SYSTEM = `You grade Abhay's day in life areas from 0 to 10, using ONLY his numbered facts.
-Scale: 10 exceptional, 8 strong, 6 decent, 4 weak, 2 very poor. Each area has a suggested score; stay within 2 of it.
+export const GRADE_SYSTEM = `You grade Abhay's day in life areas from 0 to 10, using ONLY his numbered facts. Weigh ALL of an area's facts, not just one: for physical that means training, food and nutrients, sleep and steps together.
+Facts marked (major) matter most. ✓ helps, ✗ hurts, • is neutral context.
+Scale: 10 exceptional, 8 strong, 6 decent, 4 weak, 2 very poor. Each area has a suggested score computed from all its facts; stay within 1 of it.
 For each area give:
 - score
-- why: the numbers of the 1 to 3 facts that matter most for that area
+- why: the numbers of the 2 to 4 facts that matter most for that area's score, good and bad
 - improve: the letter of the ONE option that would raise that area most, or "" if it has no options
 Use only numbers and letters that appear under that area. Reply with minified JSON only.`;
 
@@ -162,31 +348,39 @@ export interface AreaGrade {
   rationale: AreaRationale;
 }
 
+const byWeight = (a: Fact, b: Fact) => (b.weight ?? 1) - (a.weight ?? 1) || a.n - b.n;
+
 /** Turn the model's picks (or none) into a grade whose every word comes from code. */
 export function renderGrade(area: ScoredArea, facts: Fact[], options: Option[], pick: { score?: unknown; why?: unknown; improve?: unknown } | null): AreaGrade {
   const mine = facts.filter((f) => f.area === area);
   const opts = options.filter((o) => o.area === area);
-  const h = shortHash(JSON.stringify(mine.map((f) => f.text)), 10);
+  const h = shortHash(JSON.stringify(mine.map((f) => [f.text, f.polarity])), 10);
   const base = baseline(mine);
-  if (base == null) return { score: null, rationale: { why: [], improve: opts[0]?.text ?? null, noData: true, h } };
+  if (base == null) return { score: null, rationale: { why: [], improve: opts[0]?.text ?? null, more: opts.slice(1, 3).map((o) => o.text), all: [], noData: true, h } };
 
   let score = base;
   const n = Number(pick?.score);
-  if (Number.isFinite(n)) score = Math.max(Math.max(0, base - 2), Math.min(Math.min(10, base + 2), Math.round(n)));
+  // The model may only nudge the fact-based score by one point either way.
+  if (Number.isFinite(n)) score = Math.max(Math.max(0, base - 1), Math.min(Math.min(10, base + 1), Math.round(n)));
 
   const cited = (Array.isArray(pick?.why) ? pick!.why : [])
     .map(Number)
     .map((x) => mine.find((f) => f.n === x))
     .filter((f): f is Fact => !!f);
-  let why = [...new Set(cited)].slice(0, 3);
-  if (!why.length) {
-    // Deterministic fallback: the strongest signals either way.
-    why = [...mine.filter((f) => f.polarity < 0).slice(0, 1), ...mine.filter((f) => f.polarity > 0).slice(0, 2)];
-    if (!why.length) why = mine.slice(0, 2);
+  const why = [...new Set(cited)].slice(0, 4);
+  if (why.length < 2) {
+    // Top up with the heaviest signals either way, so a reason is never one-sided by accident.
+    const signals = [...mine].filter((f) => f.polarity !== 0).sort(byWeight);
+    const fill = [...signals.filter((f) => f.polarity < 0).slice(0, 1), ...signals.filter((f) => f.polarity > 0).slice(0, 2), ...[...mine].sort(byWeight)];
+    for (const f of fill) if (why.length < 3 && !why.includes(f)) why.push(f);
   }
   const code = String(pick?.improve ?? "").trim().toUpperCase();
-  const improve = opts.find((o) => o.code === code)?.text ?? opts[0]?.text ?? null;
-  return { score, rationale: { why: why.map((f) => f.text), improve, noData: false, h } };
+  const chosen = opts.find((o) => o.code === code) ?? opts[0] ?? null;
+  const all = [...mine].sort((a, b) => a.polarity - b.polarity || byWeight(a, b)).map((f) => f.text);
+  return {
+    score,
+    rationale: { why: why.map((f) => f.text), improve: chosen?.text ?? null, more: opts.filter((o) => o !== chosen).slice(0, 2).map((o) => o.text), all, noData: false, h },
+  };
 }
 
 function gradeSchema(areas: ScoredArea[]) {
@@ -197,7 +391,7 @@ function gradeSchema(areas: ScoredArea[]) {
         a,
         {
           type: "object",
-          properties: { score: { type: "integer", minimum: 0, maximum: 10 }, why: { type: "array", items: { type: "integer" }, maxItems: 3 }, improve: { type: "string" } },
+          properties: { score: { type: "integer", minimum: 0, maximum: 10 }, why: { type: "array", items: { type: "integer" }, maxItems: 4 }, improve: { type: "string" } },
           required: ["score", "why", "improve"],
         },
       ])
@@ -209,11 +403,11 @@ function gradeSchema(areas: ScoredArea[]) {
 export function gradePrompt(areas: ScoredArea[], facts: Fact[], options: Option[]) {
   return areas
     .map((a) => {
-      const mine = facts.filter((f) => f.area === a);
+      const mine = facts.filter((f) => f.area === a).sort(byWeight);
       const opts = options.filter((o) => o.area === a);
       return [
         `${a.toUpperCase()} (suggested ${baseline(mine)})`,
-        ...mine.map((f) => `${f.n}. ${f.text}`),
+        ...mine.map((f) => `${f.n}. ${f.text}${(f.weight ?? 1) >= 2 ? " (major)" : ""}`),
         opts.length ? `Options: ${opts.map((o) => `${o.code}) ${o.text}`).join(" ")}` : "Options: none",
       ].join("\n");
     })
@@ -244,7 +438,7 @@ export async function gradeDay(userId: string, date: Date, opts: { final?: boole
   for (const a of SCORED_AREAS) {
     const fresh = renderGrade(a, df.facts, df.options, null);
     if (prev?.[a]?.h && prev[a].h === fresh.rationale.h && !opts.final) {
-      grades[a] = { score: prev[a].noData ? null : existing![a], rationale: { ...prev[a], improve: fresh.rationale.improve } };
+      grades[a] = { score: prev[a].noData ? null : existing![a], rationale: { ...prev[a], improve: fresh.rationale.improve, more: fresh.rationale.more, all: fresh.rationale.all } };
     } else {
       grades[a] = fresh;
       if (fresh.score != null) toGrade.push(a);
@@ -261,7 +455,7 @@ export async function gradeDay(userId: string, date: Date, opts: { final?: boole
         ],
         schema: gradeSchema(toGrade),
         temperature: 0.2,
-        maxTokens: 60 * toGrade.length,
+        maxTokens: 70 * toGrade.length,
         timeoutMs: 150_000,
         signal: opts.signal,
       });

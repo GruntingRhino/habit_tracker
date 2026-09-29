@@ -45,6 +45,7 @@ export default function ScoreBoard() {
   const [live, setLive] = useState<Live | null>(null);
   const [open, setOpen] = useState<ScoredArea | null>(null);
   const [localPending, setLocalPending] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const [, setTick] = useState(0);
   const inFlight = useRef(false);
 
@@ -96,6 +97,7 @@ export default function ScoreBoard() {
 
   function toggle(a: ScoredArea) {
     setOpen((cur) => (cur === a ? null : a));
+    setShowAll(false);
     void load();
   }
 
@@ -160,35 +162,50 @@ export default function ScoreBoard() {
           {rationale[open].noData ? (
             <p style={{ color: "var(--ink-400)" }}>No data for this area yet today, so no score.</p>
           ) : rationale[open].why.length ? (
-            <ul className="space-y-0.5">
-              {rationale[open].why.map((w) => {
-                const mark = w[0];
-                const text = w.replace(/^[✓✗•]\s*/, "");
-                return (
-                  <li key={w} className="flex gap-1.5" style={{ color: "var(--ink-300)" }}>
-                    {mark === "✗" ? (
-                      <X className="mt-0.5 h-3 w-3 flex-shrink-0 text-rose-400" />
-                    ) : mark === "✓" ? (
-                      <Check className="mt-0.5 h-3 w-3 flex-shrink-0 text-emerald-400" />
-                    ) : (
-                      <span className="mt-[5px] h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: "var(--ink-500)", margin: "5px 3px 0" }} />
-                    )}
-                    <span>{text}</span>
-                  </li>
-                );
-              })}
-            </ul>
+            <FactList lines={showAll && rationale[open].all?.length ? rationale[open].all! : rationale[open].why} />
           ) : (
             <p style={{ color: "var(--ink-400)" }}>Scored before reasons were recorded.</p>
           )}
+          {!rationale[open].noData && (rationale[open].all?.length ?? 0) > rationale[open].why.length && (
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-1 text-xs hover:underline" style={{ color: "var(--ink-500)" }}>
+              {showAll ? "Show key factors" : `All ${rationale[open].all!.length} factors`}
+            </button>
+          )}
           {rationale[open].improve && (
-            <p className="mt-2 flex gap-1.5 border-t pt-2" style={{ borderColor: "var(--stroke-1)", color: "var(--ink-200)" }}>
-              <ArrowUp className="mt-0.5 h-3 w-3 flex-shrink-0" style={{ color: AREA_META[open].color }} />
-              <span>{rationale[open].improve}</span>
-            </p>
+            <div className="mt-2 space-y-0.5 border-t pt-2" style={{ borderColor: "var(--stroke-1)" }}>
+              {[rationale[open].improve, ...(rationale[open].more ?? [])].map((tip, i) => (
+                <p key={tip} className="flex gap-1.5" style={{ color: i === 0 ? "var(--ink-200)" : "var(--ink-400)" }}>
+                  <ArrowUp className="mt-0.5 h-3 w-3 flex-shrink-0" style={{ color: i === 0 ? AREA_META[open].color : "var(--ink-500)" }} />
+                  <span>{tip}</span>
+                </p>
+              ))}
+            </div>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function FactList({ lines }: { lines: string[] }) {
+  return (
+    <ul className="space-y-0.5">
+      {lines.map((w) => {
+        const mark = w[0];
+        const text = w.replace(/^[✓✗•]\s*/, "");
+        return (
+          <li key={w} className="flex gap-1.5" style={{ color: "var(--ink-300)" }}>
+            {mark === "✗" ? (
+              <X className="mt-0.5 h-3 w-3 flex-shrink-0 text-rose-400" />
+            ) : mark === "✓" ? (
+              <Check className="mt-0.5 h-3 w-3 flex-shrink-0 text-emerald-400" />
+            ) : (
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: "var(--ink-500)", margin: "5px 3px 0" }} />
+            )}
+            <span>{text}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

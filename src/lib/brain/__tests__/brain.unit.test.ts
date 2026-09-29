@@ -255,15 +255,23 @@ describe("profile files", () => {
 
 describe("live grading can't invent anything", () => {
   const facts: Fact[] = [
-    { n: 1, area: "physical", text: "✓ Workout logged: “Push day”", polarity: 1 },
-    { n: 2, area: "physical", text: "✗ Habit not done yet: “Stretch”", polarity: -1 },
-    { n: 3, area: "physical", text: "• Slept 6.5 h (under 7)", polarity: 0 },
-    { n: 4, area: "mental", text: "✓ Done: “Math homework”", polarity: 1 },
+    { n: 1, area: "physical", text: "✓ Workout logged: “Push day”", polarity: 1, weight: 1 },
+    { n: 2, area: "physical", text: "✗ Habit not done yet: “Stretch”", polarity: -1, weight: 1 },
+    { n: 3, area: "physical", text: "• Slept 6.5 h (under 7)", polarity: 0, weight: 1 },
+    { n: 4, area: "mental", text: "✓ Done: “Math homework”", polarity: 1, weight: 1 },
   ];
   const options: Option[] = [
     { code: "A", area: "physical", text: "Do your habit “Stretch”" },
     { code: "B", area: "mental", text: "Write a few lines in your Journal" },
   ];
+
+  it("baseline weighs big factors more than small ones", () => {
+    const f = (polarity: 1 | -1, weight: number, n = 1): Fact => ({ n, area: "physical", text: "x", polarity, weight });
+    // A great workout (3) outweighs a missed small habit (1).
+    expect(baseline([f(1, 3), f(-1, 1)])).toBeGreaterThan(5);
+    // Bad sleep + over on calories outweigh one to-do.
+    expect(baseline([f(-1, 2), f(-1, 2), f(1, 1)])).toBeLessThan(5);
+  });
 
   it("baseline: 5 with no signal, up for good facts, down for bad ones, null with no data", () => {
     expect(baseline([])).toBeNull();
@@ -274,8 +282,9 @@ describe("live grading can't invent anything", () => {
 
   it("uses only cited facts from the same area, clamps the score, validates the option", () => {
     const g = renderGrade("physical", facts, options, { score: 10, why: [1, 4, 99, 1], improve: "a" });
-    expect(g.score).toBe(7); // baseline 5, clamped to +2
-    expect(g.rationale.why).toEqual(["✓ Workout logged: “Push day”"]);
+    expect(g.score).toBe(6); // baseline 5, the model may only nudge it by 1
+    expect(g.rationale.why[0]).toBe("✓ Workout logged: “Push day”");
+    expect(g.rationale.why.every((w) => facts.some((f) => f.text === w && f.area === "physical"))).toBe(true);
     expect(g.rationale.improve).toBe("Do your habit “Stretch”");
     // An option from another area, or a made-up one, falls back to this area's first option.
     expect(renderGrade("physical", facts, options, { score: 5, why: [], improve: "B" }).rationale.improve).toBe("Do your habit “Stretch”");
@@ -284,7 +293,8 @@ describe("live grading can't invent anything", () => {
   it("with no model output it still explains from real facts", () => {
     const g = renderGrade("physical", facts, options, null);
     expect(g.score).toBe(5);
-    expect(g.rationale.why).toEqual(["✗ Habit not done yet: “Stretch”", "✓ Workout logged: “Push day”"]);
+    expect(g.rationale.why).toEqual(["✗ Habit not done yet: “Stretch”", "✓ Workout logged: “Push day”", "• Slept 6.5 h (under 7)"]);
+    expect(g.rationale.all).toHaveLength(3);
     for (const w of g.rationale.why) expect(facts.map((f) => f.text)).toContain(w);
   });
 

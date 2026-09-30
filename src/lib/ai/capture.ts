@@ -14,7 +14,7 @@ import { deleteEvent } from "@/lib/calendar";
 
 /** A change made by the assistant; stored on the chat message so it can be undone. */
 export interface ItemAction {
-  op: "create" | "complete" | "append" | "update";
+  op: "create" | "complete" | "append" | "update" | "delete";
   /** "plan": a goal plan in progress (id = conversation id); undone by undoMessage, not here. */
   type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan" | "schedule" | "measurement" | "event" | "sleep";
   id: string;
@@ -22,6 +22,8 @@ export interface ItemAction {
   area?: string;
   href: string;
   detail?: string;
+  /** For a habit logged on another day ("last night"): that day, ISO. */
+  day?: string;
   /** previous value for reversible edits (journal append; plan JSON for a plan update) */
   prev?: string | null;
 }
@@ -288,6 +290,15 @@ export async function undoActions(userId: string, actions: ItemAction[]): Promis
         await prisma.dailyEntry.updateMany({ where: { id: a.id, userId }, data: { sleepHours: a.prev != null ? Number(a.prev) : null } });
       } else if (a.op === "append" && a.type === "journal") {
         await prisma.dailyEntry.updateMany({ where: { id: a.id, userId }, data: { notes: a.prev ?? null } });
+      } else if ((a.op === "update" || a.op === "complete") && a.type === "routine" && a.prev) {
+        const date = a.day ? new Date(a.day) : today;
+        const prev = JSON.parse(a.prev) as { completed: boolean; notes: string | null } | null;
+        if (prev) await prisma.habitLog.updateMany({ where: { habitId: a.id, date }, data: prev });
+        else await prisma.habitLog.deleteMany({ where: { habitId: a.id, date } });
+      } else if (a.op === "delete") {
+        // Put the deleted row back as it was.
+        if (a.prev && a.type === "todo") await prisma.todo.create({ data: JSON.parse(a.prev) });
+        if (a.prev && a.type === "reminder") await prisma.reminder.create({ data: JSON.parse(a.prev) });
       } else if (a.op === "complete") {
         if (a.type === "todo") await prisma.todo.updateMany({ where: { id: a.id, userId }, data: { status: "open", completedAt: null } });
         if (a.type === "task") await prisma.projectTask.updateMany({ where: { id: a.id, project: { userId } }, data: { status: "todo", completedAt: null } });

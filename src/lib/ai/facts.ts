@@ -101,3 +101,36 @@ export async function habitStatusAnswer(userId: string, text: string, now = new 
   if (log?.notes) return `Not yet — ${h.name}: ${log.notes} so far.`;
   return `Not yet — ${h.name} isn't checked off today.`;
 }
+
+export const MEALS_Q = /\bwhat (did|have) i (eat|eaten|had)\b|\bwhat i ate\b|\bmy meals (today|so far)\b/i;
+export async function mealsAnswer(userId: string, now = new Date()) {
+  const day = getStartOfDay(now);
+  const meals = await prisma.meal.findMany({ where: { userId, status: "eaten", createdAt: { gte: day } }, orderBy: { createdAt: "asc" }, select: { name: true, category: true, calories: true, protein: true } });
+  if (!meals.length) return "Nothing logged to eat today yet.";
+  const kcal = meals.reduce((s, m) => s + (m.calories ?? 0), 0);
+  const p = meals.reduce((s, m) => s + (m.protein ?? 0), 0);
+  return [`Today (${r0(kcal)} kcal · ${r0(p)}g protein):`, ...meals.map((m) => `- ${m.category ? `${m.category}: ` : ""}${m.name}${m.calories != null ? ` — ${r0(m.calories)} kcal, ${r0(m.protein ?? 0)}g P` : ""}`)].join("\n");
+}
+
+export const TARGET_Q = /\b(what'?s|what is|whats|how (much|many))\b.{0,30}\b(my )?(calorie|calories|protein|carb|carbs|fat|macro|macros)\b.{0,20}\b(target|goal|should i (be )?(eat|eating|get|have|hit))|\b(calorie|protein|macro) (target|goal)s?\b/i;
+export async function targetsAnswer(userId: string, now = new Date()) {
+  const body = await readBody();
+  if (!body.weightLb) return "I don't have your weight yet — say something like \"I weigh 134\" and I'll set your targets.";
+  const t = computeTargets(body, body.weightLb, now);
+  return [`Your daily targets (${body.goal ?? "maintain"}): ${t.targets.calories.toLocaleString("en-US")} kcal · ${t.targets.protein}g protein · ${t.targets.carbs}g carbs · ${t.targets.fat}g fat · ${t.targets.fiber}g fiber.`, ...t.lines].join("\n");
+  void userId;
+}
+
+export const REMINDERS_Q = /\b(what|which|show|list|any)\b.{0,15}\breminders?\b.{0,20}(\?|$)|\bmy reminders\b/i;
+export async function remindersAnswer(userId: string) {
+  const r = await prisma.reminder.findMany({ where: { userId, status: "pending" }, orderBy: { fireAt: "asc" }, take: 15 });
+  if (!r.length) return "No reminders set.";
+  const f = (d: Date) => d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).replace(":00", "");
+  return ["Your reminders:", ...r.map((x) => `⏰ ${x.text} — ${f(x.fireAt)}${x.recurrence !== "none" ? ` (${x.recurrence})` : ""}`)].join("\n");
+}
+
+export const WEEK_Q = /\bhow (was|is|did|'?s) (my|the) week\b|\bhow did i do this week\b|\bmy week so far\b|\bweekly score\b/i;
+export async function weekAnswer(userId: string, now = new Date()) {
+  const { describeWeek, weekScore } = await import("@/lib/weekly");
+  return describeWeek(await weekScore(userId, now));
+}

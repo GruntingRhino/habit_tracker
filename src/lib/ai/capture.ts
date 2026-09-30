@@ -10,7 +10,7 @@ import type { RoutedItem } from "@/lib/ai/router";
 import { findWhenInText, parseWhenFrom } from "@/lib/ai/when";
 import { detectAssessment, headsUpTime } from "@/lib/study";
 import { noteSession } from "@/lib/training";
-import { deleteEvent } from "@/lib/calendar";
+import { createEvent, deleteEvent, updateEvent } from "@/lib/calendar";
 
 /** A change made by the assistant; stored on the chat message so it can be undone. */
 export interface ItemAction {
@@ -80,7 +80,7 @@ export async function applyCapture(
     select: { id: true, title: true, area: true },
   });
 
-  for (const item of items) {
+  for (let item of items) {
     const area = normalizeArea(item.area);
     const priority = normalizePriority(item.priority);
     const when = parseWhenFrom(item.when, originalText) ?? (items.length === 1 ? findWhenInText(originalText) : null);
@@ -124,6 +124,8 @@ export async function applyCapture(
         break;
       }
       case "reminder": {
+        // "Stretch every day" → "Stretch" (the repeat is shown separately).
+        item = { ...item, title: item.title.replace(/\s+(every\s+(day|night|morning|evening|week|weekday)|daily|weekly|each day)\b/gi, "").trim() || item.title };
         const fireAt = when?.date ?? null;
         if (fireAt) {
           const reminder = await prisma.reminder.create({
@@ -142,7 +144,7 @@ export async function applyCapture(
         const eaten = item.done !== false;
         const lower = item.title.toLowerCase() + " " + originalText.toLowerCase();
         // The model guesses a slot even when none was said; only trust a slot named in the text.
-        const said = /\b(breakfast|lunch|dinner|snack)\b/.exec(lower)?.[1];
+        const said = /\b(breakfast|brunch|lunch|dinner|snack)\b/.exec(lower)?.[1]?.replace("brunch", "breakfast");
         const hour = new Date().getHours();
         const category = said ?? (hour < 11 ? "breakfast" : hour < 16 ? "lunch" : hour < 22 ? "dinner" : "snack");
         // "Lunch" or "Meal" isn't a name: use the foods instead ("Jasmine rice, salmon, cucumber…").
@@ -299,6 +301,18 @@ export async function undoActions(userId: string, actions: ItemAction[]): Promis
         // Put the deleted row back as it was.
         if (a.prev && a.type === "todo") await prisma.todo.create({ data: JSON.parse(a.prev) });
         if (a.prev && a.type === "reminder") await prisma.reminder.create({ data: JSON.parse(a.prev) });
+        if (a.prev && a.type === "meal") await prisma.meal.create({ data: JSON.parse(a.prev) });
+        if (a.prev && a.type === "event") {
+          // Back on the calendar (and on Google, as a new event there).
+          const e = JSON.parse(a.prev) as { title: string; start: string; end: string; allDay: boolean; attendees: string[]; description: string | null; location: string | null; todoId: string | null };
+          await createEvent(userId, { title: e.title, start: new Date(e.start), end: new Date(e.end), allDay: e.allDay, attendees: e.attendees, description: e.description, location: e.location, todoId: e.todoId });
+        }
+      } else if (a.op === "update" && a.type === "event" && a.prev) {
+        const p = JSON.parse(a.prev) as { start: string; end: string; allDay: boolean };
+        await updateEvent(userId, a.id, { start: new Date(p.start), end: new Date(p.end), allDay: p.allDay });
+      } else if (a.op === "update" && a.type === "todo" && a.prev) {
+        const p = JSON.parse(a.prev) as { dueAt: string | null };
+        await prisma.todo.updateMany({ where: { id: a.id, userId }, data: { dueAt: p.dueAt ? new Date(p.dueAt) : null } });
       } else if (a.op === "complete") {
         if (a.type === "todo") await prisma.todo.updateMany({ where: { id: a.id, userId }, data: { status: "open", completedAt: null } });
         if (a.type === "task") await prisma.projectTask.updateMany({ where: { id: a.id, project: { userId } }, data: { status: "todo", completedAt: null } });

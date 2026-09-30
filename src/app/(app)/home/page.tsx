@@ -3,7 +3,8 @@
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { format, isPast } from "date-fns";
-import { ArrowRight, Lightbulb, Newspaper } from "lucide-react";
+import { ArrowRight, Lightbulb } from "lucide-react";
+import NewsTerminal, { type NewsData } from "@/components/NewsTerminal";
 import ScoreBoard from "@/components/ScoreBoard";
 import { Checkbox, Section } from "@/components/ui";
 import { useLoad, useOnDataChanged } from "@/hooks/useAssistantChat";
@@ -27,10 +28,7 @@ interface Habit {
   targetDays: string[];
   logs: { date: string; completed: boolean }[];
 }
-interface News {
-  at: string | null;
-  items: { title: string; url: string; source: string; topic: string; coverage: number }[];
-}
+type News = NewsData;
 interface Nudge {
   id: string;
   title: string;
@@ -62,7 +60,6 @@ export default function HomePage() {
   const [news, setNews] = useState<News | null>(null);
   const [nudges, setNudges] = useState<Nudge[]>([]);
   const [food, setFood] = useState<Food | null>(null);
-  const [allNews, setAllNews] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
@@ -93,6 +90,10 @@ export default function HomePage() {
   const doneHabit = (h: Habit) => !!now && h.logs.some((l) => l.completed && ymd(new Date(l.date)) === ymd(now));
   const hour = now?.getHours() ?? 12;
 
+  async function refreshNews() {
+    const res = await fetch("/api/news", { method: "POST" }).catch(() => null);
+    if (res?.ok) setNews(await res.json());
+  }
   async function tickTodo(t: Todo) {
     setTodos((l) => l.filter((x) => x.id !== t.id));
     await fetch(`/api/todos/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "done" }) });
@@ -105,12 +106,18 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-page">
+    <div className="mx-auto max-w-[45rem] lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-8">
+      <div className="min-w-0">
       <h1 className="min-h1 mb-0.5">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, Abhay</h1>
       <p className="min-sub mb-4">{now ? format(now, "EEEE, MMMM d") : ""}</p>
 
       <div className="mb-6 flex justify-center">
         <ScoreBoard />
+      </div>
+
+      {/* Phones: the news sits right under the scores. */}
+      <div className="lg:hidden">
+        <NewsTerminal news={news} onRefresh={refreshNews} />
       </div>
 
       <Section label="Up next">
@@ -197,35 +204,13 @@ export default function HomePage() {
         </Section>
       )}
 
-      <Section label={`News for you${news?.at ? ` · ${format(new Date(news.at), "EEE h:mm a")}` : ""}`}>
-        {!news?.items.length ? (
-          <p className="min-sub">The first news update runs tonight at 11:30.</p>
-        ) : (
-          <>
-            <ul>
-              {(allNews ? news.items : news.items.slice(0, 6)).map((n) => (
-                <li key={n.url} className="min-row items-start">
-                  <Newspaper className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" style={{ color: "var(--ink-500)" }} />
-                  <a href={n.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1">
-                    <span className="block" style={{ color: "var(--ink-200)" }}>
-                      {n.title}
-                    </span>
-                    <span className="min-sub">
-                      {n.source} · {n.topic}
-                      {n.coverage > 1 ? ` · ${n.coverage} outlets` : ""}
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-            {news.items.length > 6 && (
-              <button onClick={() => setAllNews((v) => !v)} className="min-link mt-1 text-xs">
-                {allNews ? "Show less" : `Show all ${news.items.length}`}
-              </button>
-            )}
-          </>
-        )}
-      </Section>
+      </div>
+      {/* Desktop: its own column, pinned while the page scrolls. */}
+      <aside className="hidden lg:block">
+        <div className="sticky top-4">
+          <NewsTerminal news={news} onRefresh={refreshNews} />
+        </div>
+      </aside>
     </div>
   );
 }

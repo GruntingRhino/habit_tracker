@@ -139,13 +139,12 @@ export async function refreshNews(userId: string, now = new Date()): Promise<New
   const feeds: [string, string][] = [["Top stories", gnews()], ...topics.map((t) => [t, gnews(t)] as [string, string]), ["Tech (Hacker News)", "https://hnrss.org/frontpage?count=30"]];
   const raw: Omit<NewsItem, "coverage" | "score">[] = [];
   const errors: string[] = [];
-  for (const [topic, url] of feeds) {
-    try {
-      raw.push(...parseRss(await fetchText(url), topic).slice(0, 40));
-    } catch (error) {
-      errors.push(`${topic}: ${error instanceof Error ? error.message : error}`);
-    }
-  }
+  // All feeds at once: a tap on "refresh" shouldn't take a minute.
+  const results = await Promise.allSettled(feeds.map(async ([topic, url]) => parseRss(await fetchText(url), topic).slice(0, 40)));
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") raw.push(...r.value);
+    else errors.push(`${feeds[i][0]}: ${r.reason instanceof Error ? r.reason.message : r.reason}`);
+  });
   const state: NewsState = { at: now.toISOString(), topics, items: rankNews(raw, now), errors };
   const value = state as unknown as Prisma.InputJsonValue;
   await prisma.brainState.upsert({ where: { key: NEWS_KEY }, update: { value }, create: { key: NEWS_KEY, value } });

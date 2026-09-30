@@ -32,8 +32,15 @@ const GOAL_START =
 const PLAN_REQUEST = /\b(make|build|create|give|write|design)( me)? (a |an |my )?(plan|roadmap|program|training plan|routine|schedule) (for|to)\b/i;
 
 export function looksLikeGoal(text: string) {
-  return text.length <= 400 && (GOAL_START.test(text) || PLAN_REQUEST.test(text));
+  return text.length <= 400 && (GOAL_START.test(text) || PLAN_REQUEST.test(text) || PLAN_ASK.test(text));
 }
+
+// He doesn't want plans made for him by default: the interview only runs when he asks for a plan.
+const PLAN_ASK = /\bhelp me plan\b|\bplan (it|this|that) out\b|\b(turn|make) (it|this|that) (into )?a plan\b|\bplan for (it|this|that)\b/i;
+export function wantsPlan(text: string) {
+  return PLAN_REQUEST.test(text) || PLAN_ASK.test(text);
+}
+
 
 export const SKIP_QUESTIONS = /\b(just|go ahead( and)?|now)? ?(make|give|build|write|show)( me)? (the |a |my )?plan\b|\bskip\b|enough questions|that'?s (it|all|enough)|you have enough/i;
 export const CANCEL_PLAN = /^\s*(cancel|stop|nevermind|never mind|forget it|nvm|quit)\b/i;
@@ -215,7 +222,7 @@ export async function applyPlanToProject(userId: string, projectId: string, p: P
 }
 
 const GOAL_LEAD =
-  /\b(i (really )?(want to|wanna|would like to|am trying to|hope to)|i'?d (really )?like to|i'?m trying to|help me( to)?|how (do|can|should|would) i|teach me( how)?( to)?|coach me( on| in| to)?|my goal is to|(make|build|create|give|write|design)( me)? (a |an |my )?(plan|roadmap|program|training plan|routine|schedule) (for|to))\s+/i;
+  /\b(help me plan( out| for| to| how to)?|i (really )?(want to|wanna|would like to|am trying to|hope to)|i'?d (really )?like to|i'?m trying to|help me( to)?|how (do|can|should|would) i|teach me( how)?( to)?|coach me( on| in| to)?|my goal is to|(make|build|create|give|write|design)( me)? (a |an |my )?(plan|roadmap|program|training plan|routine|schedule) (for|to))\s+/i;
 
 /** "I want to get really good at MMA" → "Get really good at MMA". */
 export function goalTitle(goal: string) {

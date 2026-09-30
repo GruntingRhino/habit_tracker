@@ -172,11 +172,11 @@ const AREA_KEYWORDS: [RegExp, RoutedItem["area"]][] = [
   [/\b(pray|prayer|bible|church|mass|god|jesus|faith|worship|scripture|devotion|rosary|confession)\b/i, "spiritual"],
   [/\b(tax|taxes|budget|rent|savings?|invest|bills?|bank|credit|loan|paycheck|subscription|\$\d)/i, "financial"],
   [/\b(meditat|journal|therapy|therapist|read(ing)? \d+ pages|mindful)/i, "mental"],
-  [/\b(gym|workout|run|lift|squat|protein|doctor|dentist|sleep|stretch|yoga|vitamins?)\b/i, "physical"],
+  [/\b(gym|workout|run|lift|squat|protein|doctor|dentist|sleep|stretch|yoga|vitamins?|mma|boxing|jiu jitsu|bjj|wrestling|muscle|bulk|stronger|fit|fitter|abs)\b/i, "physical"],
   [/\b(exam|study|homework|class|lecture|professor|thesis|capstone|internship|resume|interview|assignment)\b/i, "work"],
 ];
 
-function keywordArea(title: string): RoutedItem["area"] | null {
+export function keywordArea(title: string): RoutedItem["area"] | null {
   for (const [re, area] of AREA_KEYWORDS) if (re.test(title)) return area;
   return null;
 }

@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { keywordArea } from "@/lib/ai/router";
 import { parseMeasurements, recordMeasurements } from "@/lib/body";
 import { buildSchedule, describeSchedule, fmt12, parseScheduleBlock, parseSleepTimes, readPrefs, writePrefs } from "@/lib/schedule";
 import { readTraining, todaysTraining, writeTraining } from "@/lib/training";
@@ -25,6 +26,7 @@ import {
   createPlanProject,
   goalTitle,
   looksLikeGoal,
+  wantsPlan,
   NEW_PLAN,
   nextQuestion,
   PLAN_AGAIN,
@@ -272,7 +274,12 @@ export async function handleMessage(userId: string, text: string, source: Source
     }
     if (looksLikeGoal(trimmed)) {
       flags.conversational = true;
-      return await startPlan(turn, trimmed);
+      // Only an explicit "make me a plan" runs the planner. A how-to question gets an answer; a
+      // stated goal is saved as a goal to keep him accountable, with no steps made up for him.
+      if (wantsPlan(trimmed)) return await startPlan(turn, trimmed);
+      if (/^\s*(how|what|which|should|can|could)\b|\?\s*$/i.test(trimmed)) return await chatReply(turn, trimmed);
+      const actions = await applyCapture(userId, [{ kind: "project", title: goalTitle(trimmed), area: keywordArea(trimmed) ?? "general", priority: "medium" }], trimmed, source);
+      return save(turn, describeActions(actions), { actions });
     }
     // "He's a golden retriever": a statement continuing the conversation, not something to file.
     if (!wantsFiling && FACT_STATEMENT.test(trimmed) && trimmed.length < 160) {

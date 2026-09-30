@@ -226,7 +226,7 @@ export default function ChatThread({ compact = false, background }: ChatThreadPr
       <div className={`relative min-h-0 flex-1 space-y-5 overflow-y-auto ${compact ? "py-3" : "py-2"}`}>
         {ready && messages.length === 0 && !background && (
           <div className="space-y-2 pt-4">
-            <p className="min-sub mb-3">Tell it anything: it files tasks, chats, and builds plans for your goals.</p>
+            <p className="min-sub mb-3">Tell it anything: it files tasks and reminders, tracks your goals, and keeps you on schedule.</p>
             {EXAMPLES.map((e) => (
               <button key={e} onClick={() => submit(e)} className="block text-left text-sm hover:text-[var(--ink-100)]" style={{ color: "var(--ink-400)" }}>
                 “{e}”

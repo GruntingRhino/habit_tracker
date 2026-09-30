@@ -85,7 +85,7 @@ const plan = async () => (await prisma.conversation.findUnique({ where: { id: ci
 const lastContext = () => chatCalls[chatCalls.length - 1].map((m) => m.content).join("\n---\n");
 
 async function runPlanToEnd() {
-  await say("I want to get really good at MMA");
+  await say("make me a plan to get really good at MMA");
   for (const a of ["All-round", "Total beginner", "Amateur fight in a year", "6-10 hours"]) await say(a);
   return say("Gym nearby, no injuries");
 }
@@ -114,14 +114,14 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("a goal starts an undoable plan with the first question", async () => {
-    const r = await say("I want to get really good at MMA");
+    const r = await say("make me a plan to get really good at MMA");
     expect(r.actions).toMatchObject([{ type: "plan", title: "Get really good at MMA" }]);
     expect(r.meta?.options).toEqual(["Striking", "Grappling", "All-round"]);
     expect((await plan())?.stage).toBe("asking");
   });
 
   it("after undoing the plan start, follow-ups are chat and the model is told it's gone", async () => {
-    const start = await say("I want to get really good at MMA");
+    const start = await say("make me a plan to get really good at MMA");
     expect(await undoMessage(userId, start.id)).toMatchObject({ undone: 1 });
     expect((await plan())?.stage).toBe("cancelled");
 
@@ -182,7 +182,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("undoing the plan start after it finished removes the project too", async () => {
-    const start = await say("I want to get really good at MMA");
+    const start = await say("make me a plan to get really good at MMA");
     for (const a of ["All-round", "Total beginner", "Amateur fight in a year", "6-10 hours", "Gym nearby"]) await say(a);
     const projectId = (await plan())!.projectId!;
     await undoMessage(userId, start.id);
@@ -199,7 +199,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("cancel mid-interview, then 'make the plan again' resumes at the same question", async () => {
-    await say("I want to get really good at MMA");
+    await say("make me a plan to get really good at MMA");
     await say("All-round");
     const cancel = await say("nevermind");
     expect(cancel.reply).toContain("dropped the plan");
@@ -211,7 +211,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("a question mid-interview is answered and the pending question re-asked, without recording an answer", async () => {
-    await say("I want to get really good at MMA");
+    await say("make me a plan to get really good at MMA");
     const r = await say("what's the difference between bjj and wrestling?");
     expect(r.reply).toBe("Sure thing.\n\nWhich side of MMA pulls you in most?");
     expect(r.meta?.options).toEqual(["Striking", "Grappling", "All-round"]);
@@ -219,14 +219,14 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("'just make the plan' skips the remaining questions", async () => {
-    await say("I want to get really good at MMA");
+    await say("make me a plan to get really good at MMA");
     const r = await say("just make the plan");
     expect(r.meta?.plan?.title).toBe("MMA Plan");
     expect((await plan())?.qa).toHaveLength(0);
   });
 
   it("an explicit new goal mid-interview starts a new plan; an ordinary answer doesn't", async () => {
-    await say("I want to get really good at MMA");
+    await say("make me a plan to get really good at MMA");
     await say("I want to get better at striking"); // an answer, even though it sounds like a goal
     expect((await plan())?.qa).toHaveLength(1);
     const r = await say("actually forget that, I want to learn guitar instead");
@@ -236,7 +236,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
 
   it("'remind me' during an interview is filed, and the interview continues", async () => {
     routes.set("remind me tomorrow at 5pm to pack my gym bag", { intent: "capture", items: [{ kind: "reminder", title: "Pack gym bag", area: "physical", when: "tomorrow at 5pm" }] });
-    await say("I want to get really good at MMA");
+    await say("make me a plan to get really good at MMA");
     const r = await say("remind me tomorrow at 5pm to pack my gym bag");
     expect(r.actions).toMatchObject([{ type: "reminder" }]);
     expect((await plan())?.stage).toBe("asking");
@@ -366,7 +366,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("'cancel that' during an interview cancels the plan", async () => {
-    await say("I want to get really good at MMA");
+    await say("make me a plan to get really good at MMA");
     await say("cancel that");
     expect((await plan())?.stage).toBe("cancelled");
   });
@@ -397,7 +397,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("undoing an earlier message (not the last reply) still reaches the next turn", async () => {
-    const start = await say("I want to run a marathon");
+    const start = await say("make me a plan to run a marathon");
     await say("Total beginner");
     await undoMessage(userId, start.id);
     await say("6-10 hours");
@@ -421,7 +421,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("'why did you stop asking?' after a cancel is answered from the plan state", async () => {
-    await say("I want to run a marathon");
+    await say("make me a plan to run a marathon");
     await say("nevermind");
     await say("hmm ok");
     calls.length = 0;
@@ -619,7 +619,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("undo is idempotent and scoped to the owner", async () => {
-    const start = await say("I want to get really good at MMA");
+    const start = await say("make me a plan to get really good at MMA");
     expect(await undoMessage("someone-else", start.id)).toBeNull();
     expect(await undoMessage(userId, start.id)).not.toBeNull();
     expect(await undoMessage(userId, start.id)).toBeNull();
@@ -635,9 +635,9 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   });
 
   it("undo in an old conversation doesn't touch the current conversation's plan", async () => {
-    const old = await say("I want to get really good at MMA");
+    const old = await say("make me a plan to get really good at MMA");
     cid = null;
-    await say("I want to learn guitar");
+    await say("make me a plan to learn guitar");
     const current = cid;
     await undoMessage(userId, old.id);
     cid = current;
@@ -707,5 +707,23 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     const r = await say("what should i lift today?");
     expect(r.reply).toMatch(/Rest or recovery today|Today's lifts/);
     expect(calls).toEqual([]);
+  });
+
+  it("a stated goal is saved as a goal (no plan, no steps); only an explicit ask runs the planner", async () => {
+    const r = await say("I want to get really good at MMA");
+    expect(r.actions).toMatchObject([{ type: "project", op: "create", title: "Get really good at MMA", area: "physical" }]);
+    expect(calls.filter((c) => c === "question" || c === "plan")).toEqual([]);
+    expect(await prisma.projectTask.count({ where: { project: { userId } } })).toBe(0);
+    expect(await plan()).toBeNull();
+    await undoMessage(userId, r.id);
+    expect(await prisma.project.count({ where: { userId } })).toBe(0);
+
+    const how = await say("how do i get better at boxing?");
+    expect(how.actions).toEqual([]);
+    expect(await prisma.project.count({ where: { userId } })).toBe(0);
+
+    const ask = await say("help me plan to get stronger");
+    expect(ask.actions).toMatchObject([{ type: "plan" }]);
+    expect(calls).toContain("question");
   });
 });

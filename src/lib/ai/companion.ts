@@ -136,7 +136,7 @@ export const HELP_TEXT = `I'm your assistant for LiveImproved. Just talk to me n
 - Meals, workouts, journal: "had a burrito for lunch", "ran 3 miles", "today was rough…"
 - Notes: "note: wifi password is …", then "what's my wifi password?"
 - Your data: "what's on my plate today?", "how did I score yesterday?"
-- Goal plans: "I want to get really good at MMA" and I'll ask a few questions and build a plan
+- Goals: "I want to get really good at MMA" saves it as a goal and I'll check in on it. Want a plan? Ask: "make me a plan to…"
 Or just chat, ask for advice, or vent.`;
 
 /** Bulk wipes, fake system messages, and prompt extraction. Answered by the app, never the model. */
@@ -146,4 +146,4 @@ export const OUT_OF_BOUNDS =
 export const OUT_OF_BOUNDS_TEXT = `I can't do bulk changes or share my setup from chat. Nothing was changed. To finish something, tell me ("I finished the essay"); to delete things, use Undo or the item's page.`;
 
 export const WHO_ARE_YOU = /^\s*(who|what) are you\??\s*$|^\s*what'?s your name\??\s*$|^\s*are you (a bot|an ai|real|human)\??\s*$/i;
-export const WHO_TEXT = `I'm LiveImproved, your personal assistant inside this app, running on a small AI model on your own server. I chat, and I file things for you: to-dos, reminders, routines, meals, workouts, notes, and goal plans. Ask "what can you do?" for examples.`;
+export const WHO_TEXT = `I'm LiveImproved, your personal assistant inside this app, running on a small AI model on your own server. I chat, and I file things for you: to-dos, reminders, routines, meals, workouts, notes and goals (and a plan when you ask for one). Ask "what can you do?" for examples.`;

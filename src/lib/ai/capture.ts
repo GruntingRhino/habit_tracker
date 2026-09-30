@@ -16,7 +16,7 @@ import { deleteEvent } from "@/lib/calendar";
 export interface ItemAction {
   op: "create" | "complete" | "append" | "update";
   /** "plan": a goal plan in progress (id = conversation id); undone by undoMessage, not here. */
-  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan" | "schedule" | "measurement" | "event";
+  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan" | "schedule" | "measurement" | "event" | "sleep";
   id: string;
   title: string;
   area?: string;
@@ -284,6 +284,8 @@ export async function undoActions(userId: string, actions: ItemAction[]): Promis
         // Conversation state; handled by undoMessage.
       } else if (a.op === "update" && a.type === "project") {
         if (a.prev) await applyPlanToProject(userId, a.id, JSON.parse(a.prev));
+      } else if (a.op === "update" && a.type === "sleep") {
+        await prisma.dailyEntry.updateMany({ where: { id: a.id, userId }, data: { sleepHours: a.prev != null ? Number(a.prev) : null } });
       } else if (a.op === "append" && a.type === "journal") {
         await prisma.dailyEntry.updateMany({ where: { id: a.id, userId }, data: { notes: a.prev ?? null } });
       } else if (a.op === "complete") {

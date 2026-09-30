@@ -10,6 +10,8 @@ import { readRationale } from "@/lib/score-rationale";
 import { scoreLinks } from "@/lib/brain/jobs";
 import { fmtHeight, fmtLb, measurementTrend, readBody, updateBody } from "@/lib/body";
 import { workerHealthCheck } from "@/lib/health";
+import { refreshNews } from "@/lib/news";
+import { syncGoogle } from "@/lib/google";
 import { describeWeek, weekScore } from "@/lib/weekly";
 import { blockStatus } from "@/lib/training";
 import { esc, formatBrief, formatScores } from "./format";
@@ -170,6 +172,19 @@ export async function weeklyCheckIn(userId: string, now = new Date()) {
   return lines;
 }
 
+export async function nightlyNews() {
+  const owner = await getOwner();
+  const s = await refreshNews(owner.id);
+  if (s.items.length < 20) throw new Error(`only ${s.items.length} news items (${s.errors.join("; ")})`);
+}
+
+export async function googleSync() {
+  const owner = await getOwner();
+  if (!(await prisma.googleAccount.findUnique({ where: { userId: owner.id } }))) return;
+  const r = await syncGoogle(owner.id);
+  if (!r.ok) throw new Error(r.error);
+}
+
 export async function healthCheck() {
   const msg = await workerHealthCheck();
   if (msg) await sendToOwner(msg);
@@ -177,6 +192,8 @@ export async function healthCheck() {
 
 export const JOBS = {
   health: healthCheck,
+  news: nightlyNews,
+  google: googleSync,
   reminders: sendDueReminders,
   plan: planToday,
   morning: morningBrief,

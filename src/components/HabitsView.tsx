@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { differenceInCalendarDays, format, subDays } from "date-fns";
 import { ChevronRight, Flame, MoreHorizontal, X } from "lucide-react";
-import { Checkbox, Empty, InlineAdd, PageHeader, Section } from "@/components/ui";
+import { Checkbox, Empty, InlineAdd, Section } from "@/components/ui";
 import { useLoad, useOnDataChanged } from "@/hooks/useAssistantChat";
 
 interface Habit {
@@ -298,7 +298,7 @@ function RoutineRow({ routine, onChanged, coach }: { routine: Routine; onChanged
   );
 }
 
-export default function HabitsPage() {
+export default function HabitsView() {
   const [habits, setHabits] = useState<Habit[] | null>(null);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -319,8 +319,8 @@ export default function HabitsPage() {
   const doneToday = todays.filter((h) => h.logs.some((l) => l.completed && ymd(new Date(l.date)) === ymd(new Date()))).length;
 
   return (
-    <div className="min-page">
-      <PageHeader title="Habits" sub={todays.length ? `${doneToday}/${todays.length} today` : undefined} />
+    <div>
+      {todays.length > 0 && <p className="min-sub mb-2">{doneToday}/{todays.length} habits done today</p>}
       <InlineAdd
         placeholder="Add a habit"
         onAdd={async (name) => {

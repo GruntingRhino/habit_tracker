@@ -10,12 +10,13 @@ import type { RoutedItem } from "@/lib/ai/router";
 import { findWhenInText, parseWhenFrom } from "@/lib/ai/when";
 import { detectAssessment, headsUpTime } from "@/lib/study";
 import { noteSession } from "@/lib/training";
+import { deleteEvent } from "@/lib/calendar";
 
 /** A change made by the assistant; stored on the chat message so it can be undone. */
 export interface ItemAction {
   op: "create" | "complete" | "append" | "update";
   /** "plan": a goal plan in progress (id = conversation id); undone by undoMessage, not here. */
-  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan" | "schedule" | "measurement";
+  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan" | "schedule" | "measurement" | "event";
   id: string;
   title: string;
   area?: string;
@@ -303,6 +304,7 @@ export async function undoActions(userId: string, actions: ItemAction[]): Promis
         if (a.type === "note") await prisma.note.deleteMany({ where: { id: a.id, userId } });
         if (a.type === "schedule") await prisma.scheduleBlock.deleteMany({ where: { id: a.id, userId } });
         if (a.type === "measurement") await prisma.bodyMeasurement.deleteMany({ where: { id: a.id, userId } });
+        if (a.type === "event") await deleteEvent(userId, a.id);
       }
       undone++;
     } catch {

@@ -5,6 +5,7 @@
 import cron from "node-cron";
 import { warmUp } from "@/lib/ai/llm";
 import { JOBS } from "./jobs";
+import { lastRun, recordJob } from "@/lib/health";
 import { bot, isTelegramConfigured, setupBot } from "./telegram";
 
 const tz = process.env.TZ ?? "America/New_York";
@@ -17,8 +18,10 @@ function schedule(expr: string, name: keyof typeof JOBS) {
       try {
         await JOBS[name]();
         if (name !== "reminders") console.log(`[job] ${name} ok in ${Date.now() - started}ms`);
+        if (name !== "reminders") await recordJob(name, true);
       } catch (error) {
         console.error(`[job] ${name} failed`, error);
+        await recordJob(name, false, error);
       }
     },
     { timezone: tz, noOverlap: true, name }
@@ -30,12 +33,26 @@ async function main() {
 
   schedule("* * * * *", "reminders");
   schedule("*/10 * * * *", "health");
+  schedule("*/5 * * * *", "google");
+  schedule("30 23 * * *", "news");
   schedule("30 6 * * *", "plan");
   schedule("0 7 * * *", "morning");
   schedule("0 21 * * *", "evening");
   schedule("30 23 * * *", "judge");
   schedule("0 18 * * 0", "weekly");
   console.log(`[worker] scheduler running (${tz})`);
+  // Missed last night's news (server was down)? Get it now.
+  void (async () => {
+    const last = await lastRun("news");
+    if (!last || Date.now() - new Date(last.at).getTime() > 26 * 3_600_000 || !last.ok) {
+      try {
+        await JOBS.news();
+        await recordJob("news", true);
+      } catch (error) {
+        await recordJob("news", false, error);
+      }
+    }
+  })();
 
   if (bot) {
     setupBot();

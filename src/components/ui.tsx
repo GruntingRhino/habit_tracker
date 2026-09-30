@@ -5,7 +5,7 @@ import { AREA_META, normalizeArea } from "@/lib/areas";
 
 export function PageHeader({ title, sub, action }: { title: string; sub?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <header className="mb-4 flex items-center justify-between gap-4 pr-9 lg:pr-0">
+    <header className="mb-4 flex items-center justify-between gap-4">
       <h1 className="min-h1">
         {title}
         {sub && <span className="min-sub ml-2 font-normal">{sub}</span>}

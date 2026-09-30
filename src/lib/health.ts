@@ -13,6 +13,41 @@ import { Prisma } from "@/generated/prisma";
 import { isModelUp } from "@/lib/ai/llm";
 
 export const HEALTH_KEY = "health";
+export const JOBS_KEY = "jobs";
+
+export interface JobRun {
+  at: string;
+  ok: boolean;
+  error?: string;
+}
+
+/** The worker records every scheduled job run, so the health check can tell a job silently stopped. */
+export async function recordJob(name: string, ok: boolean, error?: unknown) {
+  try {
+    const row = await prisma.brainState.findUnique({ where: { key: JOBS_KEY } });
+    const runs = ((row?.value ?? {}) as unknown as Record<string, JobRun>) ?? {};
+    runs[name] = { at: new Date().toISOString(), ok, ...(ok ? {} : { error: (error instanceof Error ? error.message : String(error)).slice(0, 200) }) };
+    const value = runs as unknown as Prisma.InputJsonValue;
+    await prisma.brainState.upsert({ where: { key: JOBS_KEY }, update: { value }, create: { key: JOBS_KEY, value } });
+  } catch {
+    // never let bookkeeping break a job
+  }
+}
+
+export async function lastRun(name: string): Promise<JobRun | null> {
+  const row = await prisma.brainState.findUnique({ where: { key: JOBS_KEY } }).catch(() => null);
+  return ((row?.value ?? {}) as unknown as Record<string, JobRun>)[name] ?? null;
+}
+
+/** Jobs that must have succeeded within this many hours (once they've run at least once). */
+const JOB_WINDOWS: [string, number, string][] = [
+  ["judge", 26, "Last night's scores weren't finalized"],
+  ["plan", 26, "Today's plan wasn't made"],
+  ["morning", 26, "The morning brief wasn't sent"],
+  ["evening", 26, "The evening check-in wasn't sent"],
+  ["news", 26, "The nightly news update didn't run"],
+  ["weekly", 8 * 24, "The Sunday review wasn't sent"],
+];
 export const WORKER_BEAT_KEY = "worker";
 
 export interface Problem {
@@ -69,6 +104,35 @@ export async function runChecks(): Promise<Record<string, string>> {
   if (token && pub && !(await reachable(`${pub}/api/ps`, token))) problems.funnel = "The public model link (Tailscale Funnel) is down — web chat can't reach the model.";
   const brain = await beatAge("brain");
   if (brain > 15 * MIN) problems.brain = `The background brain hasn't checked in for ${brain === Infinity ? "ever" : `${Math.round(brain / MIN)} min`} — live scores and learning are paused.`;
+  // Every scheduled job actually ran and worked.
+  const runs = ((await prisma.brainState.findUnique({ where: { key: JOBS_KEY } }))?.value ?? {}) as unknown as Record<string, JobRun>;
+  for (const [name, hours, label] of JOB_WINDOWS) {
+    const r = runs[name];
+    if (!r) continue;
+    const age = (Date.now() - new Date(r.at).getTime()) / 3_600_000;
+    if (!r.ok) problems[`job-${name}`] = `${label}: ${r.error ?? "failed"}.`;
+    else if (age > hours) problems[`job-${name}`] = `${label} (last run ${Math.round(age)} h ago).`;
+  }
+  const news = (await prisma.brainState.findUnique({ where: { key: "news" } }))?.value as { at?: string; items?: unknown[] } | undefined;
+  if (news?.at && (news.items?.length ?? 0) < 20) problems.news = `The news update only found ${news.items?.length ?? 0} stories.`;
+  // Google Calendar sync (when connected).
+  const google = await prisma.googleAccount.findFirst({ select: { lastSyncAt: true, lastError: true } });
+  if (google) {
+    const age = google.lastSyncAt ? (Date.now() - google.lastSyncAt.getTime()) / MIN : Infinity;
+    if (google.lastError) problems.google = `Google Calendar sync is failing: ${google.lastError.slice(0, 120)}`;
+    else if (age > 20) problems.google = `Google Calendar hasn't synced for ${age === Infinity ? "ever" : `${Math.round(age)} min`}.`;
+  }
+  // Reminders that should have gone out.
+  const stuck = await prisma.reminder.count({ where: { status: "pending", fireAt: { lt: new Date(Date.now() - 10 * MIN) } } });
+  if (stuck) problems.reminders = `${stuck} reminder${stuck === 1 ? "" : "s"} past due but not sent.`;
+  // Live scores waiting too long for a re-grade.
+  const live = (await prisma.brainState.findUnique({ where: { key: "live-scores" } }))?.value as { pending?: boolean; since?: string } | undefined;
+  if (live?.pending && live.since && Date.now() - new Date(live.since).getTime() > 20 * MIN) problems.scores = "Live scores have been waiting to update for 20+ minutes.";
+  // The brain's night shift ran (by 7am).
+  const beat = (await prisma.brainState.findUnique({ where: { key: "brain" } }))?.value as { lastNight?: string | null } | undefined;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  if (beat && now.getHours() >= 7 && beat.lastNight !== today) problems.night = "The brain's nightly profile update didn't run.";
   const backup = newestBackupAgeH();
   if (backup != null && backup > 36) problems.backup = `Last database backup was ${Math.round(backup)} h ago.`;
   try {
@@ -107,7 +171,18 @@ export function foldChecks(state: HealthState, found: Record<string, string>, no
   return { state: { checkedAt: now.toISOString(), problems }, alerts, fixed };
 }
 
-const LABEL: Record<string, string> = { database: "Database", model: "AI model", gate: "Model gate", funnel: "Public model link", brain: "Background brain", backup: "Backups", disk: "Disk space", worker: "Telegram worker" };
+const LABEL: Record<string, string> = {
+  news: "News",
+  google: "Google Calendar",
+  reminders: "Reminders",
+  scores: "Live scores",
+  night: "Nightly profile update",
+  "job-judge": "Nightly scores",
+  "job-plan": "Daily plan",
+  "job-morning": "Morning brief",
+  "job-evening": "Evening check-in",
+  "job-news": "Nightly news",
+  "job-weekly": "Sunday review", database: "Database", model: "AI model", gate: "Model gate", funnel: "Public model link", brain: "Background brain", backup: "Backups", disk: "Disk space", worker: "Telegram worker" };
 
 export function alertText(alerts: string[], fixed: string[]) {
   const lines: string[] = [];

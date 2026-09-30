@@ -34,7 +34,7 @@ export interface Block {
   kind: "sleep" | "routine" | "fixed" | "event" | "workout" | "study" | "focus" | "wind-down";
   area?: string;
   /** Item it stands for, so it can be ticked off: todo/task/habit/routine id. */
-  ref?: { type: "todo" | "task" | "habit" | "workout"; id: string };
+  ref?: { type: "todo" | "task" | "habit" | "workout" | "event"; id: string };
   done?: boolean;
   detail?: string;
 }
@@ -89,6 +89,8 @@ export function place(busy: [number, number][], len: number, after: number, befo
 
 export interface DaySchedule {
   date: string;
+  /** All-day calendar events. */
+  allDay: { id: string; title: string; source: string }[];
   wake: string;
   bed: string;
   blocks: Block[];
@@ -103,7 +105,7 @@ export async function buildSchedule(userId: string, date = new Date(), now = new
   const next = addDays(day, 1);
   const dow = getDayOfWeek(day);
   const weekend = dow === "sat" || dow === "sun";
-  const [prefs, body, fixed, habits, plan, dueTodos, training] = await Promise.all([
+  const [prefs, body, fixed, habits, plan, dueTodos, training, events] = await Promise.all([
     readPrefs(),
     readBody(),
     prisma.scheduleBlock.findMany({ where: { userId, OR: [{ days: { has: dow } }, { date: day }] } }),
@@ -111,6 +113,7 @@ export async function buildSchedule(userId: string, date = new Date(), now = new
     prisma.dayPlan.findUnique({ where: { userId_date: { userId, date: day } } }),
     prisma.todo.findMany({ where: { userId, dueAt: { gte: day, lt: next } }, select: { id: true, title: true, area: true, priority: true, status: true, dueAt: true } }),
     todaysTraining(userId, day),
+    prisma.calendarEvent.findMany({ where: { userId, status: "confirmed", start: { lt: next }, end: { gt: day } }, orderBy: { start: "asc" } }),
   ]);
 
   const sleepH = body.sleepTargetHours ?? 8;
@@ -136,6 +139,13 @@ export async function buildSchedule(userId: string, date = new Date(), now = new
   // Fixed blocks and events.
   for (const f of fixed.sort((a, b) => toMin(a.start) - toMin(b.start))) {
     add(toMin(f.start), toMin(f.end) < toMin(f.start) ? toMin(f.end) + 1440 : toMin(f.end), { title: f.title, kind: f.date ? "event" : "fixed", area: f.area });
+  }
+
+  // Calendar events (his Google Calendar + ones made here). Timed ones are fixed points in the day.
+  for (const e of events.filter((e) => !e.allDay)) {
+    const s0 = e.start < day ? 0 : e.start.getHours() * 60 + e.start.getMinutes();
+    const e0 = e.end >= next ? 24 * 60 - 1 : e.end.getHours() * 60 + e.end.getMinutes();
+    if (e0 > s0) add(s0, e0, { title: e.title, kind: "event", ref: { type: "event", id: e.id }, detail: [e.location, e.attendees.length ? `with ${e.attendees.join(", ")}` : null, e.source === "google" ? "Google Calendar" : null].filter(Boolean).join(" · ") || undefined });
   }
 
   // Evening: routine, then wind down before bed.
@@ -184,15 +194,22 @@ export async function buildSchedule(userId: string, date = new Date(), now = new
   // Order from wake-up; anything before wake time (after midnight) goes last.
   const key = (b: Block) => toMin(b.start) + (toMin(b.start) < wake ? 1440 : 0);
   blocks.sort((a, b) => key(a) - key(b));
-  return { date: format(day, "yyyy-MM-dd"), wake: toHHMM(wake), bed: toHHMM(bed), blocks, unscheduled };
+  return {
+    date: format(day, "yyyy-MM-dd"),
+    allDay: events.filter((e) => e.allDay).map((e) => ({ id: e.id, title: e.title, source: e.source })),
+    wake: toHHMM(wake),
+    bed: toHHMM(bed),
+    blocks,
+    unscheduled,
+  };
 }
 
 /** Plain-text timeline for Telegram / chat. */
 export function describeSchedule(s: DaySchedule, fromNow?: Date) {
   const nowMin = fromNow ? fromNow.getHours() * 60 + fromNow.getMinutes() : -1;
-  const lines = s.blocks
+  const lines = [...s.allDay.map((e) => `All day: ${e.title}`), ...s.blocks
     .filter((b) => nowMin < 0 || toMin(b.end) > nowMin || toMin(b.end) < toMin(s.wake))
-    .map((b) => `${fmt12(b.start)}–${fmt12(b.end)} ${b.done ? "✓ " : ""}${b.title}`);
+    .map((b) => `${fmt12(b.start)}–${fmt12(b.end)} ${b.done ? "✓ " : ""}${b.title}`)];
   if (s.unscheduled.length) lines.push(`Didn't fit: ${s.unscheduled.join(", ")}`);
   return lines;
 }

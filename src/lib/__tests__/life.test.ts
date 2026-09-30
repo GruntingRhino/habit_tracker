@@ -9,6 +9,8 @@ import { detectAssessment, headsUpTime } from "../study";
 import { parseMeasurements, parseBodyUpdate } from "../body";
 import { foldChecks } from "../health";
 import { weekFromRows } from "../weekly";
+import { parseEventStatement, prepDue } from "../calendar";
+import { parseRss, rankNews } from "../news";
 import { partialRatio } from "../brain/scores";
 import { classifyHabit, timeOfDayFor } from "../ai/habitarea";
 
@@ -152,7 +154,7 @@ describe("weekly score", () => {
 
   it("averages the days with data; a day with nothing logged is a −0.5 penalty, not a 0", () => {
     // Mon 28: physical 6, mental 8 · Tue 29: nothing at all · Wed 30: physical 8 · Thu (today): mental 4 so far
-    const w = weekFromRows([day(28, { physical: 6, mental: 8 }), day(30, { physical: 8 }), { ...day(1, { mental: 4 }), date: new Date(2026, 9, 1) } as never], now);
+    const w = weekFromRows([day(28, { physical: 6, mental: 8 }), day(30, { physical: 8 }), { ...(day(1, { mental: 4 }) as object), date: new Date(2026, 9, 1) } as never], now);
     expect(w.days.map((d) => d.missed)).toEqual([false, true, false, false]);
     expect(w.missedDays).toBe(1);
     expect(w.areas.physical).toMatchObject({ avg: 7, days: 2, score: 6.5 });
@@ -181,6 +183,44 @@ describe("habits", () => {
     expect(await classifyHabit("No phone after 9pm")).toBe("mental");
     expect(await classifyHabit("Save $10")).toBe("financial");
     expect(timeOfDayFor("Evening skincare")).toBe("evening");
+  });
+});
+
+describe("calendar events from what he says", () => {
+  const now = new Date(2026, 8, 30, 23); // Wed night
+  const p = (t: string) => {
+    const r = parseEventStatement(t, now);
+    return r && `${r.title} | ${r.start.getDate()} ${r.allDay ? "all day" : `${r.start.getHours()}:${String(r.start.getMinutes()).padStart(2, "0")}-${r.end.getHours()}:${String(r.end.getMinutes()).padStart(2, "0")}`} | ${r.attendees.join(",")}`;
+  };
+  it.each([
+    ["i have a dentist appointment friday at 3pm", "Dentist appointment | 2 15:00-16:00 | "],
+    ["I have a chem test on friday", "Chem test | 2 all day | "],
+    ["add soccer game to my calendar saturday 10-12 and share it with Mike@gmail.com", "Soccer game | 3 10:00-12:00 | mike@gmail.com"],
+    ["my basketball game is on tuesday at 6", "Basketball game | 6 18:00-19:00 | "],
+    ["i have mma practice tonight 7-9pm", "Mma practice | 30 19:00-21:00 | "],
+    ["make a calendar event for mom's birthday dinner on oct 12 at 7pm", "Mom's birthday dinner | 12 19:00-20:00 | "],
+  ])("%s", (t, want) => expect(p(t)).toBe(want));
+  it.each(["i have to finish my essay by friday", "remind me friday to call mom", "i have a lot of homework", "what do i have friday?"])("not an event: %s", (t) => expect(p(t)).toBeNull());
+  it("prep is due the evening before, or an hour before if that's past", () => {
+    expect(prepDue(new Date(2026, 9, 2, 15), now)).toEqual(new Date(2026, 9, 1, 19));
+    expect(prepDue(new Date(2026, 9, 1, 10), new Date(2026, 9, 1, 8))).toEqual(new Date(2026, 9, 1, 9));
+  });
+});
+
+describe("news ranking", () => {
+  const now = new Date("2026-09-30T23:30:00Z");
+  const rss = (items: [string, string, string][]) =>
+    `<rss><channel>${items.map(([t, src, d]) => `<item><title><![CDATA[${t} - ${src}]]></title><link>https://x.test/${encodeURIComponent(t)}</link><pubDate>${d}</pubDate><source url="https://${src}">${src}</source></item>`).join("")}</channel></rss>`;
+  it("parses Google News RSS and ranks widely-covered, recent stories first; the world keeps a quarter", () => {
+    const fresh = "Wed, 30 Sep 2026 20:00:00 GMT";
+    const old = "Fri, 25 Sep 2026 20:00:00 GMT";
+    const world = parseRss(rss([["Big storm hits the east coast", "AP", fresh], ["Big storm hits east coast, millions without power", "Reuters", fresh], ["Local bake sale", "Patch", old]]), "Top stories");
+    expect(world[0]).toMatchObject({ title: "Big storm hits the east coast", source: "AP" });
+    const mma = parseRss(rss([["Topuria returns to training", "ESPN", fresh], ["Topuria returns to training camp", "MMA Fighting", fresh]]), "UFC MMA");
+    const top = rankNews([...world, ...mma], now, 4);
+    expect(top[0].coverage).toBe(2);
+    expect(top.map((x) => x.topic)).toContain("Top stories");
+    expect(top.find((x) => x.title.includes("bake sale"))?.score ?? 0).toBeLessThan(top[0].score);
   });
 });
 

@@ -1,12 +1,11 @@
 "use client";
 
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FolderPlus, X } from "lucide-react";
 import { PRIORITY_RANK } from "@/lib/areas";
-import { Empty, InlineAdd, PageHeader, Section, Tabs } from "@/components/ui";
+import { Empty, InlineAdd, Section, Tabs } from "@/components/ui";
 import { useLoad, useOnDataChanged } from "@/hooks/useAssistantChat";
-import SchedulePanel from "@/components/SchedulePanel";
 import { ProjectItem, TodoItem, send, whenLabel, type Project, type Todo } from "@/components/TaskItems";
 
 interface Reminder {
@@ -28,10 +27,10 @@ async function json<T>(url: string, fallback: T): Promise<T> {
 const byDue = (a: Row, b: Row) =>
   (a.due ? new Date(a.due).getTime() : Infinity) - (b.due ? new Date(b.due).getTime() : Infinity) || (PRIORITY_RANK[a.priority] ?? 2) - (PRIORITY_RANK[b.priority] ?? 2);
 
-function TasksPage() {
+/** To-dos and projects in one list (Open / Done). */
+export default function TasksView() {
   const params = useSearchParams();
-  const initial = params.get("tab");
-  const [tab, setTab] = useState<"today" | "open" | "done">(initial === "open" || initial === "done" ? initial : params.get("project") ? "open" : "today");
+  const [tab, setTab] = useState<"open" | "done">(params.get("show") === "done" ? "done" : "open");
   const [todos, setTodos] = useState<Todo[] | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -40,7 +39,6 @@ function TasksPage() {
   const [naming, setNaming] = useState(false);
 
   const load = useCallback(async () => {
-    if (tab === "today") return;
     const [t, r, p] = await Promise.all([json<Todo[]>(`/api/todos?status=${tab}`, []), json<Reminder[]>("/api/reminders", []), json<Project[]>("/api/projects", [])]);
     setTodos(t);
     setReminders(r);
@@ -50,7 +48,7 @@ function TasksPage() {
   useOnDataChanged(load);
 
   const rows = useMemo<Row[]>(() => {
-    if (tab === "today" || !todos) return [];
+    if (!todos) return [];
     const ps = projects.filter((p) => (tab === "open" ? !["completed", "archived"].includes(p.status) : p.status === "completed"));
     return [
       ...todos.map((t) => ({ kind: "todo" as const, item: t, due: t.dueAt, priority: t.priority })),
@@ -102,18 +100,25 @@ function TasksPage() {
   }
 
   return (
-    <div className="min-page">
-      <PageHeader title="Tasks" action={<Tabs value={tab} options={[["today", "Today"], ["open", "Open"], ["done", "Done"]]} onChange={setTab} />} />
-      {tab === "today" && <SchedulePanel />}
+    <div>
+      <div className="mb-3 flex justify-end">
+        <Tabs value={tab} options={[["open", "Open"], ["done", "Done"]]} onChange={setTab} />
+      </div>
 
       {tab === "open" && (
         <div className="mb-5 flex items-center gap-3">
           <div className="min-w-0 flex-1">
             {naming ? <InlineAdd placeholder="Project name" onAdd={newProject} /> : <InlineAdd placeholder="Add a to-do" onAdd={add} />}
           </div>
-          <button onClick={() => setNaming((v) => !v)} className="min-chip flex flex-shrink-0 items-center gap-1" aria-pressed={naming}>
-            <FolderPlus className="h-3.5 w-3.5" /> {naming ? "To-do" : "New project"}
-          </button>
+          {naming ? (
+            <button onClick={() => setNaming(false)} aria-label="Cancel new project" className="flex-shrink-0 rounded p-1 hover:bg-white/[.06]" style={{ color: "var(--ink-400)" }}>
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <button onClick={() => setNaming(true)} className="min-chip flex flex-shrink-0 items-center gap-1">
+              <FolderPlus className="h-3.5 w-3.5" /> New project
+            </button>
+          )}
         </div>
       )}
 
@@ -138,8 +143,7 @@ function TasksPage() {
         </Section>
       )}
 
-      {tab !== "today" &&
-        (todos === null ? (
+      {todos === null ? (
           <p className="min-sub">Loading…</p>
         ) : rows.length === 0 ? (
           <Empty>{tab === "open" ? "All clear." : "Nothing completed yet."}</Empty>
@@ -171,15 +175,7 @@ function TasksPage() {
               )}
             </ul>
           </Section>
-        ))}
+        )}
     </div>
-  );
-}
-
-export default function Page() {
-  return (
-    <Suspense>
-      <TasksPage />
-    </Suspense>
   );
 }

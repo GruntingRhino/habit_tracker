@@ -262,7 +262,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     calls.length = 0;
     const r = await say("2 is urgent");
     expect(calls).toEqual([]);
-    expect(r.reply).toContain('Nothing to update: those were undone (to-do "File taxes" was deleted; to-do "Fix bike" was deleted)');
+    expect(r.reply).toContain('Nothing to update: those were undone (to-do "File taxes" was deleted; to-do "Fix my bike" was deleted)');
     expect(r.reply).not.toContain("saved as-is");
     expect(await prisma.todo.count({ where: { userId } })).toBe(0);
   });
@@ -277,7 +277,7 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     });
     await say("I need to file taxes and fix my bike");
     const r = await say("2 is urgent");
-    expect(r.reply).toContain("Fix bike: urgent");
+    expect(r.reply).toContain("Fix my bike: urgent");
     calls.length = 0;
     await say("1 can wait");
     expect(calls).not.toContain("answer");
@@ -684,13 +684,13 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     const r = await say("I have a chem test on friday");
     expect(r.actions.map((x) => x.type)).toEqual(["event", "todo", "reminder"]);
     expect(r.reply).toContain("📅 Chem test");
-    expect(r.reply).toContain("To-do: Prepare for chem test");
+    expect(r.reply).toContain("To-do: Study for chem test");
     expect(r.reply).toMatch(/What time is it\?$/);
     expect(r.meta?.options).toContain("All day");
     const ev = await prisma.calendarEvent.findFirstOrThrow({ where: { userId } });
     expect(ev.allDay).toBe(true);
     const todo = await prisma.todo.findFirstOrThrow({ where: { userId } });
-    expect(todo).toMatchObject({ title: "Prepare for chem test", priority: "high" });
+    expect(todo).toMatchObject({ title: "Study for chem test", priority: "high" });
     expect(todo.dueAt!.getHours()).toBe(19); // evening before
 
     const t = await say("8am");

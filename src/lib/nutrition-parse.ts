@@ -267,7 +267,16 @@ function builtKind(p: ParsedFood): Built | null {
 
 export { PROTEINS };
 
+/**
+ * Foods in a meal description. "chicken and rice, like 8 oz chicken and 1.5 cups rice" names each food
+ * twice: the measured mention wins. "large fries": a size is an amount.
+ */
 export function parseFoods(input: string): ParsedFood[] {
+  const foods = parseFoodsRaw(input).map((f) => (/^(small|medium|large|regular|xl|extra large|kids?|jumbo)$/i.test(f.unit) ? { ...f, explicit: true } : f));
+  return foods.filter((f, i) => f.explicit || !foods.some((g, j) => j !== i && g.explicit && g.text === f.text));
+}
+
+function parseFoodsRaw(input: string): ParsedFood[] {
   const segments = splitSegments(normalize(input));
   const parsed: { seg: Segment; food: ParsedFood }[] = [];
   let eachAmount: { quantity: number; unit: string } | null = null;

@@ -4,10 +4,11 @@ import { getStartOfDay } from "@/lib/utils";
 import { actionableCount, extractUpdate, isUpdate, parseWorkout, parseTodos, type Extracted } from "@/lib/ai/update";
 import { needsPrep } from "@/lib/prep";
 import { secondLook } from "@/lib/ai/leftovers";
+import { afterBlock, CALENDAR_Q, calendarAnswer, MOVE_EVENT, moveEvent, nameMatches, newTime, rangeOf, WHEN_Q, whenAnswer } from "@/lib/ai/calendarchat";
 import { isWorkoutHabit, parseHabitReports, type HabitReport } from "@/lib/ai/habitcheck";
-import { DID_I_Q, habitStatusAnswer, NUTRITION_Q, nutritionAnswer, PLATE_Q, plateAnswer, SCORE_Q, scoreAnswer } from "@/lib/ai/facts";
+import { MEALS_Q, mealsAnswer, TARGET_Q, targetsAnswer, REMINDERS_Q, remindersAnswer, WEEK_Q, weekAnswer, DID_I_Q, habitStatusAnswer, NUTRITION_Q, nutritionAnswer, PLATE_Q, plateAnswer, SCORE_Q, scoreAnswer } from "@/lib/ai/facts";
 import * as chrono from "chrono-node";
-import { addAttendees, createEvent, describeEventTime, emailsIn, parseEventStatement, prepDue, updateEvent, type ParsedEvent } from "@/lib/calendar";
+import { addAttendees, createEvent, deleteEvent, describeEventTime, emailsIn, parseEventStatement, prepDue, updateEvent, type ParsedEvent } from "@/lib/calendar";
 import { planItem } from "@/lib/ai/itemai";
 import { keywordArea } from "@/lib/ai/router";
 import { parseMeasurements, recordMeasurements } from "@/lib/body";
@@ -224,6 +225,26 @@ export async function handleMessage(userId: string, text: string, source: Source
 
     // 2. Things only the app knows for sure: answered from state, never by the model.
     const plan = conv.plan as PlanState | null;
+    // "actually make that due tomorrow", "actually its at 2pm not 1", "actually it was 4 bottles": fix what was just done.
+    if (!awaiting && recent && CORRECTION.test(trimmed)) {
+      const fixed = await correctLast(turn, lastActions, trimmed);
+      if (fixed) return fixed;
+    }
+    // "move the doctor appointment to 11"
+    const move = MOVE_EVENT.exec(trimmed);
+    if (move) {
+      const moved = await moveEvent(userId, move[1], move[2]);
+      if (moved) {
+        const actions: ItemAction[] = moved.before ? [{ op: "update", type: "event", id: moved.event.id, title: moved.event.title, area: "general", href: "/schedule", detail: "moved", prev: JSON.stringify(moved.before) }] : [];
+        return save(turn, moved.reply, { actions });
+      }
+    }
+    // "cancel the soccer game", "delete the cleats one", "cancel the grandma reminder", "delete the big mac meal"
+    const del = !awaiting ? DELETE_ITEM.exec(trimmed) : null;
+    if (del) {
+      const removed = await deleteByName(turn, del[1]);
+      if (removed) return removed;
+    }
     if (NEGATED_CAPTURE.test(trimmed)) return await cancelLast(turn, trimmed, undoneSince);
     if (PLAN_STATUS.test(trimmed) || (STOPPED_ASKING.test(trimmed) && plan && plan.stage !== "asking")) return save(turn, planStatus(plan));
     if (!awaiting && LIST_REFERENCE.test(trimmed)) {
@@ -240,19 +261,25 @@ export async function handleMessage(userId: string, text: string, source: Source
     if (!awaiting && /^\s*(no|nope|nah|no thanks)(,?\s*(just me|thanks|thank you|i'?m good|all good|that'?s it))?[.!]*\s*$/i.test(trimmed)) return save(turn, "Okay 👍");
     // Exact answers from his data, never the model's reading of it.
     const asking = /\?\s*$/.test(trimmed) || /^\s*(how|what|whats|what's|show|tell me|list)\b/i.test(trimmed);
-    if (asking && NUTRITION_Q.test(trimmed)) return save(turn, await nutritionAnswer(userId, trimmed));
+    if (asking && TARGET_Q.test(trimmed)) return save(turn, await targetsAnswer(userId));
+    if (asking && NUTRITION_Q.test(trimmed) && !/\b(should i eat|to eat|what (can|should) i)\b/i.test(trimmed)) return save(turn, await nutritionAnswer(userId, trimmed));
+    if (asking && MEALS_Q.test(trimmed)) return save(turn, await mealsAnswer(userId));
+    if (asking && REMINDERS_Q.test(trimmed)) return save(turn, await remindersAnswer(userId));
+    if (asking && WEEK_Q.test(trimmed)) return save(turn, await weekAnswer(userId));
+    const whenQ = WHEN_Q.exec(trimmed);
+    if (whenQ) {
+      const answer = await whenAnswer(userId, whenQ[1]);
+      if (answer) return save(turn, answer);
+    }
+    // "what's on my calendar this week?", "what do i have friday?", "what's on my plate tomorrow?"
+    const range = asking ? rangeOf(trimmed) : null;
+    if (asking && (CALENDAR_Q.test(trimmed) || (PLATE_Q.test(trimmed) && range && range.label !== "today"))) return save(turn, await calendarAnswer(userId, trimmed));
     if (asking && SCORE_Q.test(trimmed) && /\b(my|i)\b/i.test(trimmed)) return save(turn, await scoreAnswer(userId, trimmed));
     if (/\b(did i (do|finish|get|complete) (everything|it all|all my)|am i done)\b/i.test(trimmed)) return save(turn, await plateAnswer(userId, new Date(), true));
     if ((asking && PLATE_Q.test(trimmed)) || /\b(anything left|what'?s left|what do i have left)\b/i.test(trimmed)) return save(turn, await plateAnswer(userId));
     if (DID_I_Q.test(trimmed)) {
       const status = await habitStatusAnswer(userId, trimmed);
       if (status) return save(turn, status);
-    }
-    // "delete the cleats one", "remove call the dentist from my list"
-    const del = !awaiting ? DELETE_ITEM.exec(trimmed) : null;
-    if (del) {
-      const removed = await deleteByName(turn, del[1]);
-      if (removed) return removed;
     }
     // "mark call the dentist as done", "check off posture"
     const mark = MARK_DONE.exec(trimmed);
@@ -270,8 +297,10 @@ export async function handleMessage(userId: string, text: string, source: Source
     }
     // A day update ("slept 11 to 6:40, have to study for my bio and math quiz tomorrow, …"): every piece handled.
     // A short, explicit calendar line ("add soccer game to my calendar saturday 10-12, share with …") goes to the calendar reader.
-    if (!awaiting && !/\?\s*$/.test(trimmed) && !(trimmed.length < 120 && parseEventStatement(trimmed))) {
-      const extracted = extractUpdate(trimmed);
+    const preview = !awaiting && !/\?\s*$/.test(trimmed) && !/\bremind me\b/i.test(trimmed) ? extractUpdate(trimmed) : null;
+    const explicitCalendar = /\b(?:to|on|in)\s+(?:my|the)\s+calendar\b/i.test(trimmed) && trimmed.length < 160;
+    if (preview && !explicitCalendar && !(trimmed.length < 120 && parseEventStatement(trimmed) && actionableCount(preview) < 2)) {
+      const extracted = preview;
       if (isUpdate(trimmed, extracted)) return await handleUpdate(turn, trimmed, extracted);
       // "just did my posture routine", "drank 60 oz so far", "didn't read my bible": his habits, by code.
       const habits = await prisma.habit.findMany({ where: { userId, isActive: true }, select: { id: true, name: true, area: true } });
@@ -342,7 +371,7 @@ export async function handleMessage(userId: string, text: string, source: Source
     }
 
     // 3. Goal planning state.
-    if (plan?.stage === "asking" && !FILE_IT.test(trimmed)) {
+    if (plan?.stage === "asking" && !FILE_IT.test(trimmed) && !offPlan(trimmed)) {
       flags.conversational = true;
       if (NEW_PLAN.test(trimmed) && looksLikeGoal(trimmed)) return await startPlan(turn, trimmed);
       return await continuePlan(turn, plan, trimmed);
@@ -409,6 +438,15 @@ export async function handleMessage(userId: string, text: string, source: Source
     if (!wantsFiling && FACT_STATEMENT.test(trimmed) && trimmed.length < 160) {
       flags.conversational = true;
       return await chatReply(turn, trimmed);
+    }
+    // "breakfast: 4 eggs, toast", "lunch was chicken and rice": a meal, no model needed to know that.
+    const slot = MEAL_LINE.exec(trimmed);
+    if (!awaiting && slot && !/\?\s*$/.test(trimmed)) {
+      // Named by the dish, not the amounts: "chicken and rice, like 8 oz chicken…" → "Chicken and rice".
+      const name = slot[2].split(/,?\s+(?:like|about|maybe|probably|around)\s+\d|,\s*(?:like|about|maybe)\b|\s+-\s+/)[0].replace(/^(a|an|some)\s+/i, "").replace(/[.!]+$/, "").trim().slice(0, 80);
+      const actions = await applyCapture(userId, [{ kind: "meal", title: cap(name), area: "physical", done: true }], trimmed, source);
+      const ask = await mealQuestion(actions);
+      return save(turn, [describeActions(actions), questionFor(ask)].filter(Boolean).join("\n\n"), { actions, awaiting: ask, meta: ask?.meal ? { options: ask.meal.queue[0].options.map((o) => o.label) } : null });
     }
     // "Finished the literature review": tick off the matching open item before asking the model anything.
     if (COMPLETION_START.test(trimmed) && !/\?\s*$/.test(trimmed)) {
@@ -517,10 +555,14 @@ async function chatReply(turn: Turn, text: string, note?: string) {
 const CLAIM =
   /\b(i('ve| have| just)?|i'll|we('ve)?|it'?s|they'?re|that'?s)\b[^.!?]{0,40}\b(added|created|scheduled|saved|logged|filed|booked|noted|marked|updated|set up|put (it|that|them|those)|reminded|set a reminder)\b|\b(added|put|saved|logged|scheduled)\b[^.!?]{0,30}\b(to|on|in) (your|the) (list|calendar|to-?do|to-?do list|study list|schedule|journal|plan)\b|\byou'?re all set\b/i;
 
+/** Lines that look like the app's own receipts ("📅 Doctor — Mon 10am (on your Google Calendar)"): only code may write those. */
+const RECEIPT = /^\s*(?:📅|💼|💪|📌|🍽️|✅|🗑️|🙏|🧠|💰|😴)|\b(?:to-?do|reminder|calendar|meal|workout|habit|note)\s*:|on your google calendar|i'?ll remind you|\((?:cancelled|canceled|deleted|added|saved|teamed up|no update)[^)]*\)|\[(?:reminder|to-?do|event|meal)[^\]]*\]/i;
+
 export function stripClaims(reply: string) {
   return reply
-    .split(/(?<=[.!?])\s+/)
-    .filter((s) => !CLAIM.test(s))
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?])\s+/))
+    .filter((s) => !CLAIM.test(s) && !RECEIPT.test(s))
     .join(" ")
     .trim();
 }
@@ -586,7 +628,7 @@ async function dueAnswer(userId: string, when: string) {
 }
 
 const FACT_STATEMENT = /^\s*(he|she|it|they|that|this|there|we)('s| is| was|'re| are| were| has| had| looks| seems)\b/i;
-const COMPLETION_START = /^\s*(i |i've |ive )?(just |already |finally )?(finished|completed|done with|paid|submitted|turned in|wrapped up|knocked out|took care of|crossed off)\b/i;
+const COMPLETION_START = /^\s*(?:(?:ok|okay|so|yeah|yep|alright|wait|actually|and)[,\s]+)*(i |i've |ive )?(just |already |finally |actually |really )*(finished|completed|done with|paid|submitted|turned in|wrapped up|knocked out|took care of|crossed off)\b/i;
 const NOTE_QUESTION = /^\s*((anyway|so|ok|okay|wait|hey|um|and|btw|also|oh|quick question)[,\s]+)*(what'?s|what is|whats|where'?s|where is|do you (know|remember)|remind me what|what was) (my|the|our) [\w\s'-]{2,40}\??\s*$/i;
 const NOTE_STOP = new Set(["what", "whats", "what's", "where", "wheres", "is", "my", "the", "our", "was", "do", "you", "know", "remember", "remind", "me"]);
 
@@ -1082,7 +1124,8 @@ async function eventReminder(userId: string, ev: { title: string; start: Date; a
 async function addPrep(turn: Turn, ev: { id: string; title: string; start: Date }, text: string, actions: ItemAction[]) {
   const { userId } = turn;
   const due = prepDue(ev.start);
-  const prepTitle = `Prepare for ${ev.title.charAt(0).toLowerCase()}${ev.title.slice(1)}`;
+  // A test is studied for; everything else is prepared for.
+  const prepTitle = `${/\b(quiz|test|exam|midterm|final|sat|act)\b/i.test(ev.title) ? "Study for" : "Prepare for"} ${ev.title.charAt(0).toLowerCase()}${ev.title.slice(1)}`;
   const todo = await prisma.todo.create({ data: { userId, title: prepTitle, area: "work", priority: "high", dueAt: due, source: turn.source } });
   await prisma.calendarEvent.update({ where: { id: ev.id }, data: { todoId: todo.id } });
   if (wantsPlan(text)) {
@@ -1110,6 +1153,11 @@ function nextEventQuestion(event: { id: string; title: string; askPrep?: boolean
  */
 async function eventFromChat(turn: Turn, ev: ParsedEvent, text: string): Promise<AssistantReply> {
   const { userId } = turn;
+  // "coach wants to meet thursday after practice": the end of practice that day.
+  if (!ev.hasTime) {
+    const after = await afterBlock(userId, text, ev.start);
+    if (after) ev = { ...ev, start: after, end: new Date(after.getTime() + 3_600_000), allDay: false, hasTime: true };
+  }
   const actions: ItemAction[] = [];
   const prep = wantsPlan(text) ? "yes" : needsPrep(ev.title);
   const { event, onGoogle } = await createEvent(userId, { title: ev.title, start: ev.start, end: ev.end, allDay: ev.allDay, attendees: ev.attendees });
@@ -1424,6 +1472,14 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted, knownHabits?
   if (!actions.length && !already.length) return routeAndReply(turn, text, false, { conversational: false });
   lines.push(describeActions(actions));
   if (already.length) lines.push(`Already on your list: ${[...new Set(already)].join(" · ")}`);
+  // Two or more new plain to-dos: which matters most (same question the router path asks).
+  if (!ask && actions.length && actions.every((a) => a.type === "todo" && a.op === "create" && !a.detail)) {
+    const triage = clarifyFor(actions);
+    if (triage) {
+      ask = triage;
+      question = questionFor(triage);
+    }
+  }
   if (question) lines.push(question);
   return save(turn, lines.filter(Boolean).join("\n"), { actions, awaiting: ask, meta: { ...(ask && options ? { options } : {}), items: [...new Set(touched)] } });
 }
@@ -1477,33 +1533,113 @@ async function logHabit(userId: string, r: HabitReport, area = "general"): Promi
     : { op: "update", type: "routine", id: r.habit.id, title: r.habit.name, area, href: "/work?tab=habits", detail, prev, ...(r.yesterday ? { day: day.toISOString() } : {}) };
 }
 
-const DELETE_ITEM = /^\s*(?:please\s+|can you\s+)?(?:delete|remove|get rid of|take off|scratch|drop)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:one|item|todo|to-do|task|reminder))?(?:\s+(?:from|off)\s+(?:of\s+)?(?:my\s+|the\s+)?(?:list|todos?|to-?do list|reminders))?\s*[.!]*$/i;
+const DELETE_ITEM = /^\s*(?:please\s+|can you\s+)?(?:delete|remove|cancel|get rid of|take off|scratch|drop|clear)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:one|item|todo|to-do|task|reminder))?(?:\s+(?:from|off)\s+(?:of\s+)?(?:my\s+|the\s+)?(?:list|todos?|to-?do list|reminders))?\s*[.!]*$/i;
 const MARK_DONE = /^\s*(?:please\s+|can you\s+)?(?:mark|set)\s+(?:the\s+|my\s+)?(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished)\s*[.!]*$|^\s*(?:please\s+|can you\s+)?(?:check|tick|cross)\s+off\s+(?:the\s+|my\s+)?(.+?)\s*[.!]*$/i;
-const FEELING = /^\s*(?:(?:honestly|ngl|tbh|man|bro|ugh|so)[,\s]+)*(?:i'?m|i am|im|i feel|i felt|feeling|i'?ve been|been feeling)\s+(?:(?:kinda|kind of|really|so|pretty|super|a bit|a little|lowkey|very|hella|mad|lwk)\s+)*(unmotivated|tired|stressed|sad|down|anxious|lazy|burnt out|burned out|overwhelmed|bored|lonely|angry|annoyed|good|great|happy|motivated|proud|exhausted|drained|off|behind|stuck)\b/i;
+const FEELING_WORDS = "unmotivated|tired|stressed|sad|down|anxious|lazy|burnt out|burned out|overwhelmed|bored|lonely|angry|annoyed|good|great|happy|motivated|proud|exhausted|drained|off|behind|stuck";
+const FEELING = {
+  test: (t: string) =>
+    new RegExp(`^\\s*(?:(?:honestly|ngl|tbh|man|bro|ugh|so|lowkey|lwk)[,\\s]+)*(?:i'?m|i am|im|i feel|i felt|feeling|i'?ve been|been feeling)\\s+(?:(?:kinda|kind of|really|so|pretty|super|a bit|a little|lowkey|very|hella|mad|lwk)\\s+)*(?:${FEELING_WORDS})\\b`, "i").test(t) ||
+    // "ngl kinda tired today": the whole message is the feeling.
+    new RegExp(`^\\s*(?:(?:honestly|ngl|tbh|man|bro|ugh|lowkey|lwk)[,\\s]+)*(?:(?:kinda|kind of|really|so|pretty|super|a bit|lowkey|very|hella|mad)\\s+)*(?:${FEELING_WORDS})(?:\\s+(?:today|rn|right now|lol|af|asf|tbh|ngl|fr))*[.!]*\\s*$`, "i").test(t),
+};
+const MEAL_LINE = /^\s*(?:for\s+)?(breakfast|brunch|lunch|dinner|snack)\s*(?::|-|was|is|i had|i ate|=)\s*(.{3,})$/i;
+const CORRECTION = /^\s*(?:actually|no wait|wait|sorry|oops|my bad|correction)\b[,!\s]*|^\s*(?:make (?:that|it)|change (?:that|it) to|it'?s actually|its actually)\b/i;
+
+/** Messages that are clearly not an answer to the plan interview: handled normally, the interview waits. */
+function offPlan(text: string) {
+  const t = text.trim();
+  if (/^(note|notes)\s*:|^(lol|lmao|haha|btw|yo|hey|thanks|thank you|who are you|what can you do)\b/i.test(t)) return true;
+  // A question of his own ("what's the weather tomorrow") isn't an answer — unless it's about the plan itself.
+  if ((/\?\s*$/.test(t) || /^(what|when|where|who|how|why|can you|could you|do i|did i|is there|are there)\b/i.test(t)) && /\b(my|calendar|weather|score|due|reminders?|birthday|eat|ate|protein|calories|today|tomorrow|week)\b/i.test(t)) return true;
+  const x = extractUpdate(t);
+  return actionableCount(x) > 0 || /\bremind me\b/i.test(t);
+}
+
+/** Fix the item just made: a new due date, a new time, a corrected amount. */
+async function correctLast(turn: Turn, recentActions: ItemAction[], text: string): Promise<AssistantReply | null> {
+  const { userId } = turn;
+  // "no" to the share question comes between the event and "actually its at 2": look back a few replies.
+  const earlier = await prisma.chatMessage.findMany({ where: { conversationId: turn.conversationId, role: "assistant", createdAt: { gte: new Date(Date.now() - 30 * 60_000) } }, orderBy: { createdAt: "desc" }, take: 4, select: { actions: true } });
+  const lastActions = [...earlier.reverse().flatMap((m) => (m.actions as ItemAction[] | null) ?? []), ...recentActions];
+  const body = text.replace(CORRECTION, "").replace(/^(?:make (?:that|it)|change (?:that|it) to)\s*/i, "").trim();
+  const ev = [...lastActions].reverse().find((a) => a.type === "event" && (a.op === "create" || a.op === "update"));
+  if (ev && /\d|\b(noon|morning|evening|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|after)\b/i.test(body)) {
+    const e = await prisma.calendarEvent.findFirst({ where: { id: ev.id, userId } });
+    if (e) {
+      const phrase = body.replace(/^(?:it'?s|its|it is)\s+(?:at\s+)?/i, "").replace(/^at\s+/i, "");
+      const moved = await newTime(userId, phrase, e.start);
+      if (moved) {
+        const r = await moveEvent(userId, e.title, phrase);
+        if (r?.before) return save(turn, r.reply, { actions: [{ op: "update", type: "event", id: e.id, title: e.title, area: "general", href: "/schedule", detail: "moved", prev: JSON.stringify(r.before) }] });
+      }
+    }
+  }
+  const td = [...lastActions].reverse().find((a) => a.type === "todo" && a.op === "create");
+  if (td && /\b(due|by|tomorrow|tonight|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|at \d)\b/i.test(body)) {
+    const w = parseWhen(body.replace(/^due\s+/i, ""));
+    if (w) {
+      const before = await prisma.todo.findFirst({ where: { id: td.id, userId } });
+      if (before) {
+        await prisma.todo.update({ where: { id: td.id }, data: { dueAt: w.date } });
+        return save(turn, `💼 ${before.title} — now due ${fmtWhenShort(w.date)}`, { actions: [{ op: "update", type: "todo", id: td.id, title: before.title, area: before.area, href: "/work", detail: `due ${fmtWhenShort(w.date)}`, prev: JSON.stringify({ dueAt: before.dueAt }) }] });
+      }
+    }
+  }
+  const hb = [...lastActions].reverse().find((a) => a.type === "routine");
+  const amount = body.match(/(\d+(?:\.\d+)?)\s*(oz|ounces?|bottles?|cups?|liters?|l)\b/i);
+  if (hb && amount) {
+    const habit = await prisma.habit.findFirst({ where: { id: hb.id, userId }, select: { id: true, name: true, area: true } });
+    const report = habit ? parseHabitReports(`drank ${amount[0]} of water`, [habit])[0] : null;
+    if (report) {
+      const a = await logHabit(userId, report, habit!.area);
+      return save(turn, describeActions([a]), { actions: [a] });
+    }
+  }
+  return null;
+}
+
 const FEEL_NOTE = `He's telling you how he feels. Reply in 1-2 short sentences: acknowledge it plainly (never "good to know"), then suggest ONE small concrete next step from his day (one easy habit, or 10 minutes on a to-do). No lists, no lecture, no questions.`;
 
 /** Delete an open to-do or pending reminder by name. Undo recreates it. */
 async function deleteByName(turn: Turn, name: string): Promise<AssistantReply | null> {
   const { userId } = turn;
   const target = name.replace(/^(the|my)\s+/i, "").trim();
-  if (!target || /^(it|that|this|them|those|everything|all)$/i.test(target)) return null;
-  const todos = await prisma.todo.findMany({ where: { userId, status: "open" } });
-  const todo = todos.find((t) => sameTask(target, t.title)) ?? bestMatch(target, todos, 0.5);
-  if (todo) {
-    await prisma.reminder.deleteMany({ where: { userId, todoId: todo.id, status: "pending" } });
-    await prisma.todo.delete({ where: { id: todo.id } });
-    const a: ItemAction = { op: "delete", type: "todo", id: todo.id, title: todo.title, area: todo.area, href: "/work", prev: JSON.stringify(todo) };
-    return save(turn, describeActions([a]), { actions: [a] });
+  if (!target || /^(it|that|this|them|those|everything|all|that one|this one)$/i.test(target)) return null;
+  const say = (a: ItemAction) => save(turn, describeActions([a]), { actions: [a] });
+  const wantsKind = /\breminder\b/i.test(name) ? "reminder" : /\bmeal\b/i.test(name) ? "meal" : null;
+  if (!wantsKind) {
+    const events = await prisma.calendarEvent.findMany({ where: { userId, status: "confirmed", end: { gte: getStartOfDay(new Date()) } }, orderBy: { start: "asc" } });
+    const ev = events.find((e) => nameMatches(target, e.title));
+    if (ev) {
+      await prisma.reminder.deleteMany({ where: { userId, status: "pending", text: { startsWith: `📅 ${ev.title}` } } });
+      await deleteEvent(userId, ev.id);
+      return say({ op: "delete", type: "event", id: ev.id, title: ev.title, area: "general", href: "/schedule", detail: "removed from your calendar", prev: JSON.stringify(ev) });
+    }
+    const todos = await prisma.todo.findMany({ where: { userId, status: "open" } });
+    const todo = todos.find((t) => nameMatches(target, t.title)) ?? todos.find((t) => sameTask(target, t.title)) ?? bestMatch(target, todos, 0.5);
+    if (todo) {
+      await prisma.reminder.deleteMany({ where: { userId, todoId: todo.id, status: "pending" } });
+      await prisma.todo.delete({ where: { id: todo.id } });
+      return say({ op: "delete", type: "todo", id: todo.id, title: todo.title, area: todo.area, href: "/work", prev: JSON.stringify(todo) });
+    }
   }
-  const reminders = await prisma.reminder.findMany({ where: { userId, status: "pending" } });
-  const rem = reminders.map((r) => ({ ...r, title: r.text })).find((r) => sameTask(target, r.title)) ?? bestMatch(target, reminders.map((r) => ({ ...r, title: r.text })), 0.5);
-  if (rem) {
-    const { title: _t, ...row } = rem;
-    await prisma.reminder.delete({ where: { id: rem.id } });
-    const a: ItemAction = { op: "delete", type: "reminder", id: rem.id, title: rem.text, area: "general", href: "/work", prev: JSON.stringify(row) };
-    return save(turn, describeActions([a]), { actions: [a] });
+  if (wantsKind !== "meal") {
+    const reminders = await prisma.reminder.findMany({ where: { userId, status: "pending" } });
+    const rem = reminders.find((r) => nameMatches(target, r.text));
+    if (rem) {
+      await prisma.reminder.delete({ where: { id: rem.id } });
+      return say({ op: "delete", type: "reminder", id: rem.id, title: rem.text, area: "general", href: "/work", prev: JSON.stringify(rem) });
+    }
   }
-  return save(turn, `I couldn't find "${target}" on your to-dos or reminders — what's it called on your list?`);
+  if (wantsKind !== "reminder") {
+    const meals = await prisma.meal.findMany({ where: { userId, createdAt: { gte: new Date(Date.now() - 36 * 3_600_000) } }, orderBy: { createdAt: "desc" } });
+    const meal = meals.find((m) => nameMatches(target, m.name));
+    if (meal) {
+      await prisma.meal.delete({ where: { id: meal.id } });
+      return say({ op: "delete", type: "meal", id: meal.id, title: meal.name, area: "physical", href: "/meals", prev: JSON.stringify(meal) });
+    }
+  }
+  return save(turn, `I couldn't find "${target}" on your calendar, to-dos, reminders or meals — what's it called?`);
 }
 
 const TASK_STOP = new Set(["for", "the", "my", "a", "an", "to", "on", "of", "and", "do", "some", "work"]);

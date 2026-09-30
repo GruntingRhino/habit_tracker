@@ -31,8 +31,10 @@ const GOAL_START =
   /\b(i (really )?(want to|wanna|would like to|am trying to|hope to)|i'?d (really )?like to|i'?m trying to|help me( to)?|how (do|can|should|would) i|teach me( how)?( to)?|coach me( on| in| to)?|my goal is to)\s+(get (really |very |super |way |a lot |much )?(good|better|great|fit|stronger|faster|shredded|lean|in shape|into)|become|learn|master|improve|build|start|train|lose|gain|bulk|cut|save|quit|stop|read more|run a|compete|go pro|make money|grow)\b/i;
 const PLAN_REQUEST = /\b(make|build|create|give|write|design)( me)? (a |an |my )?(plan|roadmap|program|training plan|routine|schedule) (for|to)\b/i;
 
+// "i want to bench 225 by summer", "i wanna hit 150 lbs by june": a target with a deadline.
+const GOAL_BY = /\bi (really )?(want to|wanna|am going to|'?m going to|will|plan to|hope to)\s+(bench|squat|deadlift|hit|reach|get to|weigh|run|lose|gain|save|read|score|get a|make)\b.{1,40}\bby\s+(summer|winter|spring|fall|the end|end of|next|january|february|march|april|may|june|july|august|september|october|november|december|\d)/i;
 export function looksLikeGoal(text: string) {
-  return text.length <= 400 && (GOAL_START.test(text) || PLAN_REQUEST.test(text) || PLAN_ASK.test(text));
+  return text.length <= 400 && (GOAL_START.test(text) || GOAL_BY.test(text) || PLAN_REQUEST.test(text) || PLAN_ASK.test(text));
 }
 
 // He doesn't want plans made for him by default: the interview only runs when he asks for a plan.

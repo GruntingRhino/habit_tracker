@@ -119,3 +119,13 @@ describe("plans with a day", () => {
     ["i'll lyk when i get it back", []],
   ])("%s", (t, want) => expect(summary(t)).toEqual(want));
 });
+
+describe("from the five simulated days", () => {
+  it.each([
+    ["tomorrow im going to start studying bio at 4", ["todo Start studying bio (thu 10/1)"]],
+    ["tmrw i gotta turn in the permission slip and pick up my brother at 4", ["todo Turn in the permission slip (thu 10/1)", "todo Pick up my brother (thu 10/1)"]],
+    ["i have a bio test thursday and a math quiz wednesday", ["event Bio test thu 10/1 + Study for bio test", "event Math quiz wed 10/7 + Study for math quiz"]],
+    ["doctor appointment next monday at 10am", ["event Doctor appointment mon 10/5 10:00"]],
+    ["slept in, like 10 hours", ["sleep 10h"]],
+  ])("%s", (t, want) => expect(summary(t)).toEqual(want));
+});

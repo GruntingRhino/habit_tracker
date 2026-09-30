@@ -3,6 +3,8 @@
  * "didn't read my bible today": which of HIS habits a sentence is about, and whether it's done.
  * Pure code: a habit is only ticked when its own words (or a known synonym) are in the sentence.
  */
+import { parseSleep } from "@/lib/ai/update";
+
 export interface HabitRef {
   id: string;
   name: string;
@@ -32,7 +34,7 @@ const SYNONYMS: [RegExp, RegExp][] = [
 
 const STOP = new Set(["my", "the", "a", "an", "to", "of", "for", "and", "every", "day", "daily", "at", "by", "after", "before", "in", "on", "no", "do", "some", "min", "mins", "minutes", "routine"]);
 
-const NEG = /\b(didn'?t|did not|haven'?t|have not|hasn'?t|never|skipped|skip|forgot|missed|failed|couldn'?t|wasn'?t able|not yet|no time)\b/i;
+const NEG = /\b(didn'?t|did not|haven'?t|have not|hasn'?t|never|skipped|skip|forgot|missed|failed|couldn'?t|wasn'?t able|not yet|no time|rest day|off day|took (?:the|a) day off|no (?:workout|gym|lift)|not (?:working out|going to the gym|lifting|training|doing|going to (?:work out|lift|train|do)))\b/i;
 const FUTURE = /\b(gonna|going to|will|i'?ll|need to|have to|gotta|should|want to|plan(?:ning)? to|about to|later|remind)\b/i;
 const DONE = /\b(did|done|finished|completed|just|already|read|drank|drunk|had|got|went|worked out|hit|knocked out|stayed|kept|put|slept|was in bed|prayed|stretched|meditated|journaled|today|this morning|so far)\b/i;
 
@@ -57,9 +59,19 @@ function amountNote(habit: HabitRef, text: string): { done: boolean; note: strin
 }
 
 /** Bedtime / phone habits with a clock time ("Sleep by 10:30"): compare with the time he said. */
-function clockNote(habit: HabitRef, text: string): { done: boolean; note: string } | null {
+function clockNote(habit: HabitRef, text: string, useNow = false): { done: boolean; note: string } | null {
   const limit = habit.name.match(/\b(?:by|before|after)\s+(\d{1,2})(?::(\d{2}))?/i);
-  const said = text.match(/\b(?:at|around|by|till|until|from)\s+(?:like\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  let said = text.match(/\b(?:at|around|by|till|until|from|since)\s+(?:like\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  // "slept 11 to 6:30": the bedtime from the sleep range.
+  if (!said && /\b(sleep|bed)\b/i.test(habit.name)) {
+    const bed = parseSleep(text)?.bedtime;
+    if (bed) said = [bed, String(Number(bed.slice(0, 2)) % 12 || 12), bed.slice(3, 5), Number(bed.slice(0, 2)) >= 12 ? "pm" : "am"] as unknown as RegExpMatchArray;
+  }
+  // "heading to bed" with no time: now is the time.
+  if (!said && useNow && /\b(going|heading|off) to (bed|sleep)\b|\bgoing to bed\b|\bbed now\b/i.test(text)) {
+    const n = new Date();
+    said = [`${n.getHours()}:${n.getMinutes()}`, String(n.getHours() % 12 || 12), String(n.getMinutes()).padStart(2, "0"), n.getHours() >= 12 ? "pm" : "am"] as unknown as RegExpMatchArray;
+  }
   if (!limit || !said) return null;
   const toMin = (h: string, m?: string, ap?: string) => {
     let hh = Number(h) % 12;
@@ -88,10 +100,12 @@ export function parseHabitReports(text: string, habits: HabitRef[]): HabitReport
     for (const h of habits) {
       if (out.some((r) => r.habit.id === h.id) || !mentions(h, piece)) continue;
       const amount = /water|drink|hydrat/i.test(h.name) ? amountNote(h, piece) ?? amountNote(h, text) : null;
-      const clock = !amount ? clockNote(h, piece) ?? clockNote(h, text) : null;
+      const clock = !amount ? clockNote(h, piece) ?? clockNote(h, text) ?? clockNote(h, text, true) : null;
       if (NEG.test(piece)) out.push({ habit: h, done: false, note: "not done" });
       else if (amount) out.push({ habit: h, done: amount.done, note: amount.note });
       else if (clock) out.push({ habit: h, done: clock.done, note: clock.note });
+      // "Sleep by 10:30" needs a time to judge; "slept in, 10 hours" doesn't say.
+      else if (/\b(?:by|before|after)\s+\d{1,2}/i.test(h.name)) continue;
       else if (DONE.test(piece)) out.push({ habit: h, done: true, note: null });
     }
   }

@@ -14,7 +14,7 @@ const VALID_STATUSES = ["active", "completed", "on_hold", "archived"] as const;
 
 const projectPatchSchema = strictObject({
   title: z.string().trim().min(1).max(200).optional(),
-  description: z.string().trim().max(2000).optional(),
+  description: z.string().trim().max(10000).nullable().optional(),
   specs: z.string().trim().max(10000).optional(),
   notes: z.string().trim().max(10000).nullable().optional(),
   priority: z.enum(VALID_PRIORITIES).optional(),

@@ -10,6 +10,7 @@ import { readRationale } from "@/lib/score-rationale";
 import { scoreLinks } from "@/lib/brain/jobs";
 import { fmtHeight, fmtLb, measurementTrend, readBody, updateBody } from "@/lib/body";
 import { workerHealthCheck } from "@/lib/health";
+import { describeWeek, weekScore } from "@/lib/weekly";
 import { blockStatus } from "@/lib/training";
 import { esc, formatBrief, formatScores } from "./format";
 import { reminderKeyboard, sendToOwner } from "./telegram";
@@ -75,7 +76,7 @@ export async function nightlyJudge(date = new Date()) {
   const owner = await getOwner();
   await judgeDay(owner.id, date);
   const score = await prisma.categoryScore.findUnique({ where: { userId_date: { userId: owner.id, date: getStartOfDay(date) } } });
-  if (score) await sendToOwner(formatScores(score));
+  if (score) await sendToOwner(`${formatScores(score)}\n\n📈 ${esc(describeWeek(await weekScore(owner.id, date)))}`);
 }
 
 export async function weeklyDigest() {

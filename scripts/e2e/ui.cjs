@@ -110,6 +110,31 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await page.getByText("Return library books").waitFor();
   });
 
+  // 2a. One list: open a to-do, give it details, use Ask AI; make a project yourself.
+  await test("tasks: a to-do has description + due date, and Ask AI edits it", async () => {
+    await page.goto(BASE + "/todos?tab=open", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Open Return library books" }).click();
+    await page.getByLabel("Description").fill("Two books, at the front desk");
+    await page.getByLabel("Description").blur();
+    await page.getByLabel("Ask AI about this item").fill("move it to friday at 6pm and make it urgent");
+    await page.getByLabel("Ask AI about this item").press("Enter");
+    await page.getByText(/Due → Fri/).waitFor({ timeout: 30000 });
+    await page.getByText(/Fri, \w+ \d+ 6:00 PM/).first().waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.waitForTimeout(800);
+  });
+  await test("tasks: New project opens it with a checklist", async () => {
+    await page.getByRole("button", { name: /New project/ }).click();
+    const box = page.getByPlaceholder("Project name");
+    await box.fill("Dinner party");
+    await box.press("Enter");
+    await page.getByText("Checklist").waitFor({ timeout: 10000 });
+    const step = page.getByPlaceholder("Add a step").last();
+    await step.fill("Buy party snacks");
+    await step.press("Enter");
+    await page.getByLabel("Date for Buy party snacks").waitFor({ timeout: 10000 });
+  });
+
   // 2b. Tasks → Today: timeline, and adding to the fixed week.
   await test("today: timeline renders and a weekly block can be added", async () => {
     await page.goto(BASE + "/todos", { waitUntil: "networkidle" });
@@ -133,6 +158,13 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await page.getByRole("button", { name: "Done: Drink water" }).click();
     await page.getByRole("button", { name: "Undo Drink water" }).waitFor({ timeout: 10000 });
     if (await page.getByText(/Browse Library/).count()) throw new Error("library still shown");
+  });
+  await test("habits: a note for today (partial progress)", async () => {
+    await page.getByRole("button", { name: "Note for Drink water" }).click();
+    const note = page.getByLabel("Today's note for Drink water");
+    await note.fill("did 60 oz");
+    await note.press("Enter");
+    await page.getByText("📝 did 60 oz").waitFor({ timeout: 10000 });
   });
   await test("habits: workouts section logs a session", async () => {
     const box = page.getByPlaceholder(/New workout/);

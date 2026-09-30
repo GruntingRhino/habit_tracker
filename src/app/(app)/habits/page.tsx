@@ -13,7 +13,7 @@ interface Habit {
   targetDays: string[];
   createdAt: string;
   streak: number;
-  logs: { date: string; completed: boolean }[];
+  logs: { date: string; completed: boolean; notes?: string | null }[];
 }
 interface Exercise {
   id: string;
@@ -65,11 +65,22 @@ function HabitRow({ habit, onChanged }: { habit: Habit; onChanged: () => void })
   const done = new Set(habit.logs.filter((l) => l.completed).map((l) => ymd(new Date(l.date))));
   const today = new Date();
   const doneToday = done.has(ymd(today));
+  const todayNote = habit.logs.find((l) => ymd(new Date(l.date)) === ymd(today))?.notes ?? "";
+  const [note, setNote] = useState(todayNote);
+  const [noting, setNoting] = useState(false);
   const week = Array.from({ length: 7 }, (_, i) => subDays(today, 6 - i));
   const rate = thirtyDayRate(habit);
 
   async function toggleToday() {
     await send(`/api/habits/${habit.id}/log`, "POST", { completed: !doneToday });
+    onChanged();
+  }
+  async function saveNote() {
+    setNoting(false);
+    if (note.trim() === todayNote) return;
+    // Keep today's done/not-done as it is; the note tells the AI how much he actually did.
+    await send(`/api/habits/${habit.id}/log`, "POST", { completed: doneToday, notes: note.trim() });
+    window.dispatchEvent(new CustomEvent("liveimproved:changed"));
     onChanged();
   }
   async function patch(data: Record<string, unknown>) {
@@ -86,9 +97,12 @@ function HabitRow({ habit, onChanged }: { habit: Habit; onChanged: () => void })
     <li className="border-b" style={{ borderColor: "var(--stroke-1)" }}>
       <div className="flex items-center gap-2.5 py-2 text-sm">
         <Checkbox checked={doneToday} onClick={toggleToday} label={doneToday ? `Undo ${habit.name}` : `Done: ${habit.name}`} />
-        <span className="min-w-0 flex-1 truncate" style={{ color: "var(--ink-100)" }}>
-          {habit.name}
-        </span>
+        <button onClick={() => setNoting(true)} className="min-w-0 flex-1 text-left" title="Add a note for today" aria-label={`Note for ${habit.name}`}>
+          <span className="block truncate" style={{ color: "var(--ink-100)" }}>
+            {habit.name}
+          </span>
+          {todayNote && !noting && <span className="block truncate text-xs" style={{ color: "var(--ink-500)" }}>📝 {todayNote}</span>}
+        </button>
         <span className="hidden items-center gap-1 sm:flex" aria-label="Last 7 days">
           {week.map((d) => {
             const scheduled = habit.targetDays.includes(dayKey(d));
@@ -118,6 +132,20 @@ function HabitRow({ habit, onChanged }: { habit: Habit; onChanged: () => void })
           <MoreHorizontal className="h-4 w-4" />
         </button>
       </div>
+      {noting && (
+        <div className="mb-2 ml-7">
+          <input
+            autoFocus
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={saveNote}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            placeholder='Note for today, e.g. "did 60 oz" — the AI counts it'
+            aria-label={`Today's note for ${habit.name}`}
+            className="min-field"
+          />
+        </div>
+      )}
       {menu && (
         <div className="mb-2 ml-7 flex flex-wrap items-center gap-2">
           <input

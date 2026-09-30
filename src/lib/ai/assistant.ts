@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { planItem } from "@/lib/ai/itemai";
 import { keywordArea } from "@/lib/ai/router";
 import { parseMeasurements, recordMeasurements } from "@/lib/body";
 import { buildSchedule, describeSchedule, fmt12, parseScheduleBlock, parseSleepTimes, readPrefs, writePrefs } from "@/lib/schedule";
@@ -8,7 +9,7 @@ import { Prisma } from "@/generated/prisma";
 import { normalizePriority } from "@/lib/areas";
 import { chat, parseJson } from "@/lib/ai/llm";
 import { NEGATED_CAPTURE, routeMessage } from "@/lib/ai/router";
-import { applyCapture, applyComplete, undoActions, type ItemAction } from "@/lib/ai/capture";
+import { applyCapture, applyComplete, bestMatch, undoActions, type ItemAction } from "@/lib/ai/capture";
 import { buildSnapshot, describeItem, getOpenItems } from "@/lib/ai/context";
 import { planDay } from "@/lib/ai/planner";
 import { parseWhen, parseWhenFrom } from "@/lib/ai/when";
@@ -276,7 +277,27 @@ export async function handleMessage(userId: string, text: string, source: Source
       flags.conversational = true;
       // Only an explicit "make me a plan" runs the planner. A how-to question gets an answer; a
       // stated goal is saved as a goal to keep him accountable, with no steps made up for him.
-      if (wantsPlan(trimmed)) return await startPlan(turn, trimmed);
+      if (wantsPlan(trimmed)) {
+        // "make a plan for the science fair" when that's already on his list: plan that item
+        // (a to-do becomes a project with a dated checklist) instead of starting a new goal.
+        const target = goalTitle(trimmed).replace(/^(for|on)\s+(the|my)?\s*/i, "").replace(/^(the|my)\s+/i, "");
+        const [openTodos, openProjects] = await Promise.all([
+          prisma.todo.findMany({ where: { userId, status: "open" }, select: { id: true, title: true } }),
+          prisma.project.findMany({ where: { userId, status: { notIn: ["completed", "archived"] } }, select: { id: true, title: true } }),
+        ]);
+        const project = bestMatch(target, openProjects, 0.6);
+        const todo = project ? null : bestMatch(target, openTodos, 0.6);
+        if (project || todo) {
+          const r = await planItem(userId, project ? { type: "project", id: project.id } : { type: "todo", id: todo!.id }, trimmed);
+          const tasks = await prisma.projectTask.findMany({ where: { projectId: r.item.id }, orderBy: { order: "asc" }, select: { id: true, title: true, dueDate: true } });
+          const added = new Set(r.changes.filter((c) => c.startsWith("+ ")).map((c) => c.slice(2).replace(/ \([^)]*\)$/, "")));
+          const actions: ItemAction[] = tasks
+            .filter((t) => added.has(t.title))
+            .map((t) => ({ op: "create", type: "task", id: t.id, title: t.title, area: "work", href: `/todos?project=${r.item.id}`, detail: t.dueDate ? t.dueDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : undefined }));
+          return save(turn, `${r.reply} It's on your Tasks list.`, { actions });
+        }
+        return await startPlan(turn, trimmed);
+      }
       if (/^\s*(how|what|which|should|can|could)\b|\?\s*$/i.test(trimmed)) return await chatReply(turn, trimmed);
       const actions = await applyCapture(userId, [{ kind: "project", title: goalTitle(trimmed), area: keywordArea(trimmed) ?? "general", priority: "medium" }], trimmed, source);
       return save(turn, describeActions(actions), { actions });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { LIVE_STATE_KEY, type LiveScoreState } from "@/lib/brain/scores";
+import { weekScore } from "@/lib/weekly";
 
 /**
  * Most recent scores (newest first) — the chat screen shows the latest one.
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
   const beatAt = (beat?.value as { at?: string } | null)?.at;
   return NextResponse.json({
     scores,
+    week: await weekScore(user.id),
     live: { pending: !!state.pending, since: state.since ?? null, gradedAt: state.gradedAt ?? null, brainUp: !!beatAt && Date.now() - new Date(beatAt).getTime() < 15 * 60_000 },
   });
 }

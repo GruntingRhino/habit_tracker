@@ -75,6 +75,17 @@ export interface BodyInfo {
 }
 export const BODY_STATE_KEY = "body";
 
+const WORKOUT_HABIT = /\b(workout|work out|train(ing)?|gym|lift(ing)?)\b/i;
+
+/** "Drink 100 oz of water" + "did 60 oz" → 0.6. Null when there aren't comparable numbers. */
+export function partialRatio(habit: string, note: string) {
+  const target = habit.match(/(\d+(?:\.\d+)?)/)?.[1];
+  const got = note.match(/(\d+(?:\.\d+)?)/)?.[1];
+  if (!target || !got) return null;
+  const r = Number(got) / Number(target);
+  return Number.isFinite(r) && r > 0 ? Math.min(1, r) : null;
+}
+
 const GOOD_MICROS: MicroKey[] = ["potassium", "magnesium", "vitaminC", "vitaminA", "zinc", "calcium", "iron"];
 
 /**
@@ -106,7 +117,7 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
     }),
     prisma.habit.findMany({
       where: { userId, isActive: true, targetDays: { has: dow }, createdAt: { lt: next } },
-      select: { name: true, area: true, logs: { where: { date: day }, select: { completed: true } } },
+      select: { name: true, area: true, logs: { where: { date: day }, select: { completed: true, notes: true } } },
       orderBy: { createdAt: "asc" },
     }),
     prisma.workoutSession.findMany({
@@ -160,11 +171,22 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
     const mins = entry.workoutDurationMinutes;
     fact("physical", `Workout: ${entry.workoutRoutineName ?? entry.workoutDetails ?? "done"}${mins ? ` (${mins} min${entry.workoutIntensity ? `, ${entry.workoutIntensity}` : ""})` : ""}`, 1, mins && mins >= 45 ? 3 : 2.5);
   }
+  // A ticked "Workout" habit counts as training even without a logged session.
+  const workoutHabit = habits.find((h) => WORKOUT_HABIT.test(h.name) && h.logs[0]?.completed);
+  if (workoutHabit && !trained) {
+    trained = true;
+    fact("physical", `Worked out (checked off “${workoutHabit.name}”)${workoutHabit.logs[0]?.notes ? ` — “${workoutHabit.logs[0].notes.slice(0, 80)}”` : ""}`, 1, 2.5);
+  }
   if (entry?.sportsTrainingMinutes) {
     trained = true;
     fact("physical", `Sports / fight training ${entry.sportsTrainingMinutes} min`, entry.sportsTrainingMinutes >= 20 ? 1 : 0, entry.sportsTrainingMinutes >= 60 ? 3 : 2);
   }
+  const habitTrained = await prisma.habitLog.findMany({
+    where: { completed: true, date: { gte: addDays(day, -6), lt: day }, habit: { userId, OR: [{ name: { contains: "workout", mode: "insensitive" } }, { name: { contains: "gym", mode: "insensitive" } }, { name: { contains: "train", mode: "insensitive" } }] } },
+    select: { date: true },
+  });
   const trainedDays = new Set([
+    ...habitTrained.map((l) => getStartOfDay(l.date).getTime()),
     ...recentWorkouts.map((w) => getStartOfDay(w.date).getTime()),
     ...recentEntries.filter((e) => e.workoutCompleted || (e.sportsTrainingMinutes ?? 0) >= 20).map((e) => getStartOfDay(e.date).getTime()),
   ]);
@@ -314,8 +336,19 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
   }
   for (const h of habits) {
     const done = h.logs[0]?.completed;
+    const note = h.logs[0]?.notes?.trim();
     const area = h.area === "general" || h.area === "work" ? "mental" : h.area;
-    fact(area, done ? `Habit done: ${q(h.name)}` : `Habit ${final ? "missed" : "not done yet"}: ${q(h.name)}`, done ? 1 : final ? -1 : 0, done ? 1.25 : final ? 1.25 : 0.75);
+    // The workout habit is counted once, as training (above).
+    if (WORKOUT_HABIT.test(h.name) && (done || trained)) continue;
+    if (!done && note) {
+      // His note says how much he did ("did 60 oz"): partial credit, not a zero.
+      const ratio = partialRatio(h.name, note);
+      const polarity = ratio == null ? 0 : ratio >= 0.9 ? 1 : ratio >= 0.5 ? 0 : final ? -1 : 0;
+      fact(area, `Habit partly done: ${q(h.name)} — “${note.slice(0, 80)}”${ratio != null ? ` (${Math.round(ratio * 100)}%)` : ""}`, polarity as Fact["polarity"], 1.25);
+      if (ratio == null || ratio < 0.9) option(scoredArea(area), `Finish ${q(h.name)}`);
+      continue;
+    }
+    fact(area, done ? `Habit done: ${q(h.name)}${note ? ` — “${note.slice(0, 80)}”` : ""}` : `Habit ${final ? "missed" : "not done yet"}: ${q(h.name)}`, done ? 1 : final ? -1 : 0, done ? 1.25 : final ? 1.25 : 0.75);
     if (!done) option(scoredArea(area), `Do your habit ${q(h.name)}`);
   }
 

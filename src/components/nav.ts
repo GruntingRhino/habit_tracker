@@ -1,11 +1,12 @@
-import { BookOpen, ListTodo, MessageSquare, Repeat, Settings, UtensilsCrossed } from "lucide-react";
+import { Briefcase, CalendarDays, Home, MessageSquare, Settings, UtensilsCrossed } from "lucide-react";
 
+/** Home is the landing page; the dropdown goes everywhere else. */
 export const NAV = [
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/todos", label: "Tasks", icon: ListTodo },
-  { href: "/habits", label: "Habits", icon: Repeat },
+  { href: "/home", label: "Home", icon: Home },
+  { href: "/schedule", label: "Schedule", icon: CalendarDays },
+  { href: "/chat", label: "Chat & Journal", icon: MessageSquare },
   { href: "/meals", label: "Food", icon: UtensilsCrossed },
-  { href: "/entry", label: "Journal", icon: BookOpen },
+  { href: "/work", label: "Work", icon: Briefcase },
 ] as const;
 
 export const SETTINGS = { href: "/settings", label: "Settings", icon: Settings } as const;

@@ -1,4 +1,6 @@
 import prisma from "@/lib/prisma";
+import * as chrono from "chrono-node";
+import { addAttendees, createEvent, describeEventTime, emailsIn, parseEventStatement, prepDue, updateEvent, type ParsedEvent } from "@/lib/calendar";
 import { planItem } from "@/lib/ai/itemai";
 import { keywordArea } from "@/lib/ai/router";
 import { parseMeasurements, recordMeasurements } from "@/lib/body";
@@ -46,7 +48,9 @@ interface ItemRef {
 }
 
 interface Awaiting {
-  kind: "triage" | "reminder_time" | "prioritize" | "meal_amount";
+  kind: "triage" | "reminder_time" | "prioritize" | "meal_amount" | "event_time" | "event_share";
+  /** event_time / event_share: the calendar event being asked about. */
+  event?: { id: string; title: string };
   refs: ItemRef[];
   /** meal_amount: which meal, what he wrote, answers so far, questions left. */
   meal?: { id: string; text: string; answers: Record<number, string>; queue: AmountQuestion[] };
@@ -113,6 +117,7 @@ const TYPE_LABEL: Record<ItemAction["type"], string> = {
   plan: "Plan",
   schedule: "Schedule",
   measurement: "Measurement",
+  event: "Calendar",
 };
 
 export function describeActions(actions: ItemAction[]) {
@@ -195,6 +200,14 @@ export async function handleMessage(userId: string, text: string, source: Source
       return save(turn, `Which item do you mean? I don't have a numbered list open right now, so tell me its name (e.g. "the essay is due friday").`);
     }
     if (undoneSince.length && ABOUT_UNDO.test(trimmed)) return save(turn, undoAnswer(undoneSince));
+    // "I have a dentist appointment Friday at 3" → calendar event + prep to-do, then ask what's missing.
+    const event = !awaiting ? parseEventStatement(trimmed) : null;
+    if (event) return await eventFromChat(turn, event, trimmed);
+    // "share the soccer game with mike@gmail.com" (no question pending)
+    if (!awaiting && /\b(share|invite|send)\b/i.test(trimmed) && emailsIn(trimmed).length) {
+      const shared = await shareFromChat(turn, trimmed);
+      if (shared) return shared;
+    }
     // Tape measurements ("waist 29, chest 36"): before weight/height so "shoulders 48 in" isn't a height.
     const measures = !awaiting ? parseMeasurements(trimmed) : null;
     if (measures) return save(turn, await recordMeasurements(userId, measures));
@@ -802,6 +815,7 @@ Example answer: taxes are due april 15 and most important, thesis next, retreat 
 async function handleAnswer(turn: Turn, awaiting: Awaiting, text: string): Promise<AssistantReply | null> {
   const { userId } = turn;
   if (awaiting.kind === "meal_amount" && awaiting.meal) return answerMealAmount(turn, awaiting.meal, text);
+  if ((awaiting.kind === "event_time" || awaiting.kind === "event_share") && awaiting.event) return answerEvent(turn, awaiting, text);
   if (awaiting.kind === "reminder_time") {
     const when = parseWhen(text);
     const ref = awaiting.refs[0];
@@ -928,3 +942,107 @@ async function answerQuestion(userId: string, question: string) {
 }
 
 export { describeItem };
+
+// ---- calendar events from chat ------------------------------------------------------------------
+
+const fmtDue = (d: Date) => d.toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" }).replace(":00", "");
+
+/** Event + prep to-do (+ Telegram reminder), or a planned project if he asked for a plan; then ask what's missing. */
+async function eventFromChat(turn: Turn, ev: ParsedEvent, text: string): Promise<AssistantReply> {
+  const { userId } = turn;
+  const actions: ItemAction[] = [];
+  const due = prepDue(ev.start);
+  const prepTitle = `Prepare for ${ev.title.charAt(0).toLowerCase()}${ev.title.slice(1)}`;
+  const todo = await prisma.todo.create({ data: { userId, title: prepTitle, area: "work", priority: "high", dueAt: due, source: turn.source } });
+  const { event, onGoogle } = await createEvent(userId, { title: ev.title, start: ev.start, end: ev.end, allDay: ev.allDay, attendees: ev.attendees, todoId: todo.id });
+  actions.push({ op: "create", type: "event", id: event.id, title: ev.title, area: "general", href: "/schedule", detail: `${describeEventTime(event)}${onGoogle ? " · on Google Calendar" : ""}` });
+  let prepLine: string;
+  if (wantsPlan(text)) {
+    // He asked for a plan: the prep to-do becomes a project with a dated checklist.
+    const planned = await planItem(userId, { type: "todo", id: todo.id }, text);
+    actions.push({ op: "create", type: "project", id: planned.item.id, title: prepTitle, area: "work", href: `/work?project=${planned.item.id}`, detail: planned.reply });
+    prepLine = `Plan: ${planned.reply}`;
+  } else {
+    const reminder = await prisma.reminder.create({ data: { userId, text: prepTitle, fireAt: due, todoId: todo.id } });
+    actions.push({ op: "create", type: "todo", id: todo.id, title: prepTitle, area: "work", href: "/work", detail: `due ${fmtDue(due)}` });
+    actions.push({ op: "create", type: "reminder", id: reminder.id, title: prepTitle, area: "work", href: "/work", detail: fmtDue(due) });
+    prepLine = `To-do: ${prepTitle} (${fmtDue(due)}, I'll remind you).`;
+  }
+  const lines = [`📅 ${ev.title} — ${describeEventTime(event)}${onGoogle ? " (on your Google Calendar)" : ""}.`, prepLine];
+  if (ev.attendees.length) lines.push(`Shared with ${ev.attendees.join(", ")}${onGoogle ? " — they'll get a Google Calendar invite" : ""}.`);
+  // Ask for what's missing: the time first, then who to share it with.
+  if (!ev.hasTime) {
+    lines.push("What time is it?");
+    return save(turn, lines.join("\n"), { actions, awaiting: { kind: "event_time", refs: [], event: { id: event.id, title: ev.title } }, meta: { options: ["All day", "Morning", "After school", "Evening"] } });
+  }
+  if (!ev.attendees.length) {
+    lines.push("Should I share it with anyone?");
+    return save(turn, lines.join("\n"), { actions, awaiting: { kind: "event_share", refs: [], event: { id: event.id, title: ev.title } }, meta: { options: ["No, just me"] } });
+  }
+  return save(turn, lines.join("\n"), { actions });
+}
+
+const NO = /^\s*(no|nope|nah|no one|nobody|just me|no,? just me|not now|skip|none)\b/i;
+
+async function answerEvent(turn: Turn, awaiting: Awaiting, text: string): Promise<AssistantReply | null> {
+  const { userId } = turn;
+  const ev = await prisma.calendarEvent.findFirst({ where: { id: awaiting.event!.id, userId } });
+  if (!ev) return null;
+  if (awaiting.kind === "event_time") {
+    const day = new Date(ev.start);
+    let start: Date | null = null;
+    let end: Date | null = null;
+    if (/\ball[- ]?day\b/i.test(text)) {
+      // keep it all-day
+    } else {
+      const slot = /\bmorning\b/i.test(text) ? 9 : /\bafter school\b/i.test(text) ? 15 : /\bafternoon\b/i.test(text) ? 14 : /\bevening\b/i.test(text) ? 18 : null;
+      const found = slot == null ? chrono.parse(text, day, { forwardDate: false })[0] : null;
+      if (slot != null) start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), slot);
+      else if (found && found.start.isCertain("hour")) {
+        const s = found.start.date();
+        let h = s.getHours();
+        if (!found.start.isCertain("meridiem") && h >= 1 && h <= 6) h += 12;
+        start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, s.getMinutes());
+        const e = found.end?.date();
+        if (e) end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), e.getHours() + (!found.end!.isCertain("meridiem") && e.getHours() >= 1 && e.getHours() <= 6 ? 12 : 0), e.getMinutes());
+      } else return null; // not an answer: handle the message normally
+    }
+    let line = "Kept it as all day.";
+    if (start) {
+      const r = await updateEvent(userId, ev.id, { start, end: end && end > start ? end : new Date(start.getTime() + 3_600_000), allDay: false });
+      line = `Set: ${ev.title} — ${describeEventTime(r!.event)}.`;
+      // The prep to-do/reminder follow the real time.
+      if (ev.todoId) {
+        const due = prepDue(start);
+        await prisma.todo.updateMany({ where: { id: ev.todoId, userId, status: "open" }, data: { dueAt: due } });
+        await prisma.reminder.updateMany({ where: { todoId: ev.todoId, status: "pending" }, data: { fireAt: due } });
+      }
+    }
+    if (ev.attendees.length) return save(turn, line);
+    return save(turn, `${line}\nShould I share it with anyone?`, { awaiting: { kind: "event_share", refs: [], event: awaiting.event }, meta: { options: ["No, just me"] } });
+  }
+  // event_share
+  const emails = emailsIn(text);
+  if (emails.length) {
+    const r = await addAttendees(userId, ev.id, emails);
+    return save(turn, `Shared ${ev.title} with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : ". (Connect Google Calendar on the Schedule page so they get an invite.)"}`);
+  }
+  if (NO.test(text)) return save(turn, "Okay, just you.");
+  if (/^\s*(yes|yeah|yep|sure|ok|okay)\b/i.test(text) || /\b(share|invite)\b/i.test(text)) {
+    return save(turn, "What's their email? (You can list a few.)", { awaiting, meta: { options: ["No, just me"] } });
+  }
+  return null;
+}
+
+/** "share the soccer game with mike@gmail.com": the best-matching upcoming event (or the latest one). */
+async function shareFromChat(turn: Turn, text: string): Promise<AssistantReply | null> {
+  const { userId } = turn;
+  const emails = emailsIn(text);
+  const upcoming = await prisma.calendarEvent.findMany({ where: { userId, status: "confirmed", end: { gte: new Date() } }, orderBy: { start: "asc" }, take: 50 });
+  if (!upcoming.length) return null;
+  const words = text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, " ").replace(/\b(share|invite|send|it|this|that|the|my|with|to|and|event|calendar)\b/gi, " ").trim();
+  const match = words.length >= 3 ? bestMatch(words, upcoming, 0.5) : null;
+  const target = match ?? [...upcoming].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  const r = await addAttendees(userId, target.id, emails);
+  return save(turn, `Shared ${target.title} (${describeEventTime(target)}) with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : ". (Connect Google Calendar on the Schedule page so they get an invite.)"}`);
+}

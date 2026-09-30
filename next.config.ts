@@ -47,10 +47,14 @@ const nextConfig: NextConfig = {
   // Pages folded into others by the consolidation; old links (including ones in chat history) keep working.
   async redirects() {
     return [
-      { source: "/projects", destination: "/todos", permanent: false },
-      { source: "/projects/:id", destination: "/todos?project=:id", permanent: false },
-      { source: "/notes", destination: "/entry?tab=notes", permanent: false },
-      { source: "/weights", destination: "/habits#workouts", permanent: false },
+      { source: "/projects", destination: "/work", permanent: false },
+      { source: "/projects/:id", destination: "/work?project=:id", permanent: false },
+      { source: "/todos", destination: "/work", permanent: false },
+      { source: "/habits", destination: "/work?tab=habits", permanent: false },
+      { source: "/weights", destination: "/work?tab=habits", permanent: false },
+      { source: "/notes", destination: "/chat?tab=notes", permanent: false },
+      { source: "/entry", has: [{ type: "query", key: "tab" }], destination: "/chat", permanent: false },
+      { source: "/entry", destination: "/chat?tab=journal", permanent: false },
     ];
   },
   async headers() {

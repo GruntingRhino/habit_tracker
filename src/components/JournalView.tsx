@@ -1,11 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { format, isToday } from "date-fns";
-import { PageHeader, Section, Empty, Tabs } from "@/components/ui";
-import NotesList from "@/components/NotesList";
-import ProfilePanel from "@/components/ProfilePanel";
+import { Section, Empty } from "@/components/ui";
 
 interface Entry {
   date: string;
@@ -34,19 +31,17 @@ async function save(data: Partial<Entry>) {
   await fetch("/api/journal", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 }
 
-export default function Page() {
-  return (
-    <Suspense>
-      <JournalPage />
-    </Suspense>
-  );
-}
+const JOURNAL_PROMPT = `How did today go? A few honest lines help the AI read your day. Try:
+• Wins — what went well, and why
+• Misses — what got in the way (phone, energy, time, people)
+• Body — training, food, sleep: how you felt
+• Mind — focus, mood, stress (1–10 and why)
+• Faith — prayer, Bible, what you're grateful for
+• One thing you learned or want to remember
+• Tomorrow — the 1–3 things that matter most`;
 
-function JournalPage() {
-  const params = useSearchParams();
-  const initialTab = params.get("tab");
-  const [tab, setTab] = useState<"today" | "notes" | "profile">(initialTab === "notes" || initialTab === "profile" ? initialTab : "today");
-  const [entries, setEntries] = useState<Entry[] | null>(null);
+/** Today's journal: free text (with prompts), quick log, tomorrow's plan, the AI's feedback, past entries. */
+export default function JournalView() {  const [entries, setEntries] = useState<Entry[] | null>(null);
   const [text, setText] = useState("");
   const [quick, setQuick] = useState<Record<Quick, string>>({ weightLb: "", sleepHours: "", screenTimeHours: "", moneySpent: "", moneySaved: "" });
   const [god, setGod] = useState(false);
@@ -101,34 +96,23 @@ function JournalPage() {
   const latestFeedback = entries?.find((e) => e.journalFeedback);
   const past = (entries ?? []).filter((e) => !isToday(new Date(e.date)) && e.notes);
 
-  const header = (
-    <PageHeader
-      title="Journal"
-      sub={tab === "today" ? `${format(new Date(), "EEE, MMM d")}${status === "saving" ? " · saving…" : status === "saved" ? " · saved" : ""}` : undefined}
-      action={<Tabs value={tab} options={[["today", "Today"], ["notes", "Notes"], ["profile", "Profile"]]} onChange={setTab} />}
-    />
-  );
-  if (tab === "notes" || tab === "profile") {
-    return (
-      <div className="min-page">
-        {header}
-        {tab === "notes" ? <NotesList /> : <ProfilePanel />}
-      </div>
-    );
-  }
-
   return (
-    <div className="min-page">
-      {header}
-
+    <div>
+      <p className="min-sub mb-2">
+        {format(new Date(), "EEEE, MMM d")}
+        {status === "saving" ? " · saving…" : status === "saved" ? " · saved" : ""}
+      </p>
       <textarea
         value={text}
         onChange={(e) => onText(e.target.value)}
-        placeholder="How did today go? Wins, misses, what you're grateful for."
-        rows={Math.max(3, Math.min(14, text.split("\n").length + 1))}
+        placeholder={JOURNAL_PROMPT}
+        aria-label="Journal"
+        rows={text ? Math.max(3, Math.min(14, text.split("\n").length + 1)) : 9}
         className="mb-4 w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-[var(--ink-600)]"
         style={{ color: "var(--ink-100)" }}
       />
+
+      <TomorrowPlan />
 
       <Section label="Quick log">
         <div className="grid grid-cols-5 gap-3">
@@ -192,5 +176,42 @@ function JournalPage() {
         )}
       </Section>
     </div>
+  );
+}
+
+/** "Plan tomorrow": one thing per line → to-dos due tomorrow (times like "7pm gym" are understood). */
+function TomorrowPlan() {
+  const [text, setText] = useState("");
+  const [added, setAdded] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function add() {
+    const lines = text.split("\n").map((l) => l.replace(/^\s*(?:[-•*]|\d+[.)])\s+/, "").trim()).filter(Boolean);
+    if (!lines.length) return;
+    setBusy(true);
+    const res = await fetch("/api/todos/tomorrow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lines }) });
+    setBusy(false);
+    if (res.ok) {
+      setAdded(((await res.json()) as { title: string }[]).map((t) => t.title));
+      setText("");
+      window.dispatchEvent(new CustomEvent("liveimproved:changed"));
+    }
+  }
+  return (
+    <Section label="Plan tomorrow">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={"One thing per line — these become tomorrow's to-dos:\nFinish GoodHours QA\n7pm upper workout\nStudy chem 30 min"}
+        aria-label="Plan tomorrow"
+        rows={Math.max(3, Math.min(10, text.split("\n").length + 1))}
+        className="min-field mb-2 resize-none leading-relaxed"
+      />
+      <div className="flex items-center gap-3">
+        <button onClick={add} disabled={busy || !text.trim()} className="min-btn">
+          {busy ? "Adding…" : "Add to tomorrow"}
+        </button>
+        {added && <span className="text-xs" style={{ color: "var(--ink-500)" }}>Added {added.length}: {added.join(" · ")}</span>}
+      </div>
+    </Section>
   );
 }

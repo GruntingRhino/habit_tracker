@@ -673,21 +673,51 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     expect(b.conversationId).toBe(a.conversationId);
   });
 
-  it("a test on a date is a high-priority to-do plus a reminder the evening before — no study plan", async () => {
-    const text = "i have a chem test on friday";
-    routes.set(text, { intent: "capture", items: [{ kind: "todo", title: "Chem test", area: "work", when: "friday" }] });
-    const r = await say(text);
-    expect(r.actions.map((a) => a.type)).toEqual(["todo", "reminder"].slice(0, r.actions.length));
-    expect(await prisma.todo.count({ where: { userId } })).toBe(1);
-    expect((await prisma.todo.findFirst({ where: { userId } }))?.priority).toBe("high");
-    const reminder = await prisma.reminder.findFirst({ where: { userId } });
-    if (reminder) {
-      expect(reminder.text).toBe("Chem test tomorrow");
-      expect(reminder.fireAt.getHours()).toBe(19);
-    }
+  it("'I have a chem test on friday': calendar event + prep to-do + reminder, then asks the time, then who to share with", async () => {
+    const r = await say("I have a chem test on friday");
+    expect(r.actions.map((x) => x.type)).toEqual(["event", "todo", "reminder"]);
+    expect(r.reply).toContain("📅 Chem test");
+    expect(r.reply).toContain("To-do: Prepare for chem test");
+    expect(r.reply).toMatch(/What time is it\?$/);
+    expect(r.meta?.options).toContain("All day");
+    const ev = await prisma.calendarEvent.findFirstOrThrow({ where: { userId } });
+    expect(ev.allDay).toBe(true);
+    const todo = await prisma.todo.findFirstOrThrow({ where: { userId } });
+    expect(todo).toMatchObject({ title: "Prepare for chem test", priority: "high" });
+    expect(todo.dueAt!.getHours()).toBe(19); // evening before
+
+    const t = await say("8am");
+    expect(t.reply).toMatch(/Set: Chem test — .* 8am–9am\.\nShould I share it with anyone\?/);
+    const ev2 = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: ev.id } });
+    expect([ev2.allDay, ev2.start.getHours()]).toEqual([false, 8]);
+
+    const sh = await say("yeah");
+    expect(sh.reply).toMatch(/What's their email/);
+    const done = await say("mike@gmail.com and sarah@school.org");
+    expect(done.reply).toContain("Shared Chem test with mike@gmail.com, sarah@school.org");
+    expect((await prisma.calendarEvent.findUniqueOrThrow({ where: { id: ev.id } })).attendees).toEqual(["mike@gmail.com", "sarah@school.org"]);
+    expect(calls.filter((c) => c === "router")).toEqual([]);
+
     await undoMessage(userId, r.id);
+    expect([await prisma.calendarEvent.count({ where: { userId } }), await prisma.todo.count({ where: { userId } }), await prisma.reminder.count({ where: { userId } })]).toEqual([0, 0, 0]);
+  });
+
+  it("an event with a time and an email is shared right away; 'no' to sharing is fine", async () => {
+    const r = await say("add soccer game to my calendar saturday 10-12 and share it with Mike@gmail.com");
+    expect(r.reply).toContain("Shared with mike@gmail.com");
+    expect(r.awaiting).toBeNull();
+    const d = await say("i have a dentist appointment friday at 3pm");
+    expect(d.reply).toMatch(/Should I share it with anyone\?$/);
+    const no = await say("no, just me");
+    expect(no.reply).toBe("Okay, just you.");
+    const later = await say("share the dentist appointment with mom@gmail.com");
+    expect(later.reply).toContain("Shared Dentist appointment");
+  });
+
+  it("an event with 'make a plan' gets a planned prep project instead of a plain to-do", async () => {
+    const r = await say("i have a science fair on oct 20, make me a plan for it");
+    expect(r.actions.map((x) => x.type)).toEqual(["event", "project"]);
     expect(await prisma.todo.count({ where: { userId } })).toBe(0);
-    expect(await prisma.reminder.count({ where: { userId } })).toBe(0);
   });
 
   it("his week, measurements and sleep times are read without the model", async () => {

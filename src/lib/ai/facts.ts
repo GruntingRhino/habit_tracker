@@ -30,10 +30,10 @@ export async function nutritionAnswer(userId: string, text: string, now = new Da
   if (/\bfat\b/.test(lc)) parts.push(`fat ${of(sum("fat"), t?.fat)}`);
   if (/fiber/.test(lc)) parts.push(`fiber ${of(fiber, t?.fiber)}`);
   if (!parts.length) parts.push(`calories ${of(sum("calories"), t?.calories, " kcal")}`, `protein ${of(sum("protein"), t?.protein)}`, `carbs ${r0(sum("carbs"))}g`, `fat ${r0(sum("fat"))}g`);
-  const left = /protein/.test(lc) && t?.protein ? Math.max(0, t.protein - sum("protein")) : 0;
+  const left = /protein/.test(lc) && t?.protein ? t.protein - sum("protein") : null;
   return [
     `Today so far (${meals.length} meal${meals.length === 1 ? "" : "s"}): ${parts.join(" · ")}.`,
-    left ? `${r0(left)}g protein to go.` : "",
+    left == null ? "" : left > 0 ? `${r0(left)}g protein to go.` : "Protein target hit ✅",
     pending ? `(${pending} meal${pending === 1 ? " is" : "s are"} still being estimated.)` : "",
   ].filter(Boolean).join(" ");
 }
@@ -58,7 +58,7 @@ export async function scoreAnswer(userId: string, text: string, now = new Date()
   return `${label}: ${row.overall.toFixed(1)}/10 overall${areas.length ? ` — ${areas.join(", ")}` : ""}. Tap a score on Home for why and how to raise it.`;
 }
 
-export async function plateAnswer(userId: string, now = new Date()) {
+export async function plateAnswer(userId: string, now = new Date(), verdict = false) {
   const day = getStartOfDay(now);
   const end = new Date(day.getTime() + 86_400_000);
   const dow = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][now.getDay()];
@@ -77,6 +77,13 @@ export async function plateAnswer(userId: string, now = new Date()) {
   const left = habits.filter((h) => !h.logs[0]?.completed).map((h) => h.name);
   const done = habits.length - left.length;
   if (habits.length) lines.push(left.length ? `Habits left (${done}/${habits.length} done): ${left.join(", ")}` : `All ${habits.length} habits done today 💪`);
+  if (verdict) {
+    const dueToday = todos.filter((x) => x.dueAt && x.dueAt < end).length;
+    const open = left.length + dueToday;
+    const head = !open ? "Yes — every habit's done and nothing's due today 💪" : `Not quite: ${[left.length ? `${left.length} habit${left.length === 1 ? "" : "s"} left (${left.join(", ")})` : "", dueToday ? `${dueToday} to-do${dueToday === 1 ? "" : "s"} due today` : ""].filter(Boolean).join(" and ")}.`;
+    const later = todos.filter((x) => !x.dueAt || x.dueAt >= end).slice(0, 5).map((x) => `- ${x.title}${due(x.dueAt)}`);
+    return [head, ...(later.length ? ["Coming up:", ...later] : [])].join("\n");
+  }
   return lines.length ? lines.join("\n") : "Nothing on your plate today — no to-dos, events or habits.";
 }
 

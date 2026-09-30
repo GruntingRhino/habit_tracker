@@ -227,12 +227,17 @@ export async function journalPrompt(userId: string, now = new Date()) {
   const today = getStartOfDay(now);
   const next = addDays(today, 1);
   const [missed, done, entry] = await Promise.all([
-    prisma.habit.findMany({ where: { userId, isActive: true, targetDays: { has: getDayOfWeek(today) }, logs: { none: { date: today, completed: true } } }, select: { name: true }, take: 1 }),
+    prisma.habit.findMany({ where: { userId, isActive: true, targetDays: { has: getDayOfWeek(today) }, timeOfDay: { not: "evening" }, logs: { none: { date: today, completed: true } } }, select: { name: true, logs: { where: { date: today }, select: { notes: true } } }, take: 1 }),
     prisma.todo.count({ where: { userId, status: "done", completedAt: { gte: today, lt: next } } }),
     prisma.dailyEntry.findUnique({ where: { userId_date: { userId, date: today } }, select: { sleepHours: true, screenTimeHours: true } }),
   ]);
   if (entry?.screenTimeHours != null && entry.screenTimeHours > 4) return `📝 Screen time hit ${entry.screenTimeHours}h today. What pulled you in, and what would've been worth that time instead?`;
-  if (missed.length) return `📝 “${missed[0].name}” didn't happen today. What got in the way — and what would make it easier tomorrow?`;
+  if (missed.length) {
+    const note = missed[0].logs[0]?.notes;
+    return note
+      ? `📝 “${missed[0].name}” is at ${note} so far. Still time tonight — and what would make it easier to finish earlier tomorrow?`
+      : `📝 “${missed[0].name}” isn't checked off yet. If it's not happening today, what got in the way — and what would make it easier tomorrow?`;
+  }
   if (done >= 4) return `📝 You finished ${done} things today. What made today work that you could repeat?`;
   if (entry?.sleepHours != null && entry.sleepHours < 6.5) return `📝 You slept ${entry.sleepHours}h last night. How did it show up today?`;
   return "📝 How did today go? One win, one miss, one thing for tomorrow.";

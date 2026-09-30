@@ -236,11 +236,14 @@ export async function handleMessage(userId: string, text: string, source: Source
       const ref = await referToLast(turn, lastActions, recent, trimmed);
       if (ref) return ref;
     }
+    // A "no" to a question that's no longer open.
+    if (!awaiting && /^\s*(no|nope|nah|no thanks)(,?\s*(just me|thanks|thank you|i'?m good|all good|that'?s it))?[.!]*\s*$/i.test(trimmed)) return save(turn, "Okay 👍");
     // Exact answers from his data, never the model's reading of it.
     const asking = /\?\s*$/.test(trimmed) || /^\s*(how|what|whats|what's|show|tell me|list)\b/i.test(trimmed);
     if (asking && NUTRITION_Q.test(trimmed)) return save(turn, await nutritionAnswer(userId, trimmed));
     if (asking && SCORE_Q.test(trimmed) && /\b(my|i)\b/i.test(trimmed)) return save(turn, await scoreAnswer(userId, trimmed));
-    if (asking && PLATE_Q.test(trimmed)) return save(turn, await plateAnswer(userId));
+    if (/\b(did i (do|finish|get|complete) (everything|it all|all my)|am i done)\b/i.test(trimmed)) return save(turn, await plateAnswer(userId, new Date(), true));
+    if ((asking && PLATE_Q.test(trimmed)) || /\b(anything left|what'?s left|what do i have left)\b/i.test(trimmed)) return save(turn, await plateAnswer(userId));
     if (DID_I_Q.test(trimmed)) {
       const status = await habitStatusAnswer(userId, trimmed);
       if (status) return save(turn, status);
@@ -460,8 +463,15 @@ async function routeAndReply(turn: Turn, trimmed: string, midChat: boolean, flag
         // A single plain to-do ("I need to call the bank tomorrow"): the title is his words, not the model's paraphrase.
         const own = routed.items.length === 1 && routed.items[0].kind === "todo" ? parseTodos(trimmed, new Date()) : [];
         if (own.length === 1) routed.items[0] = { ...routed.items[0], title: own[0].title };
-        const lift = routed.items.length === 1 && routed.items[0].kind === "workout" ? parseWorkout(trimmed) : null;
-        if (lift && lift !== "Gym") routed.items[0] = { ...routed.items[0], title: lift };
+        // "hit legs, squats 3x8 at 185, rdls 3x10": one workout; the sets are its details, not more workouts.
+        const workouts = routed.items.filter((i) => i.kind === "workout");
+        const lift = workouts.length ? parseWorkout(trimmed) : null;
+        if (workouts.length > 1 && (lift || /\d+\s*x\s*\d+/i.test(trimmed))) {
+          const first = routed.items.indexOf(workouts[0]);
+          routed.items = routed.items.filter((i, n) => i.kind !== "workout" || n === first);
+        }
+        const w = routed.items.findIndex((i) => i.kind === "workout");
+        if (w >= 0 && lift && lift !== "Gym") routed.items[w] = { ...routed.items[w], title: lift };
         const actions = await applyCapture(userId, routed.items, trimmed, source);
         // A meal missing an amount that matters: ask instead of guessing (it's saved with typical portions meanwhile).
         const mealAsk = await mealQuestion(actions);
@@ -1141,9 +1151,15 @@ async function answerEvent(turn: Turn, awaiting: Awaiting, text: string): Promis
     if (/\ball[- ]?day\b/i.test(text)) {
       // keep it all-day
     } else {
-      const slot = /\bmorning\b/i.test(text) ? 9 : /\bafter school\b/i.test(text) ? 15 : /\bafternoon\b/i.test(text) ? 14 : /\bevening\b/i.test(text) ? 18 : null;
+      // "after practice" / "after school": the end of that block in his week, if he has one.
+      const after = text.match(/\bafter\s+(?:my\s+|the\s+)?([a-z]+)/i)?.[1]?.toLowerCase();
+      const block = after ? await prisma.scheduleBlock.findFirst({ where: { userId, title: { contains: after, mode: "insensitive" } } }) : null;
+      const blockEnd = block ? Number(block.end.slice(0, 2)) + (Number(block.end.slice(3, 5)) >= 30 ? 0.5 : 0) + 0.25 : null;
+      const slot =
+        blockEnd ??
+        (/\bmorning\b/i.test(text) ? 9 : /\bafter school\b/i.test(text) ? 15 : /\bafter (practice|training|work|the game)\b/i.test(text) ? 17.5 : /\bafter dinner\b/i.test(text) ? 19 : /\bafternoon\b/i.test(text) ? 14 : /\b(evening|tonight)\b/i.test(text) ? 18 : /\bnoon|lunch\b/i.test(text) ? 12 : null);
       const found = slot == null ? chrono.parse(text, day, { forwardDate: false })[0] : null;
-      if (slot != null) start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), slot);
+      if (slot != null) start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(slot), Math.round((slot % 1) * 60));
       else if (found && found.start.isCertain("hour")) {
         const s = found.start.date();
         let h = s.getHours();

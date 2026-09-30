@@ -244,6 +244,19 @@ export function parseTodos(clause: string, now: Date): Extracted["todos"] {
     const due = w ? new Date(w.date.getTime() - (w.hasTime ? 3_600_000 : 86_400_000 - 19 * 3_600_000)) : null;
     return [{ title: `Get a ride ${ride[1]} the ${ride[2].trim()}`, due }];
   }
+  // "tomorrow i want to finish the outline before practice": a plan with a day → a to-do for that day.
+  const intend = c.match(/\b(?:i\s+)?(?:want to|wanna|plan to|am going to|'?m going to|'?m gonna|gonna|will|'ll)\s+(.+)$/i);
+  const intendWhen = intend ? when(c, now) : null;
+  // Only a future day counts ("tomorrow", "friday"); "today"/"2 pm" in a status line doesn't make it a to-do.
+  const futureDay = intendWhen && /\b(tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|this weekend|on the \d)/i.test(intendWhen.text);
+  if (intend && futureDay && !/\b(sleep|bed|chill|relax|rest|tell you|let you know|lyk|go home|head home)\b|^be\b/i.test(intend[1])) {
+    const title = cleanTitle(intend[1].replace(intendWhen.text, " ").replace(/\s+/g, " ")).replace(/\s+(for|on|by|at)\s*$/i, "").trim();
+    if (title.split(/\s+/).length >= 2) {
+      const due = intendWhen.date;
+      if (!intendWhen.hasTime) due.setHours(9, 0, 0, 0);
+      return [{ title: cap(title), due }];
+    }
+  }
   const need = c.match(TODO_CUE);
   if (need && !/\b(quiz|test|exam|midterm|final)\b/i.test(need[1])) {
     const w = when(need[1], now);

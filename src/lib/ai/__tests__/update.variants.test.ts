@@ -111,3 +111,11 @@ describe("plans mixed into one sentence", () => {
     ["the game was fun", []],
   ])("%s", (t, want) => expect(summary(t)).toEqual(want));
 });
+
+describe("plans with a day", () => {
+  it.each([
+    ["tomorrow i want to finish the outline before practice", ["todo Finish the outline before practice (thu 10/1)"]],
+    ["im gonna go home", []],
+    ["i'll lyk when i get it back", []],
+  ])("%s", (t, want) => expect(summary(t)).toEqual(want));
+});

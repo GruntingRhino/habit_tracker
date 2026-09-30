@@ -8,7 +8,7 @@ import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
 import type { RoutedItem } from "@/lib/ai/router";
 import { findWhenInText, parseWhenFrom } from "@/lib/ai/when";
-import { detectAssessment, studyPlan } from "@/lib/study";
+import { detectAssessment, headsUpTime } from "@/lib/study";
 import { noteSession } from "@/lib/training";
 
 /** A change made by the assistant; stored on the chat message so it can be undone. */
@@ -209,17 +209,16 @@ export async function applyCapture(
       }
       case "todo":
       default: {
-        // A test/quiz/essay with a date: the item itself plus spaced study sessions before it.
+        // A test/quiz/essay with a date: kept as a high-priority to-do, plus a reminder the evening before.
         const assessment = when ? detectAssessment(item.title, originalText) : null;
         const todo = await prisma.todo.create({
           data: { userId, title: item.title, area: assessment ? "work" : area, priority: assessment ? "high" : priority, dueAt: when?.date ?? null, source },
         });
         actions.push({ op: "create", type: "todo", id: todo.id, title: todo.title, area: assessment ? "work" : area, href: "/todos", detail: when ? `due ${fmt(when.date)}` : undefined });
-        if (assessment && when) {
-          for (const s of studyPlan(assessment, when.date)) {
-            const study = await prisma.todo.create({ data: { userId, title: s.title, area: "work", priority: s.priority, dueAt: s.dueAt, source } });
-            actions.push({ op: "create", type: "todo", id: study.id, title: study.title, area: "work", href: "/todos", detail: `study · ${fmt(s.dueAt)}` });
-          }
+        const heads = assessment && when ? headsUpTime(when.date) : null;
+        if (heads) {
+          const reminder = await prisma.reminder.create({ data: { userId, text: `${item.title} tomorrow`, fireAt: heads, todoId: todo.id } });
+          actions.push({ op: "create", type: "reminder", id: reminder.id, title: `${item.title} tomorrow`, area: "work", href: "/todos", detail: fmt(heads) });
         }
       }
     }

@@ -673,19 +673,21 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     expect(b.conversationId).toBe(a.conversationId);
   });
 
-  it("a test on a date becomes the test plus spaced study sessions, and undo removes them all", async () => {
+  it("a test on a date is a high-priority to-do plus a reminder the evening before — no study plan", async () => {
     const text = "i have a chem test on friday";
     routes.set(text, { intent: "capture", items: [{ kind: "todo", title: "Chem test", area: "work", when: "friday" }] });
     const r = await say(text);
-    const titles = r.actions.map((a) => a.title);
-    expect(titles[0]).toBe("Chem test");
-    expect(titles.slice(1).every((t) => /^Study for Chem test/.test(t))).toBe(true);
-    expect(titles.length).toBeGreaterThanOrEqual(2);
-    const todos = await prisma.todo.findMany({ where: { userId }, orderBy: { dueAt: "asc" } });
-    expect(todos.find((t) => t.title === "Chem test")?.priority).toBe("high");
-    expect(todos.filter((t) => t.title.startsWith("Study")).every((t) => t.dueAt!.getHours() === 19 && t.dueAt! < todos.find((x) => x.title === "Chem test")!.dueAt!)).toBe(true);
+    expect(r.actions.map((a) => a.type)).toEqual(["todo", "reminder"].slice(0, r.actions.length));
+    expect(await prisma.todo.count({ where: { userId } })).toBe(1);
+    expect((await prisma.todo.findFirst({ where: { userId } }))?.priority).toBe("high");
+    const reminder = await prisma.reminder.findFirst({ where: { userId } });
+    if (reminder) {
+      expect(reminder.text).toBe("Chem test tomorrow");
+      expect(reminder.fireAt.getHours()).toBe(19);
+    }
     await undoMessage(userId, r.id);
     expect(await prisma.todo.count({ where: { userId } })).toBe(0);
+    expect(await prisma.reminder.count({ where: { userId } })).toBe(0);
   });
 
   it("his week, measurements and sleep times are read without the model", async () => {

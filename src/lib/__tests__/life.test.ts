@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { gaps, parseScheduleBlock, parseSleepTimes, place, toMin } from "../schedule";
 import { increment, needsDeload, parseReps, parseTarget, suggest, type SetLog } from "../training";
-import { detectAssessment, studyPlan } from "../study";
+import { detectAssessment, headsUpTime } from "../study";
 import { parseMeasurements, parseBodyUpdate } from "../body";
 import { foldChecks } from "../health";
 
@@ -82,7 +82,7 @@ describe("training coach (double progression)", () => {
   });
 });
 
-describe("tests and assignments become study plans", () => {
+describe("tests and assignments get a reminder, not a study plan", () => {
   const now = new Date(2026, 8, 28, 16); // Monday 4pm
   const friday = new Date(2026, 9, 2, 8);
 
@@ -96,26 +96,9 @@ describe("tests and assignments become study plans", () => {
     expect(detectAssessment("Study for chem test (1/3)")).toBeNull();
   });
 
-  it("spaces study sessions before the test (7pm), last one high priority", () => {
-    const plan = studyPlan({ kind: "test", subject: "chem" }, friday, now);
-    expect(plan.map((p) => p.title)).toEqual([
-      "Study for Chem test (1/3): active-recall sheet + practice problems",
-      "Study for Chem test (2/3): self-quiz and fix weak spots",
-      "Study for Chem test (3/3): quick review of mistakes (sleep early)",
-    ]);
-    expect(plan.map((p) => p.dueAt.getDate())).toEqual([28, 29, 1]); // tonight, tomorrow, and the night before
-    expect(plan.every((p) => p.dueAt.getHours() === 19)).toBe(true);
-    expect(plan[2].priority).toBe("high");
-  });
-
-  it("compresses when time is short, keeping the final review", () => {
-    const tomorrow = new Date(2026, 8, 29, 8);
-    expect(studyPlan({ kind: "test", subject: "chem" }, tomorrow, now).map((p) => p.title)).toEqual(["Study for Chem test: quick review of mistakes (sleep early)"]);
-    expect(studyPlan({ kind: "test", subject: null }, new Date(2026, 8, 28, 20), now)).toEqual([]);
-  });
-
-  it("essays get outline → draft → edit", () => {
-    expect(studyPlan({ kind: "essay", subject: "english" }, friday, now).map((p) => p.title.split(": ")[1])).toEqual(["outline + thesis", "full rough draft", "edit, cite, final read"]);
+  it("reminds the evening before, never in the past", () => {
+    expect(headsUpTime(friday, now)).toEqual(new Date(2026, 9, 1, 19));
+    expect(headsUpTime(new Date(2026, 8, 28, 20), now)).toBeNull();
   });
 });
 

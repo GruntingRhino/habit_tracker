@@ -7,6 +7,7 @@ import { ChevronRight, Loader2, Sparkles, X } from "lucide-react";
 import { AREAS, AREA_META, PRIORITIES, PRIORITY_RANK, type Area } from "@/lib/areas";
 import { AreaDot, Checkbox, Empty, InlineAdd, PageHeader, Section, Tabs } from "@/components/ui";
 import { useLoad, useOnDataChanged } from "@/hooks/useAssistantChat";
+import SchedulePanel from "@/components/SchedulePanel";
 
 interface Todo {
   id: string;
@@ -174,7 +175,8 @@ function ProjectRow({ project, open, onToggle, onChanged }: { project: Project; 
 
 function TasksPage() {
   const params = useSearchParams();
-  const [tab, setTab] = useState<"open" | "done">("open");
+  const initial = params.get("tab");
+  const [tab, setTab] = useState<"today" | "open" | "done">(initial === "open" || initial === "done" ? initial : params.get("project") ? "open" : "today");
   const [todos, setTodos] = useState<Todo[] | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -182,6 +184,7 @@ function TasksPage() {
   const [leaving, setLeaving] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
+    if (tab === "today") return;
     const [t, r, p] = await Promise.all([json<Todo[]>(`/api/todos?status=${tab}`, []), json<Reminder[]>("/api/reminders", []), json<Project[]>("/api/projects", [])]);
     setTodos(t);
     setReminders(r);
@@ -194,11 +197,11 @@ function TasksPage() {
     const map = new Map<Area, Todo[]>();
     for (const t of [...(todos ?? [])].sort((a, b) => byPriority({ priority: a.priority, due: a.dueAt }, { priority: b.priority, due: b.dueAt })))
       map.set(t.area, [...(map.get(t.area) ?? []), t]);
-    return AREAS.filter((a) => map.has(a)).map((a) => [a, map.get(a)!] as const);
-  }, [todos]);
+    return tab === "today" ? [] : AREAS.filter((a) => map.has(a)).map((a) => [a, map.get(a)!] as const);
+  }, [todos, tab]);
 
   const shownProjects = projects
-    .filter((p) => (tab === "open" ? !["completed", "archived"].includes(p.status) : p.status === "completed"))
+    .filter((p) => tab !== "today" && (tab === "open" ? !["completed", "archived"].includes(p.status) : p.status === "completed"))
     .sort((a, b) => byPriority({ priority: a.priority, due: a.deadline }, { priority: b.priority, due: b.deadline }));
 
   async function toggle(todo: Todo) {
@@ -246,7 +249,8 @@ function TasksPage() {
 
   return (
     <div className="min-page">
-      <PageHeader title="Tasks" action={<Tabs value={tab} options={[["open", "Open"], ["done", "Done"]]} onChange={setTab} />} />
+      <PageHeader title="Tasks" action={<Tabs value={tab} options={[["today", "Today"], ["open", "Open"], ["done", "Done"]]} onChange={setTab} />} />
+      {tab === "today" && <SchedulePanel />}
 
       {tab === "open" && <InlineAdd placeholder='Add a to-do (or "project: …")' onAdd={add} className="mb-5" />}
 
@@ -271,7 +275,7 @@ function TasksPage() {
         </Section>
       )}
 
-      {todos === null ? (
+      {tab === "today" ? null : todos === null ? (
         <p className="min-sub">Loading…</p>
       ) : (
         grouped.map(([area, list]) => (
@@ -338,7 +342,7 @@ function TasksPage() {
         </Section>
       )}
 
-      {todos !== null && grouped.length === 0 && shownProjects.length === 0 && <Empty>{tab === "open" ? "All clear." : "Nothing completed yet."}</Empty>}
+      {tab !== "today" && todos !== null && grouped.length === 0 && shownProjects.length === 0 && <Empty>{tab === "open" ? "All clear." : "Nothing completed yet."}</Empty>}
     </div>
   );
 }

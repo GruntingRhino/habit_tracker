@@ -8,12 +8,14 @@ import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
 import type { RoutedItem } from "@/lib/ai/router";
 import { findWhenInText, parseWhenFrom } from "@/lib/ai/when";
+import { detectAssessment, studyPlan } from "@/lib/study";
+import { noteSession } from "@/lib/training";
 
 /** A change made by the assistant; stored on the chat message so it can be undone. */
 export interface ItemAction {
   op: "create" | "complete" | "append" | "update";
   /** "plan": a goal plan in progress (id = conversation id); undone by undoMessage, not here. */
-  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan";
+  type: "todo" | "project" | "task" | "routine" | "reminder" | "meal" | "workout" | "journal" | "note" | "plan" | "schedule" | "measurement";
   id: string;
   title: string;
   area?: string;
@@ -172,6 +174,7 @@ export async function applyCapture(
         const match = bestMatch(item.title, routines.map((r) => ({ ...r, title: r.name })), 0.5);
         const routine = match ?? (await prisma.weightRoutine.create({ data: { userId, name: item.title } }));
         const session = await prisma.workoutSession.create({ data: { userId, routineId: routine.id, notes: originalText.slice(0, 500) } });
+        await noteSession(userId, routine.name);
         const day = getStartOfDay(new Date());
         await prisma.dailyEntry.upsert({
           where: { userId_date: { userId, date: day } },
@@ -206,8 +209,18 @@ export async function applyCapture(
       }
       case "todo":
       default: {
-        const todo = await prisma.todo.create({ data: { userId, title: item.title, area, priority, dueAt: when?.date ?? null, source } });
-        actions.push({ op: "create", type: "todo", id: todo.id, title: todo.title, area, href: "/todos", detail: when ? `due ${fmt(when.date)}` : undefined });
+        // A test/quiz/essay with a date: the item itself plus spaced study sessions before it.
+        const assessment = when ? detectAssessment(item.title, originalText) : null;
+        const todo = await prisma.todo.create({
+          data: { userId, title: item.title, area: assessment ? "work" : area, priority: assessment ? "high" : priority, dueAt: when?.date ?? null, source },
+        });
+        actions.push({ op: "create", type: "todo", id: todo.id, title: todo.title, area: assessment ? "work" : area, href: "/todos", detail: when ? `due ${fmt(when.date)}` : undefined });
+        if (assessment && when) {
+          for (const s of studyPlan(assessment, when.date)) {
+            const study = await prisma.todo.create({ data: { userId, title: s.title, area: "work", priority: s.priority, dueAt: s.dueAt, source } });
+            actions.push({ op: "create", type: "todo", id: study.id, title: study.title, area: "work", href: "/todos", detail: `study · ${fmt(s.dueAt)}` });
+          }
+        }
       }
     }
   }
@@ -289,6 +302,8 @@ export async function undoActions(userId: string, actions: ItemAction[]): Promis
         if (a.type === "meal") await prisma.meal.deleteMany({ where: { id: a.id, userId } });
         if (a.type === "workout") await prisma.workoutSession.deleteMany({ where: { id: a.id, userId } });
         if (a.type === "note") await prisma.note.deleteMany({ where: { id: a.id, userId } });
+        if (a.type === "schedule") await prisma.scheduleBlock.deleteMany({ where: { id: a.id, userId } });
+        if (a.type === "measurement") await prisma.bodyMeasurement.deleteMany({ where: { id: a.id, userId } });
       }
       undone++;
     } catch {

@@ -32,6 +32,8 @@ model User {
   profileDocs     ProfileDoc[]
   profileCorrections ProfileCorrection[]
   brainNudges     BrainNudge[]
+  scheduleBlocks  ScheduleBlock[]
+  measurements    BodyMeasurement[]
 }
 
 model DailyEntry {
@@ -407,4 +409,40 @@ model BrainState {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// His fixed week (school, practice, work) and one-off events. The day's timeline is built around these.
+model ScheduleBlock {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  area      String    @default("general")
+  days      String[]  // recurring: ["mon","wed"]; empty for a one-off event
+  date      DateTime? // one-off event day (local midnight)
+  start     String    // "07:40" (24h)
+  end       String    // "14:20"
+  source    String    @default("web")
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Tape measurements in inches, for tracking physique over months.
+model BodyMeasurement {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @default(now())
+  waist     Float?
+  chest     Float?
+  shoulders Float?
+  arms      Float?
+  thighs    Float?
+  neck      Float?
+  notes     String?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }

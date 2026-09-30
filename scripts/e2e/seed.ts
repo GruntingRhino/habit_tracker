@@ -28,6 +28,9 @@ export async function seed() {
   await prisma.profileDoc.deleteMany({ where });
   await prisma.profileCorrection.deleteMany({ where });
   await prisma.dayPlan.deleteMany({ where });
+  await prisma.scheduleBlock.deleteMany({ where });
+  await prisma.bodyMeasurement.deleteMany({ where });
+  for (const key of ["training", "schedule-prefs"]) await prisma.brainState.deleteMany({ where: { key } });
   const today = getStartOfDay(new Date());
 
   const thesis = await prisma.project.create({

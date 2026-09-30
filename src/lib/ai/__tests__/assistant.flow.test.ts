@@ -672,4 +672,38 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     const b = await handleMessage(userId, "how are you", "telegram");
     expect(b.conversationId).toBe(a.conversationId);
   });
+
+  it("a test on a date becomes the test plus spaced study sessions, and undo removes them all", async () => {
+    const text = "i have a chem test on friday";
+    routes.set(text, { intent: "capture", items: [{ kind: "todo", title: "Chem test", area: "work", when: "friday" }] });
+    const r = await say(text);
+    const titles = r.actions.map((a) => a.title);
+    expect(titles[0]).toBe("Chem test");
+    expect(titles.slice(1).every((t) => /^Study for Chem test/.test(t))).toBe(true);
+    expect(titles.length).toBeGreaterThanOrEqual(2);
+    const todos = await prisma.todo.findMany({ where: { userId }, orderBy: { dueAt: "asc" } });
+    expect(todos.find((t) => t.title === "Chem test")?.priority).toBe("high");
+    expect(todos.filter((t) => t.title.startsWith("Study")).every((t) => t.dueAt!.getHours() === 19 && t.dueAt! < todos.find((x) => x.title === "Chem test")!.dueAt!)).toBe(true);
+    await undoMessage(userId, r.id);
+    expect(await prisma.todo.count({ where: { userId } })).toBe(0);
+  });
+
+  it("his week, measurements and sleep times are read without the model", async () => {
+    const r = await say("i have school 7:40 to 2:20 on weekdays");
+    expect(r.reply).toBe("Added to your week: School, weekdays 7:40am–2:20pm. Your daily schedule plans around it.");
+    expect(await prisma.scheduleBlock.count({ where: { userId } })).toBe(1);
+    await undoMessage(userId, r.id);
+    expect(await prisma.scheduleBlock.count({ where: { userId } })).toBe(0);
+
+    const m = await say("waist 29, chest 36.5, shoulders 45");
+    expect(m.reply).toContain(`Logged waist 29", chest 36.5", shoulders 45".`);
+    expect(await prisma.bodyMeasurement.count({ where: { userId } })).toBe(1);
+    expect(calls.filter((c) => c === "router")).toEqual([]);
+  });
+
+  it("'what should i lift today' answers from the coach, not the model", async () => {
+    const r = await say("what should i lift today?");
+    expect(r.reply).toMatch(/Rest or recovery today|Today's lifts/);
+    expect(calls).toEqual([]);
+  });
 });

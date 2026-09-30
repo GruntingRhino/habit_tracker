@@ -29,6 +29,7 @@ async function main() {
   await warmUp();
 
   schedule("* * * * *", "reminders");
+  schedule("*/10 * * * *", "health");
   schedule("30 6 * * *", "plan");
   schedule("0 7 * * *", "morning");
   schedule("0 21 * * *", "evening");

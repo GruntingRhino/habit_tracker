@@ -1,4 +1,7 @@
 import prisma from "@/lib/prisma";
+import { parseMeasurements, recordMeasurements } from "@/lib/body";
+import { buildSchedule, describeSchedule, fmt12, parseScheduleBlock, parseSleepTimes, readPrefs, writePrefs } from "@/lib/schedule";
+import { readTraining, todaysTraining, writeTraining } from "@/lib/training";
 import { parseBodyUpdate, recordBodyUpdate } from "@/lib/body";
 import { Prisma } from "@/generated/prisma";
 import { normalizePriority } from "@/lib/areas";
@@ -54,6 +57,10 @@ export interface ReplyMeta {
   undoneAt?: string;
 }
 
+const SWITCH_BLOCK = /\b(switch|move|start|go|change)\s+(?:to\s+)?upper\s+([abc])\b/i;
+const WHAT_TO_LIFT = /\b(what|which)\b.*\b(lift|train|workout|work out|hit)\b.*\b(today|tonight|now)\b|\btoday'?s (workout|lifts?)\b|\bwhat do i (lift|do at the gym)\b/i;
+const MY_SCHEDULE = /\b(my|today'?s|the) (schedule|timeline)\b|\bwhat'?s (my|the) (day|schedule)\b|\bplan (out )?my day\b|\btime ?block\b/i;
+
 export interface AssistantReply {
   id: string;
   conversationId: string;
@@ -101,6 +108,8 @@ const TYPE_LABEL: Record<ItemAction["type"], string> = {
   journal: "Journal",
   note: "Note",
   plan: "Plan",
+  schedule: "Schedule",
+  measurement: "Measurement",
 };
 
 export function describeActions(actions: ItemAction[]) {
@@ -183,6 +192,39 @@ export async function handleMessage(userId: string, text: string, source: Source
       return save(turn, `Which item do you mean? I don't have a numbered list open right now, so tell me its name (e.g. "the essay is due friday").`);
     }
     if (undoneSince.length && ABOUT_UNDO.test(trimmed)) return save(turn, undoAnswer(undoneSince));
+    // Tape measurements ("waist 29, chest 36"): before weight/height so "shoulders 48 in" isn't a height.
+    const measures = !awaiting ? parseMeasurements(trimmed) : null;
+    if (measures) return save(turn, await recordMeasurements(userId, measures));
+    // His week: "school 7:40 to 2:20 on weekdays", "practice tuesdays and thursdays 5-7pm".
+    const block = !awaiting ? parseScheduleBlock(trimmed) : null;
+    if (block) {
+      const row = await prisma.scheduleBlock.create({ data: { userId, title: block.title, days: block.days, start: block.start, end: block.end, source: turn.source } });
+      const days = block.days.length === 7 ? "every day" : block.days.join(" ").replace("mon tue wed thu fri", "weekdays").replace("sat sun", "weekends");
+      return save(turn, `Added to your week: ${block.title}, ${days} ${fmt12(block.start)}–${fmt12(block.end)}. Your daily schedule plans around it.`, {
+        actions: [{ op: "create", type: "schedule", id: row.id, title: block.title, area: "general", href: "/todos?tab=today", detail: `${days} ${fmt12(block.start)}–${fmt12(block.end)}` }],
+      });
+    }
+    const sleepTimes = !awaiting && /\b(wake|get up|alarm|bed|asleep|sleep at)\b/i.test(trimmed) ? parseSleepTimes(trimmed) : null;
+    if (sleepTimes && !CAPTURE_SIGNAL.test(trimmed)) {
+      await writePrefs({ ...(await readPrefs()), ...sleepTimes });
+      const p = await readPrefs();
+      return save(turn, `Got it: ${p.wake ? `up at ${fmt12(p.wake)}, ` : ""}bed at ${fmt12(p.bedtime)}${p.weekendBedtime ? ` (${fmt12(p.weekendBedtime)} on weekends)` : ""}. Your schedule uses it.`);
+    }
+    if (SWITCH_BLOCK.test(trimmed)) {
+      const letter = trimmed.match(SWITCH_BLOCK)![2].toUpperCase() as "A" | "B" | "C";
+      await writeTraining({ ...(await readTraining()), upperBlock: letter, blockStartedAt: new Date().toISOString().slice(0, 10) });
+      return save(turn, `Switched to Upper ${letter}, starting today. Upper days use it from now on.`);
+    }
+    if (WHAT_TO_LIFT.test(trimmed)) {
+      const t = await todaysTraining(userId);
+      if (!t.plans.length) return save(turn, "Rest or recovery today by your split. Easy walk and posture work if you want.");
+      return save(turn, ["Today's lifts (last time → today):", ...t.plans.flatMap((p) => [`${p.name}${p.deload ? " — deload suggested: ~half the sets, same weights" : ""}`, ...p.exercises.map((e) => `- ${e.name}: ${e.suggestion.last ? `${e.suggestion.last} → ` : ""}${e.suggestion.next}`)])].join("\n"));
+    }
+    if (MY_SCHEDULE.test(trimmed)) {
+      const s = await buildSchedule(userId);
+      const lines = describeSchedule(s, new Date());
+      return save(turn, lines.length ? ["Rest of today:", ...lines].join("\n") : "Nothing left on today's schedule.");
+    }
     // Weight / height / age ("134 lb", "i'm 6'1 now"): logged and targets recomputed, no model.
     const bodyUpdate = !awaiting ? parseBodyUpdate(trimmed) : null;
     if (bodyUpdate && !/\b(ate|had|eat|lift|bench|squat|deadlift|press|curl|row|x\d|sets?|reps?)\b/i.test(trimmed)) return save(turn, await recordBodyUpdate(userId, bodyUpdate));

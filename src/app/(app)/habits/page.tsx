@@ -155,11 +155,22 @@ function HabitRow({ habit, onChanged }: { habit: Habit; onChanged: () => void })
   );
 }
 
-function RoutineRow({ routine, onChanged }: { routine: Routine; onChanged: () => void }) {
+interface Coach {
+  today: { routineId: string; name: string; deload: boolean }[];
+  deload: Record<string, boolean>;
+  byExercise: Record<string, { last: string | null; next: string; nextWeight: number | null; nextReps: string; status: string; why: string }>;
+  block: { block: string; weeks: number; name: string; next: string };
+}
+
+const STATUS_COLOR: Record<string, string> = { increase: "#34d399", progress: "var(--ink-300)", stalled: "#fbbf24", harder: "#34d399", new: "var(--ink-500)" };
+
+function RoutineRow({ routine, onChanged, coach }: { routine: Routine; onChanged: () => void; coach: Coach | null }) {
   const [open, setOpen] = useState(false);
   const [log, setLog] = useState<Record<string, { weight: string; sets: string; reps: string }>>({});
   const [saved, setSaved] = useState(false);
   const last = routine.sessions[0]?.date;
+  const isToday = coach?.today.some((t) => t.routineId === routine.id) ?? false;
+  const deload = coach?.deload[routine.id] ?? false;
 
   async function addExercise(name: string) {
     await send(`/api/weights/routines/${routine.id}/exercises`, "POST", { name });
@@ -196,6 +207,7 @@ function RoutineRow({ routine, onChanged }: { routine: Routine; onChanged: () =>
           <span className="truncate" style={{ color: "var(--ink-100)" }}>
             {routine.name}
           </span>
+          {isToday && <span className="min-chip ml-1 flex-shrink-0 py-0 text-[10px]">Today</span>}
         </button>
         <span className="text-xs" style={{ color: "var(--ink-500)" }}>
           {routine.exercises.length} exercises{last ? ` · last ${format(new Date(last), "MMM d")}` : ""}
@@ -206,8 +218,12 @@ function RoutineRow({ routine, onChanged }: { routine: Routine; onChanged: () =>
       </div>
       {open && (
         <div className="mb-2 ml-5">
-          {routine.exercises.map((e) => (
-            <div key={e.id} className="group flex items-center gap-2 py-1 text-[13px]">
+          {deload && <p className="mb-1 text-xs" style={{ color: "#fbbf24" }}>Performance dropped two sessions in a row: take a deload week (about half the sets, same weights).</p>}
+          {routine.exercises.map((e) => {
+            const c = coach?.byExercise[e.id];
+            return (
+            <div key={e.id}>
+            <div className="group flex items-center gap-2 py-1 text-[13px]">
               <span className="min-w-0 flex-1 truncate" style={{ color: "var(--ink-200)" }}>
                 {e.name}
                 {e.descriptor && <span style={{ color: "var(--ink-500)" }}> · {e.descriptor}</span>}
@@ -216,7 +232,7 @@ function RoutineRow({ routine, onChanged }: { routine: Routine; onChanged: () =>
                 <input
                   key={k}
                   inputMode={k === "reps" ? "text" : "decimal"}
-                  placeholder={k === "weight" ? "lb" : k}
+                  placeholder={k === "weight" ? (c?.nextWeight ? String(c.nextWeight) : "lb") : k === "reps" ? c?.nextReps || "reps" : k}
                   aria-label={`${e.name} ${k}`}
                   value={log[e.id]?.[k] ?? ""}
                   onChange={(ev) => setLog((l) => ({ ...l, [e.id]: { ...(l[e.id] ?? { weight: "", sets: "", reps: "" }), [k]: ev.target.value } }))}
@@ -227,7 +243,19 @@ function RoutineRow({ routine, onChanged }: { routine: Routine; onChanged: () =>
                 <X className="h-3 w-3" style={{ color: "var(--ink-500)" }} />
               </button>
             </div>
-          ))}
+            {c && (
+              <p className="-mt-0.5 pb-1 text-[11px]" title={c.why} style={{ color: "var(--ink-500)" }}>
+                {c.last ? `Last ${c.last} → ` : ""}
+                <span style={{ color: STATUS_COLOR[c.status] ?? "var(--ink-300)" }}>
+                  {c.status === "increase" ? "↑ " : c.status === "stalled" ? "⚠ " : ""}
+                  {c.next}
+                </span>
+                {c.status === "stalled" && <span> · stalled 3 sessions</span>}
+              </p>
+            )}
+            </div>
+            );
+          })}
           <div className="flex items-center gap-3">
             <InlineAdd placeholder="Add an exercise" onAdd={addExercise} className="py-1 text-[13px]" />
             {routine.exercises.length > 0 && (
@@ -246,9 +274,11 @@ export default function HabitsPage() {
   const [habits, setHabits] = useState<Habit[] | null>(null);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [coach, setCoach] = useState<Coach | null>(null);
 
   const load = useCallback(async () => {
-    const [h, r, s] = await Promise.all([json<Habit[]>("/api/habits", []), json<Routine[]>("/api/weights/routines", []), json<Session[]>("/api/weights/sessions", [])]);
+    const [h, r, s, c] = await Promise.all([json<Habit[]>("/api/habits", []), json<Routine[]>("/api/weights/routines", []), json<Session[]>("/api/weights/sessions", []), json<Coach | null>("/api/training", null)]);
+    setCoach(c);
     setHabits(h);
     setRoutines(r);
     setSessions(s);
@@ -285,9 +315,15 @@ export default function HabitsPage() {
 
       <div id="workouts">
         <Section label="Workouts">
+          {coach && (
+            <p className="min-sub mb-1">
+              {coach.block.name.split(" – ")[0]} block · week {coach.block.weeks + 1} of ~6
+              {coach.today.length ? ` · today: ${coach.today.map((t) => t.name.split(" – ")[0]).join(" + ")}` : " · rest day"}
+            </p>
+          )}
           <ul>
             {routines.map((r) => (
-              <RoutineRow key={r.id} routine={r} onChanged={load} />
+              <RoutineRow key={r.id} routine={r} onChanged={load} coach={coach} />
             ))}
           </ul>
           <InlineAdd

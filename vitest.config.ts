@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // DB tests share global rows (BrainState "body", "training", …): run files one at a time.
+    fileParallelism: false,
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

@@ -12,6 +12,7 @@ import { Brain } from "@/lib/brain/loop";
 import { BRAIN_DIR, readActivity, readChangedAt } from "@/lib/brain/signals";
 import { BrainStore, DEFAULT_CAPS } from "@/lib/brain/storage";
 import { sendToOwner } from "./telegram";
+import { brainWatchWorker } from "@/lib/health";
 
 const caps = {
   soft: Number(process.env.BRAIN_SOFT_CAP_BYTES) || DEFAULT_CAPS.soft,
@@ -50,6 +51,13 @@ async function main() {
   };
   await beat();
   setInterval(beat, 5 * 60_000).unref();
+
+  // Watch the worker: if it dies, reminders and briefs stop — say so on Telegram.
+  setInterval(() => {
+    brainWatchWorker()
+      .then((msg) => (msg ? sendToOwner(msg) : undefined))
+      .catch((error) => log(`watch worker failed: ${error instanceof Error ? error.message : error}`));
+  }, 5 * 60_000).unref();
 
   while (!stopping) {
     let did: string | null = null;

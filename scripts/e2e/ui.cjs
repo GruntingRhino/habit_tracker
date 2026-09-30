@@ -7,7 +7,7 @@ const fs = require("fs");
 const BASE = process.env.APP_URL || "http://127.0.0.1:3101";
 const SHOTS = process.env.SHOTS || __dirname + "/shots";
 fs.mkdirSync(SHOTS, { recursive: true });
-const PAGES = ["/chat", "/todos", "/habits", "/meals", "/entry", "/entry?tab=notes", "/entry?tab=profile", "/settings"];
+const PAGES = ["/chat", "/todos", "/todos?tab=open", "/habits", "/meals", "/entry", "/entry?tab=notes", "/entry?tab=profile", "/settings"];
 const REDIRECTS = [["/projects", /\/todos/], ["/notes", /\/entry\?tab=notes/], ["/weights", /\/habits/]];
 const results = [];
 const ok = (name) => (results.push([true, name]), console.log(`✓ ${name}`));
@@ -95,7 +95,7 @@ async function send(page, text, { timeout = 240000 } = {}) {
 
   // 2. Tasks: projects expand in place.
   await test("tasks: expand a project and check off a step", async () => {
-    await page.goto(BASE + "/todos", { waitUntil: "networkidle" });
+    await page.goto(BASE + "/todos?tab=open", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /Finish thesis/ }).click();
     await page.getByText("Write chapter 2").waitFor();
     await page.getByRole("button", { name: "Complete task" }).first().click();
@@ -108,6 +108,19 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await box.fill("Return library books");
     await box.press("Enter");
     await page.getByText("Return library books").waitFor();
+  });
+
+  // 2b. Tasks → Today: timeline, and adding to the fixed week.
+  await test("today: timeline renders and a weekly block can be added", async () => {
+    await page.goto(BASE + "/todos", { waitUntil: "networkidle" });
+    await page.getByText(/Wind down — no screens/).waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "+ Add to your week" }).click();
+    await page.getByLabel("Block name").fill("Practice");
+    for (const d of ["Mon", "Wed", "Fri"]) await page.getByRole("button", { name: d, exact: true }).click(); // deselect weekdays preset
+    await page.getByLabel("Start time").fill("17:00");
+    await page.getByLabel("End time").fill("19:00");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByText(/Tue, Thu · 5pm–7pm/).waitFor({ timeout: 10000 });
   });
 
   // 3. Habits: add, check off.
@@ -134,6 +147,11 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await page.getByLabel("Bench press reps").fill("5");
     await page.getByRole("button", { name: "Log workout" }).click();
     await page.getByText(/Bench press 185 3×5/).waitFor({ timeout: 10000 });
+  });
+  await test("habits: the coach shows last time → today for a logged lift", async () => {
+    await page.goto(BASE + "/habits", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /Push day/ }).click();
+    await page.getByText(/Last 185 × 5,5,5 →/).waitFor({ timeout: 10000 });
   });
 
   // 4. Journal: notes tab.
@@ -251,6 +269,18 @@ async function send(page, text, { timeout = 240000 } = {}) {
     await page.getByText("from the quiz").waitFor();
     await page.getByRole("button", { name: /^That's wrong: He learns best by/ }).click();
     await belief.waitFor({ state: "detached", timeout: 10000 });
+  });
+
+  await test("profile: log measurements and see them", async () => {
+    await page.goto(BASE + "/entry?tab=profile", { waitUntil: "networkidle" });
+    const btn = page.getByRole("button", { name: /Log measurements/ });
+    if (await btn.count()) {
+      await btn.click();
+      await page.getByLabel("waist inches").fill("29");
+      await page.getByLabel("shoulders inches").fill("46");
+      await page.getByRole("button", { name: "Log", exact: true }).click();
+      await page.getByText(/shoulder:waist 1.59/).waitFor({ timeout: 10000 });
+    } else throw new Error("no measurements button (needs body stats)");
   });
 
   await test("no browser errors during flows", async () => {

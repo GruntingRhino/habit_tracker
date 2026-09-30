@@ -79,7 +79,7 @@ export function suggest(name: string, descriptor: string | null, logs: SetLog[])
     return {
       status: "new",
       last: null,
-      next: t.seconds ? `${t.sets} × ${t.lo}${unit}` : `${t.sets} × ${t.lo}–${t.hi}`,
+      next: t.seconds ? `${t.sets} × ${t.lo}${unit}` : `${t.sets} × ${t.lo}${t.hi !== t.lo ? `–${t.hi}` : ""}`,
       nextWeight: null,
       nextReps: t.seconds ? String(t.lo) : String(t.lo),
       why: t.seconds ? "First time: hold with clean form." : "First time: pick a weight you can do for the rep range with 1–3 reps left in the tank.",

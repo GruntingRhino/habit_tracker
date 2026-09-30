@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
     await prisma.reminder.create({ data: { userId: user.id, text: todo.title, fireAt: due, todoId: todo.id } });
     todoId = todo.id;
   }
+  else {
+    // No prep: just a reminder an hour before (8am for all-day).
+    const fireAt = d.allDay ? new Date(start.getFullYear(), start.getMonth(), start.getDate(), 8) : new Date(start.getTime() - 3_600_000);
+    if (fireAt > new Date()) await prisma.reminder.create({ data: { userId: user.id, text: `📅 ${d.title}${d.allDay ? " today" : " in 1 hour"}`, fireAt } });
+  }
   const r = await createEvent(user.id, { title: d.title, start, end, allDay: d.allDay, attendees: d.attendees, description: d.description, location: d.location, todoId });
   return NextResponse.json({ ...r.event, onGoogle: r.onGoogle }, { status: 201 });
 }

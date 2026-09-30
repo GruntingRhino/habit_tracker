@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { needsPrep } from "@/lib/prep";
 import * as chrono from "chrono-node";
 import { addAttendees, createEvent, describeEventTime, emailsIn, parseEventStatement, prepDue, updateEvent, type ParsedEvent } from "@/lib/calendar";
 import { planItem } from "@/lib/ai/itemai";
@@ -48,9 +49,9 @@ interface ItemRef {
 }
 
 interface Awaiting {
-  kind: "triage" | "reminder_time" | "prioritize" | "meal_amount" | "event_time" | "event_share";
-  /** event_time / event_share: the calendar event being asked about. */
-  event?: { id: string; title: string };
+  kind: "triage" | "reminder_time" | "prioritize" | "meal_amount" | "event_time" | "event_share" | "event_prep";
+  /** event_*: the calendar event being asked about (askPrep: still ask whether it needs preparing). */
+  event?: { id: string; title: string; askPrep?: boolean };
   refs: ItemRef[];
   /** meal_amount: which meal, what he wrote, answers so far, questions left. */
   meal?: { id: string; text: string; answers: Record<number, string>; queue: AmountQuestion[] };
@@ -181,7 +182,7 @@ export async function handleMessage(userId: string, text: string, source: Source
     const lastActions = (last?.actions as ItemAction[] | null) ?? [];
     const recent = Boolean(last && Date.now() - last.createdAt.getTime() < 30 * 60_000);
     const undoneSince = await undosSinceLastTurn(conv.id, userMsg.id);
-    const awaiting = recent ? (last?.awaiting as Awaiting | null) : null;
+    let awaiting = recent ? (last?.awaiting as Awaiting | null) : null;
     const wantsFiling = CAPTURE_SIGNAL.test(trimmed) && !NEGATED_CAPTURE.test(trimmed) && !NOTE_QUESTION.test(trimmed);
 
     // 1. An answer to the clarifying question just asked ("2 is urgent", "at 6pm").
@@ -189,6 +190,8 @@ export async function handleMessage(userId: string, text: string, source: Source
       await prisma.chatMessage.update({ where: { id: last.id }, data: { awaiting: Prisma.DbNull } });
       const handled = await handleAnswer(turn, awaiting, trimmed);
       if (handled) return handled;
+      // Not an answer after all: the question is dropped and the message handled like any other.
+      awaiting = null;
     }
 
     // 2. Things only the app knows for sure: answered from state, never by the model.
@@ -815,7 +818,7 @@ Example answer: taxes are due april 15 and most important, thesis next, retreat 
 async function handleAnswer(turn: Turn, awaiting: Awaiting, text: string): Promise<AssistantReply | null> {
   const { userId } = turn;
   if (awaiting.kind === "meal_amount" && awaiting.meal) return answerMealAmount(turn, awaiting.meal, text);
-  if ((awaiting.kind === "event_time" || awaiting.kind === "event_share") && awaiting.event) return answerEvent(turn, awaiting, text);
+  if ((awaiting.kind === "event_time" || awaiting.kind === "event_share" || awaiting.kind === "event_prep") && awaiting.event) return answerEvent(turn, awaiting, text);
   if (awaiting.kind === "reminder_time") {
     const when = parseWhen(text);
     const ref = awaiting.refs[0];
@@ -947,39 +950,71 @@ export { describeItem };
 
 const fmtDue = (d: Date) => d.toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" }).replace(":00", "");
 
-/** Event + prep to-do (+ Telegram reminder), or a planned project if he asked for a plan; then ask what's missing. */
-async function eventFromChat(turn: Turn, ev: ParsedEvent, text: string): Promise<AssistantReply> {
+/** A Telegram reminder before the event itself: an hour before, or 8am for an all-day event. */
+async function eventReminder(userId: string, ev: { title: string; start: Date; allDay: boolean }) {
+  const fireAt = ev.allDay ? new Date(ev.start.getFullYear(), ev.start.getMonth(), ev.start.getDate(), 8) : new Date(ev.start.getTime() - 3_600_000);
+  if (fireAt <= new Date()) return null;
+  return prisma.reminder.create({ data: { userId, text: `📅 ${ev.title}${ev.allDay ? " today" : " in 1 hour"}`, fireAt } });
+}
+
+/** "Prepare for …" to-do + reminder the evening before (or a planned project if he asked for a plan). */
+async function addPrep(turn: Turn, ev: { id: string; title: string; start: Date }, text: string, actions: ItemAction[]) {
   const { userId } = turn;
-  const actions: ItemAction[] = [];
   const due = prepDue(ev.start);
   const prepTitle = `Prepare for ${ev.title.charAt(0).toLowerCase()}${ev.title.slice(1)}`;
   const todo = await prisma.todo.create({ data: { userId, title: prepTitle, area: "work", priority: "high", dueAt: due, source: turn.source } });
-  const { event, onGoogle } = await createEvent(userId, { title: ev.title, start: ev.start, end: ev.end, allDay: ev.allDay, attendees: ev.attendees, todoId: todo.id });
-  actions.push({ op: "create", type: "event", id: event.id, title: ev.title, area: "general", href: "/schedule", detail: `${describeEventTime(event)}${onGoogle ? " · on Google Calendar" : ""}` });
-  let prepLine: string;
+  await prisma.calendarEvent.update({ where: { id: ev.id }, data: { todoId: todo.id } });
   if (wantsPlan(text)) {
-    // He asked for a plan: the prep to-do becomes a project with a dated checklist.
     const planned = await planItem(userId, { type: "todo", id: todo.id }, text);
     actions.push({ op: "create", type: "project", id: planned.item.id, title: prepTitle, area: "work", href: `/work?project=${planned.item.id}`, detail: planned.reply });
-    prepLine = `Plan: ${planned.reply}`;
-  } else {
-    const reminder = await prisma.reminder.create({ data: { userId, text: prepTitle, fireAt: due, todoId: todo.id } });
-    actions.push({ op: "create", type: "todo", id: todo.id, title: prepTitle, area: "work", href: "/work", detail: `due ${fmtDue(due)}` });
-    actions.push({ op: "create", type: "reminder", id: reminder.id, title: prepTitle, area: "work", href: "/work", detail: fmtDue(due) });
-    prepLine = `To-do: ${prepTitle} (${fmtDue(due)}, I'll remind you).`;
+    return `Plan: ${planned.reply}`;
   }
-  const lines = [`📅 ${ev.title} — ${describeEventTime(event)}${onGoogle ? " (on your Google Calendar)" : ""}.`, prepLine];
+  const reminder = await prisma.reminder.create({ data: { userId, text: prepTitle, fireAt: due, todoId: todo.id } });
+  actions.push({ op: "create", type: "todo", id: todo.id, title: prepTitle, area: "work", href: "/work", detail: `due ${fmtDue(due)}` });
+  actions.push({ op: "create", type: "reminder", id: reminder.id, title: prepTitle, area: "work", href: "/work", detail: fmtDue(due) });
+  return `To-do: ${prepTitle} (${fmtDue(due)}, I'll remind you).`;
+}
+
+/** The next question about an event, if any: time → who to share with → whether it needs prep. */
+function nextEventQuestion(event: { id: string; title: string; askPrep?: boolean }, hasTime: boolean, shared: boolean): { text: string; awaiting: Awaiting; options: string[] } | null {
+  if (!hasTime) return { text: "What time is it?", awaiting: { kind: "event_time", refs: [], event }, options: ["All day", "Morning", "After school", "Evening"] };
+  if (!shared) return { text: "Should I share it with anyone?", awaiting: { kind: "event_share", refs: [], event }, options: ["No, just me"] };
+  if (event.askPrep) return { text: "Do you need to prepare for it?", awaiting: { kind: "event_prep", refs: [], event }, options: ["Yes", "No"] };
+  return null;
+}
+
+/**
+ * Calendar event from chat. A prep to-do only when it needs preparing (a debate tournament, a test);
+ * a dentist appointment just gets a reminder before it. Unclear ones: he's asked. Then whatever's missing.
+ */
+async function eventFromChat(turn: Turn, ev: ParsedEvent, text: string): Promise<AssistantReply> {
+  const { userId } = turn;
+  const actions: ItemAction[] = [];
+  const prep = wantsPlan(text) ? "yes" : needsPrep(ev.title);
+  const { event, onGoogle } = await createEvent(userId, { title: ev.title, start: ev.start, end: ev.end, allDay: ev.allDay, attendees: ev.attendees });
+  actions.push({ op: "create", type: "event", id: event.id, title: ev.title, area: "general", href: "/schedule", detail: `${describeEventTime(event)}${onGoogle ? " · on Google Calendar" : ""}` });
+  const lines = [`📅 ${ev.title} — ${describeEventTime(event)}${onGoogle ? " (on your Google Calendar)" : ""}.`];
+  if (prep === "yes") lines.push(await addPrep(turn, event, text, actions));
+  else {
+    const r = await eventReminder(userId, event);
+    if (r) {
+      actions.push({ op: "create", type: "reminder", id: r.id, title: r.text, area: "general", href: "/schedule", detail: fmtDue(r.fireAt) });
+      if (ev.hasTime) lines.push("I'll remind you an hour before.");
+    }
+  }
   if (ev.attendees.length) lines.push(`Shared with ${ev.attendees.join(", ")}${onGoogle ? " — they'll get a Google Calendar invite" : ""}.`);
-  // Ask for what's missing: the time first, then who to share it with.
-  if (!ev.hasTime) {
-    lines.push("What time is it?");
-    return save(turn, lines.join("\n"), { actions, awaiting: { kind: "event_time", refs: [], event: { id: event.id, title: ev.title } }, meta: { options: ["All day", "Morning", "After school", "Evening"] } });
-  }
-  if (!ev.attendees.length) {
-    lines.push("Should I share it with anyone?");
-    return save(turn, lines.join("\n"), { actions, awaiting: { kind: "event_share", refs: [], event: { id: event.id, title: ev.title } }, meta: { options: ["No, just me"] } });
+  const q = nextEventQuestion({ id: event.id, title: ev.title, askPrep: prep === "ask" }, ev.hasTime, ev.attendees.length > 0);
+  if (q) {
+    lines.push(q.text);
+    return save(turn, lines.join("\n"), { actions, awaiting: q.awaiting, meta: { options: q.options } });
   }
   return save(turn, lines.join("\n"), { actions });
+}
+
+/** Say the line, then ask the next question about the event (if any). */
+function askNextOrDone(turn: Turn, event: NonNullable<Awaiting["event"]>, line: string, shared: boolean) {
+  const q = nextEventQuestion(event, true, shared);
+  return q ? save(turn, `${line}\n${q.text}`, { awaiting: q.awaiting, meta: { options: q.options } }) : save(turn, line);
 }
 
 const NO = /^\s*(no|nope|nah|no one|nobody|just me|no,? just me|not now|skip|none)\b/i;
@@ -1011,23 +1046,33 @@ async function answerEvent(turn: Turn, awaiting: Awaiting, text: string): Promis
     if (start) {
       const r = await updateEvent(userId, ev.id, { start, end: end && end > start ? end : new Date(start.getTime() + 3_600_000), allDay: false });
       line = `Set: ${ev.title} — ${describeEventTime(r!.event)}.`;
-      // The prep to-do/reminder follow the real time.
+      // The prep to-do/reminder and the event reminder follow the real time.
       if (ev.todoId) {
         const due = prepDue(start);
         await prisma.todo.updateMany({ where: { id: ev.todoId, userId, status: "open" }, data: { dueAt: due } });
         await prisma.reminder.updateMany({ where: { todoId: ev.todoId, status: "pending" }, data: { fireAt: due } });
       }
+      const hourBefore = new Date(start.getTime() - 3_600_000);
+      await prisma.reminder.updateMany({ where: { userId, status: "pending", text: { startsWith: `📅 ${ev.title}` } }, data: { fireAt: hourBefore, text: `📅 ${ev.title} in 1 hour` } });
     }
-    if (ev.attendees.length) return save(turn, line);
-    return save(turn, `${line}\nShould I share it with anyone?`, { awaiting: { kind: "event_share", refs: [], event: awaiting.event }, meta: { options: ["No, just me"] } });
+    return askNextOrDone(turn, awaiting.event!, line, ev.attendees.length > 0);
+  }
+  if (awaiting.kind === "event_prep") {
+    if (/^\s*(y|yes|yeah|yep|sure|ok|okay|i do|definitely)\b/i.test(text)) {
+      const actions: ItemAction[] = [];
+      const line = await addPrep(turn, ev, text, actions);
+      return save(turn, line, { actions });
+    }
+    if (NO.test(text) || /^\s*(no|nah|nope|not really)\b/i.test(text)) return save(turn, "Okay — no prep, just the reminder.");
+    return null;
   }
   // event_share
   const emails = emailsIn(text);
   if (emails.length) {
     const r = await addAttendees(userId, ev.id, emails);
-    return save(turn, `Shared ${ev.title} with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : ". (Connect Google Calendar on the Schedule page so they get an invite.)"}`);
+    return askNextOrDone(turn, awaiting.event!, `Shared ${ev.title} with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : ". (Connect Google Calendar on the Schedule page so they get an invite.)"}`, true);
   }
-  if (NO.test(text)) return save(turn, "Okay, just you.");
+  if (NO.test(text)) return askNextOrDone(turn, awaiting.event!, "Okay, just you.", true);
   if (/^\s*(yes|yeah|yep|sure|ok|okay)\b/i.test(text) || /\b(share|invite)\b/i.test(text)) {
     return save(turn, "What's their email? (You can list a few.)", { awaiting, meta: { options: ["No, just me"] } });
   }

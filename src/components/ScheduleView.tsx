@@ -7,6 +7,7 @@ import { CalendarPlus, ChevronLeft, ChevronRight, RefreshCw, Users, X } from "lu
 import { Checkbox, Section } from "@/components/ui";
 import { useLoad, useOnDataChanged } from "@/hooks/useAssistantChat";
 import { AREA_META, type Area } from "@/lib/areas";
+import { needsPrep } from "@/lib/prep";
 
 interface Block {
   start: string;
@@ -337,7 +338,10 @@ export default function ScheduleView({ googleResult }: { googleResult?: string |
 
 /** "+ Event": title, day, time (or all day), who to share with, and a prep to-do. */
 function EventForm({ day, onClose, onSaved }: { day: Date; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ title: "", date: format(day, "yyyy-MM-dd"), start: "18:00", end: "19:00", allDay: false, share: "", prep: true });
+  const [f, setF] = useState({ title: "", date: format(day, "yyyy-MM-dd"), start: "18:00", end: "19:00", allDay: false, share: "" });
+  // Prep to-do: on for things you prepare for (a debate), off for a dentist appointment — unless he changes it.
+  const [prepChoice, setPrepChoice] = useState<boolean | null>(null);
+  const prep = prepChoice ?? needsPrep(f.title) === "yes";
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function save() {
@@ -346,7 +350,7 @@ function EventForm({ day, onClose, onSaved }: { day: Date; onClose: () => void; 
     const end = f.allDay ? addDays(start, 1) : new Date(`${f.date}T${f.end}`);
     const attendees = f.share.split(/[\s,;]+/).filter((x) => x.includes("@"));
     setBusy(true);
-    const res = await send("/api/calendar", "POST", { title: f.title.trim(), start: start.toISOString(), end: end.toISOString(), allDay: f.allDay, attendees, prep: f.prep });
+    const res = await send("/api/calendar", "POST", { title: f.title.trim(), start: start.toISOString(), end: end.toISOString(), allDay: f.allDay, attendees, prep });
     setBusy(false);
     if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? "Couldn't save it.");
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
@@ -375,7 +379,7 @@ function EventForm({ day, onClose, onSaved }: { day: Date; onClose: () => void; 
       </div>
       <input value={f.share} onChange={(e) => setF({ ...f, share: e.target.value })} placeholder="Share with (emails) — they get a Google Calendar invite" aria-label="Share with" className="min-field" />
       <label className="flex items-center gap-2 text-xs" style={{ color: "var(--ink-400)" }}>
-        <input type="checkbox" checked={f.prep} onChange={(e) => setF({ ...f, prep: e.target.checked })} /> Make a “Prepare for…” to-do with a reminder
+        <input type="checkbox" checked={prep} onChange={(e) => setPrepChoice(e.target.checked)} aria-label="Needs preparing" /> Needs preparing (“Prepare for…” to-do + reminder the evening before)
       </label>
       {error && <p className="text-xs" style={{ color: "var(--bad)" }}>{error}</p>}
       <button onClick={save} disabled={busy} className="min-btn">

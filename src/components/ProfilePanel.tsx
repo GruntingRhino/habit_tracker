@@ -25,6 +25,64 @@ interface ProfileData {
   quiz: { answers: Record<string, string | string[]>; updatedAt: string } | null;
 }
 
+interface Tape {
+  latest: Partial<Record<string, number>>;
+  change: Record<string, { delta: number; days: number }>;
+  ratio: number | null;
+  lastDate: string | null;
+}
+
+const TAPE = ["waist", "chest", "shoulders", "arms", "thighs", "neck"] as const;
+
+function Measurements({ tape, onSaved }: { tape: Tape | null; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  async function save() {
+    const body = Object.fromEntries(Object.entries(vals).filter(([, v]) => v.trim()).map(([k, v]) => [k, Number(v)]));
+    if (!Object.keys(body).length) return;
+    const res = await post("/api/measurements", "POST", body);
+    if (res.ok) {
+      setVals({});
+      setOpen(false);
+      onSaved();
+    }
+  }
+  const has = tape && Object.keys(tape.latest).length > 0;
+  return (
+    <div className="pt-1">
+      {has && (
+        <p>
+          📏{" "}
+          {TAPE.filter((k) => tape!.latest[k] != null)
+            .map((k) => {
+              const c = tape!.change[k];
+              return `${k} ${tape!.latest[k]}"${c && c.days >= 21 ? ` (${c.delta >= 0 ? "+" : ""}${c.delta})` : ""}`;
+            })
+            .join(" · ")}
+          {tape!.ratio ? ` · shoulder:waist ${tape!.ratio}` : ""}
+        </p>
+      )}
+      {open ? (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {TAPE.map((k) => (
+            <label key={k} className="flex items-center gap-1 text-xs">
+              {k}
+              <input inputMode="decimal" value={vals[k] ?? ""} onChange={(e) => setVals((v) => ({ ...v, [k]: e.target.value }))} placeholder="in" aria-label={`${k} inches`} className="min-field w-14 text-center" />
+            </label>
+          ))}
+          <button onClick={save} className="min-btn">
+            Log
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setOpen(true)} className="min-link">
+          {has ? "+ Log measurements" : "+ Log measurements (inches) — waist, chest, shoulders, arms…"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface Nudge {
   id: string;
   kind: string;
@@ -50,10 +108,12 @@ export default function ProfilePanel() {
   const [openBelief, setOpenBelief] = useState<string | null>(null);
   const [quiz, setQuiz] = useState(false);
   const [brainFresh, setBrainFresh] = useState(false);
+  const [tape, setTape] = useState<Tape | null>(null);
   const router = useRouter();
 
   const load = useCallback(async () => {
-    const [p, n] = await Promise.all([fetch("/api/profile"), fetch("/api/nudges")]);
+    const [p, n, m] = await Promise.all([fetch("/api/profile"), fetch("/api/nudges"), fetch("/api/measurements")]);
+    if (m.ok) setTape(await m.json());
     if (p.ok) {
       const d = (await p.json()) as ProfileData;
       setData(d);
@@ -118,6 +178,9 @@ export default function ProfilePanel() {
         ) : (
           <Empty>Tell the chat your weight and height (“134 lb, 6&apos;0”) to set your targets.</Empty>
         )}
+        <div className="text-[13px]" style={{ color: "var(--ink-300)" }}>
+          <Measurements tape={tape} onSaved={load} />
+        </div>
       </Section>
 
       {nudges.length > 0 && (

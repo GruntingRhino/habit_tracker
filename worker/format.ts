@@ -7,6 +7,9 @@ import { SCORED_AREAS } from "@/lib/areas";
 import { getStartOfDay } from "@/lib/utils";
 import { readRationale } from "@/lib/score-rationale";
 import { bestWindow, journalPrompt } from "@/lib/brain/jobs";
+import { buildSchedule, describeSchedule } from "@/lib/schedule";
+import { todaysTraining } from "@/lib/training";
+import { statusLine } from "@/lib/health";
 
 const EMOJI: Record<string, string> = { physical: "💪", mental: "🧠", financial: "💰", spiritual: "🙏", work: "💼", general: "📌" };
 
@@ -37,6 +40,11 @@ export async function formatBrief(userId: string, kind: "morning" | "evening") {
   if (kind === "morning") {
     const w = await bestWindow(userId).catch(() => null);
     if (w && w.share >= 0.15) lines.push(`⏱ Your best focus window lately: <b>${w.label}</b>. Put the hardest thing there.`);
+    const sched = await buildSchedule(userId).catch(() => null);
+    if (sched?.blocks.length) lines.push("", "<b>Schedule</b>", ...describeSchedule(sched).map(esc));
+    const training = await todaysTraining(userId).catch(() => null);
+    if (training?.plans.length) lines.push("", "<b>Lifts (last → today)</b>", ...training.plans.flatMap((p) => [esc(`${p.name}${p.deload ? " — deload week suggested" : ""}`), ...p.exercises.map((e) => esc(`• ${e.name}: ${e.suggestion.last ? `${e.suggestion.last} → ` : ""}${e.suggestion.next}`))]));
+    lines.push("", await statusLine().catch(() => ""));
   }
   lines.push("");
   if (kind === "evening") {

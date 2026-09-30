@@ -8,7 +8,9 @@ import { getStartOfDay } from "@/lib/utils";
 import { reportError } from "@/lib/monitoring";
 import { readRationale } from "@/lib/score-rationale";
 import { scoreLinks } from "@/lib/brain/jobs";
-import { fmtHeight, fmtLb, readBody, updateBody } from "@/lib/body";
+import { fmtHeight, fmtLb, measurementTrend, readBody, updateBody } from "@/lib/body";
+import { workerHealthCheck } from "@/lib/health";
+import { blockStatus } from "@/lib/training";
 import { esc, formatBrief, formatScores } from "./format";
 import { reminderKeyboard, sendToOwner } from "./telegram";
 
@@ -148,12 +150,32 @@ export async function weeklyCheckIn(userId: string, now = new Date()) {
     lines.push(`Last weight: ${body.weightLb ? `${fmtLb(body.weightLb)}${body.measuredAt ? ` (${body.measuredAt})` : ""}` : "none yet"}.`);
     lines.push("Weigh yourself tomorrow morning (after the bathroom, before eating) and reply like <b>135 lb</b>. Your protein, calories, carbs and fat update from it.");
   }
+  // Monthly tape measurements (his rule: judge physique over months, not mirrors).
+  const tape = await measurementTrend(userId, now);
+  if (!tape.lastDate || now.getTime() - tape.lastDate.getTime() > 27 * 86_400_000) {
+    lines.push("📏 Monthly measurements: reply like <b>waist 29, chest 36, shoulders 45, arms 12, thighs 21</b> (inches, relaxed, same time of day).");
+  } else if (tape.ratio) lines.push(`Shoulder-to-waist ${tape.ratio}${tape.change.waist ? ` · waist ${tape.change.waist.delta >= 0 ? "+" : ""}${tape.change.waist.delta}" in ${Math.round(tape.change.waist.days / 7)} wk` : ""}`);
+  // Training block: ~6 weeks, keep it while lifts still progress.
+  const block = await blockStatus(userId, now);
+  if (block.weeks >= 6) {
+    lines.push(
+      block.tracked && block.stalled / block.tracked < 0.5
+        ? `🏋️ ${esc(block.name)}: week ${block.weeks}, most lifts still progressing — you can run it up to 2 more weeks, then switch to Upper ${block.next}.`
+        : `🏋️ ${esc(block.name)}: week ${block.weeks}${block.tracked ? `, ${block.stalled}/${block.tracked} lifts stalled` : ""} — time to switch to Upper ${block.next} (tell me “switch to upper ${block.next.toLowerCase()}”).`
+    );
+  } else lines.push(`🏋️ ${esc(block.name)}: week ${block.weeks + 1} of ~6.`);
   const measured = body.history?.filter((h) => h.heightIn).pop();
   if (!measured || now.getTime() - new Date(measured.date).getTime() > 30 * 86_400_000) lines.push("Also: height check (you're still growing) — reply like <b>6'0\"</b>.");
   return lines;
 }
 
+export async function healthCheck() {
+  const msg = await workerHealthCheck();
+  if (msg) await sendToOwner(msg);
+}
+
 export const JOBS = {
+  health: healthCheck,
   reminders: sendDueReminders,
   plan: planToday,
   morning: morningBrief,

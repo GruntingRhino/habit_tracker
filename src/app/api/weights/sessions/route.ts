@@ -4,6 +4,7 @@ import { getOwnerSession } from "@/lib/owner";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { strictObject } from "@/lib/validation";
+import { noteSession } from "@/lib/training";
 
 const exerciseLogSchema = strictObject({
   exerciseId: z.string().cuid().optional(),
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await noteSession(session.user.id, routine.name, workoutSession.date).catch((error) => reportError({ context: "noteSession", error }));
     return NextResponse.json(workoutSession, { status: 201 });
   } catch (error) {
     reportError({ context: "sessions POST", error, userId: session.user.id });

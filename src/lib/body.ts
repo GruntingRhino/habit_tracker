@@ -223,7 +223,15 @@ export async function updateBody(userId: string, update: { weightLb?: number; he
       const rate = Math.round(trend.perWeek * 100) / 100;
       lines.push(`Trend: ${rate >= 0 ? "+" : ""}${rate} lb/week (${trend.from === "daily" ? "7-day averages" : "check-ins"}).`);
       if (b.goal === "bulk" && dueForAdjust) {
-        const step = rate < 0.2 ? 125 : rate > 0.75 ? -125 : 0;
+        // His rule: watch the waist. If it's climbing fast (≥ 0.75" in ~4+ weeks), don't add food,
+        // and trim if weight is also rising quickly.
+        const waist = (await measurementTrend(userId, now)).change.waist;
+        const waistFast = !!waist && waist.days >= 21 && waist.delta >= 0.75;
+        let step = rate < 0.2 ? 125 : rate > 0.75 ? -125 : 0;
+        if (waistFast && step > 0) {
+          step = 0;
+          lines.push(`Waist is up ${waist!.delta}" in ${Math.round(waist!.days / 7)} weeks, so calories stay put despite the slow scale.`);
+        } else if (waistFast && rate > 0.5) step = -125;
         if (step) {
           b.calorieAdjust = Math.max(-300, Math.min(500, (b.calorieAdjust ?? 0) + step));
           b.lastAdjustAt = today;
@@ -281,4 +289,50 @@ export async function recordBodyUpdate(userId: string, update: { weightLb?: numb
   const r = await updateBody(userId, update, { checkIn, now });
   const logged = [update.weightLb != null ? fmtLb(update.weightLb) : null, update.heightIn != null ? fmtHeight(update.heightIn) : null, update.age != null ? `age ${update.age}` : null].filter(Boolean).join(", ");
   return [`Logged ${logged}.`, r.changed.length ? `Targets updated: ${r.changed.join(", ")}.` : "Targets unchanged.", ...r.lines].join("\n");
+}
+
+// ---- tape measurements (inches) -----------------------------------------------------------------
+
+export const MEASURE_KEYS = ["waist", "chest", "shoulders", "arms", "thighs", "neck"] as const;
+export type MeasureKey = (typeof MEASURE_KEYS)[number];
+const MEASURE_WORDS: Record<string, MeasureKey> = { waist: "waist", chest: "chest", shoulder: "shoulders", shoulders: "shoulders", arm: "arms", arms: "arms", bicep: "arms", biceps: "arms", thigh: "thighs", thighs: "thighs", leg: "thighs", neck: "neck" };
+
+/** "waist 29", "chest 36.5 in, arms 12.25", "shoulders: 44" → inches. */
+export function parseMeasurements(text: string): Partial<Record<MeasureKey, number>> | null {
+  const t = text.toLowerCase();
+  if (/\?$/.test(t.trim())) return null;
+  const out: Partial<Record<MeasureKey, number>> = {};
+  for (const m of t.matchAll(/\b(waist|chest|shoulders?|arms?|biceps?|thighs?|leg|neck)\b\s*(?:is|was|:|=|at)?\s*(\d{1,2}(?:\.\d{1,2})?)(?!\s*(?:x\b|x\d|sets?|reps?|lbs?|pounds?|min|minutes|kg|%|\d))\s*(?:in(?:ches)?|")?/g)) {
+    const key = MEASURE_WORDS[m[1]];
+    const v = Number(m[2]);
+    if (key && v >= 5 && v <= 70) out[key] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+export async function recordMeasurements(userId: string, m: Partial<Record<MeasureKey, number>>, now = new Date()) {
+  await prisma.bodyMeasurement.create({ data: { userId, date: now, ...m } });
+  const lines = [`Logged ${Object.entries(m).map(([k, v]) => `${k} ${v}"`).join(", ")}.`];
+  const trend = await measurementTrend(userId, now);
+  for (const [k, d] of Object.entries(trend.change)) if (d.days >= 21) lines.push(`${k}: ${d.delta >= 0 ? "+" : ""}${d.delta}" in ${Math.round(d.days / 7)} weeks.`);
+  if (trend.ratio) lines.push(`Shoulder-to-waist ratio ${trend.ratio} (V-taper goal: ~1.6).`);
+  return lines.join("\n");
+}
+
+/** Latest value per measurement, change vs ~4+ weeks earlier, shoulder:waist ratio. */
+export async function measurementTrend(userId: string, now = new Date()) {
+  const rows = await prisma.bodyMeasurement.findMany({ where: { userId, date: { gte: addDays(now, -365) } }, orderBy: { date: "asc" } });
+  const latest: Partial<Record<MeasureKey, number>> = {};
+  const change: Record<string, { delta: number; days: number }> = {};
+  for (const k of MEASURE_KEYS) {
+    const withK = rows.filter((r) => r[k] != null);
+    const last = withK[withK.length - 1];
+    if (!last) continue;
+    latest[k] = last[k]!;
+    const base = [...withK].reverse().find((r) => differenceInCalendarDays(last.date, r.date) >= 21);
+    if (base) change[k] = { delta: Math.round((last[k]! - base[k]!) * 100) / 100, days: differenceInCalendarDays(last.date, base.date) };
+  }
+  const ratio = latest.shoulders && latest.waist ? Math.round((latest.shoulders / latest.waist) * 100) / 100 : null;
+  const lastDate = rows[rows.length - 1]?.date ?? null;
+  return { latest, change, ratio, lastDate };
 }

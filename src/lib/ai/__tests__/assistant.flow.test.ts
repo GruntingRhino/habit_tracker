@@ -707,6 +707,10 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     expect(r.reply).toContain("Shared with mike@gmail.com");
     expect(r.awaiting).toBeNull();
     const d = await say("i have a dentist appointment friday at 3pm");
+    // Nothing to prepare for a dentist appointment: no to-do, just a reminder an hour before.
+    expect(d.actions.map((x) => x.type)).toEqual(["event", "reminder"]);
+    expect(d.reply).toContain("I'll remind you an hour before.");
+    expect(await prisma.todo.count({ where: { userId, title: { contains: "dentist" } } })).toBe(0);
     expect(d.reply).toMatch(/Should I share it with anyone\?$/);
     const no = await say("no, just me");
     expect(no.reply).toBe("Okay, just you.");
@@ -755,5 +759,18 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     const ask = await say("help me plan to get stronger");
     expect(ask.actions).toMatchObject([{ type: "plan" }]);
     expect(calls).toContain("question");
+  });
+
+  it("a debate tournament gets a prep to-do; something unclear asks whether it needs prep", async () => {
+    const r = await say("i have a debate tournament saturday at 8am");
+    expect(r.actions.map((x) => x.type)).toEqual(["event", "todo", "reminder"]);
+    expect(r.reply).toContain("To-do: Prepare for debate tournament");
+    const u = await say("i have a robotics session on thursday at 4pm");
+    expect(u.actions.map((x) => x.type)).toEqual(["event", "reminder"]);
+    const no = await say("no, just me");
+    expect(no.reply).toBe("Okay, just you.\nDo you need to prepare for it?");
+    const yes = await say("yes");
+    expect(yes.reply).toMatch(/^To-do: Prepare for robotics session/);
+    expect(await prisma.todo.count({ where: { userId, title: { contains: "robotics" } } })).toBe(1);
   });
 });

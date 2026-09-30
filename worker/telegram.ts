@@ -6,6 +6,7 @@ import { planDay } from "@/lib/ai/planner";
 import { getOwner } from "@/lib/owner";
 import { getStartOfDay } from "@/lib/utils";
 import { interactive } from "@/lib/brain/signals";
+import { describeWeek, weekScore } from "@/lib/weekly";
 import { esc, formatBrief, formatScores } from "./format";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -69,7 +70,8 @@ export function setupBot() {
   bot.command("score", async (ctx) => {
     const owner = await getOwner();
     const latest = await prisma.categoryScore.findFirst({ where: { userId: owner.id }, orderBy: { date: "desc" } });
-    await ctx.reply(latest ? formatScores(latest) : "No scores yet.", { parse_mode: "HTML" });
+    const week = describeWeek(await weekScore(owner.id));
+    await ctx.reply(latest ? `${formatScores(latest)}\n\n📈 ${esc(week)}` : "No scores yet.", { parse_mode: "HTML" });
   });
 
   bot.on("message:text", async (ctx) => {

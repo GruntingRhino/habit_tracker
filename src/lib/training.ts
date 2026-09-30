@@ -169,7 +169,7 @@ export function upperLetter(name: string) {
 
 /**
  * After a session is logged: an Upper B session while on block A means he switched (follow him),
- * and the day's matching training habit ("Upper workout", "Lower A workout") gets ticked.
+ * and the matching habit gets ticked ("Workout", or "Posture routine" for a posture session).
  */
 export async function noteSession(userId: string, routineName: string, at = new Date()) {
   const letter = upperLetter(routineName);
@@ -177,11 +177,11 @@ export async function noteSession(userId: string, routineName: string, at = new 
     const t = await readTraining();
     if (t.upperBlock !== letter) await writeTraining({ ...t, upperBlock: letter, blockStartedAt: at.toISOString().slice(0, 10) });
   }
-  const key = letter ? "upper" : routineName.match(/^(lower [ab])\b/i)?.[1]?.toLowerCase();
-  if (!key) return;
+  // Posture sessions tick the posture habit; any other session ticks the workout habit.
+  const posture = /posture/i.test(routineName);
   const day = getStartOfDay(at);
-  const habits = await prisma.habit.findMany({ where: { userId, isActive: true, targetDays: { has: getDayOfWeek(day) } }, select: { id: true, name: true } });
-  for (const h of habits.filter((h) => h.name.toLowerCase().includes(key))) {
+  const habits = await prisma.habit.findMany({ where: { userId, isActive: true }, select: { id: true, name: true } });
+  for (const h of habits.filter((h) => (posture ? /posture/i.test(h.name) : /\b(workout|work out|gym|train(ing)?|lift(ing)?)\b/i.test(h.name)))) {
     await prisma.habitLog.upsert({ where: { habitId_date: { habitId: h.id, date: day } }, update: { completed: true }, create: { habitId: h.id, date: day, completed: true } });
   }
 }

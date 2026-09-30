@@ -14,7 +14,7 @@ const patchSchema = z.object({
   priority: z.enum(PRIORITIES).optional(),
   status: z.enum(["open", "done"]).optional(),
   dueAt: z.string().datetime({ offset: true }).nullable().optional(),
-  notes: z.string().trim().max(2000).nullable().optional(),
+  notes: z.string().trim().max(10000).nullable().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {

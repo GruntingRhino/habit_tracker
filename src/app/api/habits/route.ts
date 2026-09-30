@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { Area } from "@/lib/areas";
 import { getOwnerSession } from "@/lib/owner";
+import { categoryForArea, classifyHabit, timeOfDayFor } from "@/lib/ai/habitarea";
 import prisma from "@/lib/prisma";
 import { reportError } from "@/lib/monitoring";
 import { calcStreak } from "@/lib/utils";
@@ -93,13 +95,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // No category chosen: the AI decides which area it counts toward.
+    const chosen = rawBody && typeof rawBody === "object" && "category" in rawBody;
+    const area = chosen ? habitCategoryToArea(parsed.data.category) : await classifyHabit(parsed.data.name);
     const habit = await prisma.habit.create({
       data: {
         userId: session.user.id,
         name: parsed.data.name,
         description: parsed.data.description,
-        category: normalizeHabitCategory(parsed.data.category),
-        area: habitCategoryToArea(parsed.data.category),
+        category: chosen ? normalizeHabitCategory(parsed.data.category) : categoryForArea(area as Area),
+        area,
+        timeOfDay: timeOfDayFor(parsed.data.name),
         targetDays: parsed.data.targetDays,
         color: parsed.data.color,
       },

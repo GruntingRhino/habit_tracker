@@ -4,6 +4,8 @@ export interface ParsedWhen {
   date: Date;
   /** true when the phrase included an explicit clock time */
   hasTime: boolean;
+  /** the words that meant the date ("on saturday") */
+  text?: string;
 }
 
 /**
@@ -18,7 +20,7 @@ export function parseWhen(phrase: string | undefined | null, ref = new Date()): 
   const hasTime = first.start.isCertain("hour");
   const date = first.start.date();
   if (!hasTime) date.setHours(9, 0, 0, 0);
-  return { date, hasTime };
+  return { date, hasTime, text: first.text };
 }
 
 /** Find a time phrase inside free text (used when the model forgot to fill `when`). */

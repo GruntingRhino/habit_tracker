@@ -18,6 +18,14 @@ export interface ScoreRow {
   finalized?: boolean;
 }
 
+interface Week {
+  start: string;
+  days: { date: string; scores: Record<ScoredArea, number | null>; missed: boolean; today: boolean }[];
+  areas: Record<ScoredArea, { score: number | null; avg: number | null; days: number; penalty: number }>;
+  overall: number | null;
+  missedDays: number;
+}
+
 interface Live {
   pending: boolean;
   gradedAt: string | null;
@@ -42,6 +50,7 @@ function pick(rows: ScoreRow[]) {
  */
 export default function ScoreBoard() {
   const [score, setScore] = useState<ScoreRow | null | undefined>(undefined);
+  const [week, setWeek] = useState<Week | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const [open, setOpen] = useState<ScoredArea | null>(null);
   const [localPending, setLocalPending] = useState<number | null>(null);
@@ -55,8 +64,9 @@ export default function ScoreBoard() {
     try {
       const res = await fetch("/api/scores?live=1", { cache: "no-store" });
       if (!res.ok) throw new Error();
-      const data = (await res.json()) as { scores: ScoreRow[]; live: Live };
+      const data = (await res.json()) as { scores: ScoreRow[]; live: Live; week?: Week };
       setScore(pick(data.scores));
+      setWeek(data.week ?? null);
       setLive(data.live);
       // The brain has picked the change up (or finished with it): stop the local spinner.
       setLocalPending((p) => (p && (data.live.pending || (data.live.gradedAt && new Date(data.live.gradedAt).getTime() > p)) ? null : p));
@@ -112,13 +122,15 @@ export default function ScoreBoard() {
   return (
     <div className="w-full max-w-md px-4 text-center">
       <p className="min-label mb-2 flex items-center justify-center gap-2">
-        <span>{score ? dayLabel(score.date) : "Your scores"}</span>
+        <span>{week ? "This week" : score ? dayLabel(score.date) : "Your scores"}</span>
         {status && <span className="font-normal normal-case tracking-normal" style={{ color: "var(--ink-500)" }}>· {status}</span>}
       </p>
       <div className="grid grid-cols-4 gap-2">
         {SCORED_AREAS.map((a) => {
           const r = rationale[a];
-          const value = score && !r.noData ? Math.round(score[a]) : null;
+          const today = score && isToday(new Date(score.date)) && !r.noData ? Math.round(score[a]) : null;
+          const weekly = week?.areas[a].score ?? null;
+          const value = week ? (weekly == null ? null : Math.round(weekly * 10) / 10) : score && !r.noData ? Math.round(score[a]) : null;
           const active = open === a;
           return (
             <button
@@ -137,6 +149,7 @@ export default function ScoreBoard() {
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: AREA_META[a].color }} />
                 {AREA_META[a].label}
               </span>
+              {week && <span className="text-[10px] tabular-nums" style={{ color: "var(--ink-500)" }}>today {today ?? "–"}</span>}
               <ChevronDown className={`mt-0.5 h-3 w-3 transition-transform ${active ? "rotate-180" : ""}`} style={{ color: "var(--ink-500)" }} />
             </button>
           );
@@ -153,12 +166,33 @@ export default function ScoreBoard() {
         <div className="mt-2 rounded-xl border p-3 text-left text-[13px] leading-snug" style={{ borderColor: "var(--stroke-2)", background: "rgba(255,255,255,.03)" }}>
           <div className="mb-1.5 flex items-center justify-between">
             <span className="font-medium" style={{ color: "var(--ink-100)" }}>
-              {AREA_META[open].label} {rationale[open].noData ? "" : `· ${Math.round(score[open])}/10`}
+              {AREA_META[open].label} {rationale[open].noData ? "" : `· ${isToday(new Date(score.date)) ? "today" : dayLabel(score.date).toLowerCase()} ${Math.round(score[open])}/10`}
             </span>
             <button type="button" onClick={() => setOpen(null)} aria-label="Close details" className="rounded p-0.5 hover:bg-white/[.06]" style={{ color: "var(--ink-500)" }}>
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
+          {week && (
+            <div className="mb-2 border-b pb-2" style={{ borderColor: "var(--stroke-1)" }}>
+              <p style={{ color: "var(--ink-300)" }}>
+                This week {week.areas[open].score ?? "–"}
+                {week.areas[open].avg != null && (
+                  <span style={{ color: "var(--ink-500)" }}>
+                    {" "}
+                    = average of {week.areas[open].days} day{week.areas[open].days === 1 ? "" : "s"} ({week.areas[open].avg})
+                    {week.areas[open].penalty ? ` − ${week.areas[open].penalty} for ${week.missedDays} day${week.missedDays === 1 ? "" : "s"} with nothing logged` : ""}
+                  </span>
+                )}
+              </p>
+              <div className="mt-1 flex gap-2 text-[11px] tabular-nums" style={{ color: "var(--ink-500)" }}>
+                {week.days.map((d) => (
+                  <span key={d.date} title={d.missed ? "Nothing logged: penalty" : undefined} style={{ color: d.missed ? "var(--bad)" : d.today ? "var(--ink-200)" : undefined }}>
+                    {format(new Date(`${d.date}T12:00`), "EEEEE")} {d.scores[open] ?? (d.missed ? "✗" : "–")}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {rationale[open].noData ? (
             <p style={{ color: "var(--ink-400)" }}>No data for this area yet today, so no score.</p>
           ) : rationale[open].why.length ? (

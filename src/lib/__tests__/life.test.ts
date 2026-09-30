@@ -8,6 +8,9 @@ import { increment, needsDeload, parseReps, parseTarget, suggest, type SetLog } 
 import { detectAssessment, headsUpTime } from "../study";
 import { parseMeasurements, parseBodyUpdate } from "../body";
 import { foldChecks } from "../health";
+import { weekFromRows } from "../weekly";
+import { partialRatio } from "../brain/scores";
+import { classifyHabit, timeOfDayFor } from "../ai/habitarea";
 
 const DB = process.env.DATABASE_URL ?? "";
 
@@ -135,6 +138,52 @@ describe("health alerts", () => {
   });
 });
 
+describe("weekly score", () => {
+  const now = new Date(2026, 9, 1, 15); // Thursday
+  const day = (d: number, scores: Partial<Record<"physical" | "mental" | "financial" | "spiritual", number | null>>) => {
+    const areas = ["physical", "mental", "financial", "spiritual"] as const;
+    return {
+      date: new Date(2026, 8, d),
+      judgedBy: "m",
+      rationale: { v: 2, ...Object.fromEntries(areas.map((a) => [a, { why: [], improve: null, noData: scores[a] == null }])) },
+      ...Object.fromEntries(areas.map((a) => [a, scores[a] ?? 0])),
+    } as never;
+  };
+
+  it("averages the days with data; a day with nothing logged is a −0.5 penalty, not a 0", () => {
+    // Mon 28: physical 6, mental 8 · Tue 29: nothing at all · Wed 30: physical 8 · Thu (today): mental 4 so far
+    const w = weekFromRows([day(28, { physical: 6, mental: 8 }), day(30, { physical: 8 }), { ...day(1, { mental: 4 }), date: new Date(2026, 9, 1) } as never], now);
+    expect(w.days.map((d) => d.missed)).toEqual([false, true, false, false]);
+    expect(w.missedDays).toBe(1);
+    expect(w.areas.physical).toMatchObject({ avg: 7, days: 2, score: 6.5 });
+    expect(w.areas.mental).toMatchObject({ avg: 6, days: 2, score: 5.5 });
+    // Financial never logged: no score at all (not 0).
+    expect(w.areas.financial.score).toBeNull();
+    expect(w.overall).toBe(6);
+  });
+
+  it("today with nothing yet isn't a penalty", () => {
+    const w = weekFromRows([day(28, { physical: 7 })], new Date(2026, 8, 29, 9));
+    expect(w.missedDays).toBe(0);
+    expect(w.areas.physical.score).toBe(7);
+  });
+});
+
+describe("habits", () => {
+  it("partial progress from a note", () => {
+    expect(partialRatio("Drink ~100 oz of water every day", "did 60 oz")).toBe(0.6);
+    expect(partialRatio("Read 20 pages", "25")).toBe(1);
+    expect(partialRatio("Posture routine", "did half")).toBeNull();
+  });
+  it("new habits get an area without asking", async () => {
+    expect(await classifyHabit("Morning skincare + SPF")).toBe("physical");
+    expect(await classifyHabit("Read the Bible")).toBe("spiritual");
+    expect(await classifyHabit("No phone after 9pm")).toBe("mental");
+    expect(await classifyHabit("Save $10")).toBe("financial");
+    expect(timeOfDayFor("Evening skincare")).toBe("evening");
+  });
+});
+
 describe.skipIf(!/test/.test(DB))("schedule and coach against the database", () => {
   let prisma: typeof import("@/lib/prisma").default;
   let userId = "";
@@ -188,11 +237,31 @@ describe.skipIf(!/test/.test(DB))("schedule and coach against the database", () 
     for (let i = 1; i < spans.length; i++) expect(spans[i][0]).toBeGreaterThanOrEqual(spans[i - 1][1]);
   });
 
-  it("logging an Upper B session switches the block and ticks the upper-workout habit", async () => {
+  it("habit notes count as partial, and a ticked Workout habit counts as training", async () => {
+    const { buildFacts } = await import("../brain/scores");
+    const { getStartOfDay } = await import("../utils");
+    const day = getStartOfDay(new Date());
+    const water = await prisma.habit.create({ data: { userId, name: "Drink ~100 oz of water", area: "physical" } });
+    const workout = await prisma.habit.create({ data: { userId, name: "Workout", area: "physical" } });
+    await prisma.habitLog.create({ data: { habitId: water.id, date: day, completed: false, notes: "did 60 oz" } });
+    await prisma.habitLog.create({ data: { habitId: workout.id, date: day, completed: true, notes: "push day, felt strong" } });
+    const f = await buildFacts(userId, day, { final: true });
+    const t = f.facts.map((x) => x.text);
+    expect(t).toContain("• Habit partly done: “Drink ~100 oz of water” — “did 60 oz” (60%)");
+    expect(t).toContain("✓ Worked out (checked off “Workout”) — “push day, felt strong”");
+    expect(t.some((x) => /No training/.test(x))).toBe(false);
+    expect(t.some((x) => /Habit (done|missed): “Workout”/.test(x))).toBe(false); // counted once
+  });
+
+  it("logging an Upper B session switches the block and ticks Workout; a posture session ticks Posture routine", async () => {
     const { noteSession, readTraining } = await import("../training");
-    const habit = await prisma.habit.create({ data: { userId, name: "Upper workout (current block)", targetDays: ["mon", "thu"] } });
+    const habit = await prisma.habit.create({ data: { userId, name: "Workout", targetDays: ["mon", "tue", "thu", "sat"] } });
+    const posture = await prisma.habit.create({ data: { userId, name: "Posture routine" } });
     await noteSession(userId, "Upper B – Chest, back thickness, shoulders", new Date(2026, 8, 28, 17));
     expect((await readTraining()).upperBlock).toBe("B");
     expect(await prisma.habitLog.count({ where: { habitId: habit.id, completed: true } })).toBe(1);
+    expect(await prisma.habitLog.count({ where: { habitId: posture.id } })).toBe(0);
+    await noteSession(userId, "Daily posture", new Date(2026, 8, 28, 20));
+    expect(await prisma.habitLog.count({ where: { habitId: posture.id, completed: true } })).toBe(1);
   });
 });

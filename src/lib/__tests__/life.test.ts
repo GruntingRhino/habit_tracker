@@ -72,6 +72,7 @@ describe("training coach (double progression)", () => {
     expect(suggest("Push-ups", "4x8-20", [log(null, "20", 4)]).status).toBe("harder");
     expect(suggest("Hollow-body hold", "3x20-40s", [log(null, "30,25,25")]).next).toBe("3 × 35 s");
     expect(suggest("Dips", "3x6-12", []).status).toBe("new");
+    expect(suggest("Chin tucks", "2x10", []).next).toBe("2 × 10");
   });
 
   it("deload after two sessions of drops on 2+ lifts", () => {

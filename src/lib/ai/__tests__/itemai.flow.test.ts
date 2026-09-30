@@ -9,7 +9,7 @@ const DB = process.env.DATABASE_URL ?? "";
 const enabled = /test/.test(DB);
 
 let written = "";
-let breakdown: unknown = { tasks: [{ title: "Pick a topic", priority: "high" }, { title: "Build the model", priority: "medium" }, { title: "Make the poster", priority: "medium" }] };
+const breakdown: unknown = { tasks: [{ title: "Pick a topic", priority: "high" }, { title: "Build the model", priority: "medium" }, { title: "Make the poster", priority: "medium" }] };
 const seen: string[] = [];
 
 vi.mock("@/lib/ai/llm", async (importOriginal) => {

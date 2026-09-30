@@ -1,7 +1,8 @@
 import prisma from "@/lib/prisma";
 import { getStartOfDay } from "@/lib/utils";
-import { extractUpdate, isUpdate, parseTodos, type Extracted } from "@/lib/ai/update";
+import { actionableCount, extractUpdate, isUpdate, parseTodos, type Extracted } from "@/lib/ai/update";
 import { needsPrep } from "@/lib/prep";
+import { secondLook } from "@/lib/ai/leftovers";
 import * as chrono from "chrono-node";
 import { addAttendees, createEvent, describeEventTime, emailsIn, parseEventStatement, prepDue, updateEvent, type ParsedEvent } from "@/lib/calendar";
 import { planItem } from "@/lib/ai/itemai";
@@ -133,11 +134,13 @@ export function describeActions(actions: ItemAction[]) {
     .filter((a) => a.type !== "plan")
     // A to-do with its own reminder is one line: the to-do, "I'll remind you".
     .filter((a) => !(a.type === "reminder" && actions.some((b) => b.type === "todo" && b.title === a.title)))
+    // The automatic "📅 … in 1 hour" reminder that comes with an event isn't news.
+    .filter((a) => !(a.type === "reminder" && a.title.startsWith("📅") && actions.some((b) => b.type === "event")))
     .map((a) => {
       const verb = a.op === "complete" ? "✅ Done" : TYPE_LABEL[a.type];
       const reminded = a.type === "todo" && actions.some((b) => b.type === "reminder" && b.title === a.title);
       if (a.type === "journal" && a.op === "append") return "🧠 Added to today's journal";
-      const emoji = a.type === "event" ? "📅" : a.type === "sleep" ? "😴" : AREA_EMOJI[a.area ?? "general"] ?? "📌";
+      const emoji = a.type === "event" ? "📅" : a.type === "sleep" ? "😴" : a.type === "meal" ? "🍽️" : AREA_EMOJI[a.area ?? "general"] ?? "📌";
       return `${emoji} ${verb}: ${a.title}${a.detail ? ` — ${a.detail}` : ""}${reminded ? " (I'll remind you)" : ""}`;
     })
     .join("\n");
@@ -227,9 +230,23 @@ export async function handleMessage(userId: string, text: string, source: Source
       if (ref) return ref;
     }
     // A day update ("slept 11 to 6:40, have to study for my bio and math quiz tomorrow, …"): every piece handled.
-    if (!awaiting && !/\?\s*$/.test(trimmed)) {
+    // A short, explicit calendar line ("add soccer game to my calendar saturday 10-12, share with …") goes to the calendar reader.
+    if (!awaiting && !/\?\s*$/.test(trimmed) && !(trimmed.length < 120 && parseEventStatement(trimmed))) {
       const extracted = extractUpdate(trimmed);
       if (isUpdate(trimmed, extracted)) return await handleUpdate(turn, trimmed, extracted);
+      const n = actionableCount(extracted);
+      // "coach wants to meet thursday": one event said casually.
+      if (n === 1 && extracted.events.length === 1) return await eventFromChat(turn, { ...extracted.events[0], attendees: emailsIn(trimmed) }, trimmed);
+      // "chem test thursday so i need to lock in": one test → the event flow (prep to-do, then the time).
+      if (n === 1 && extracted.assessments.length === 1) {
+        const a = extracted.assessments[0];
+        const hasTime = !!(a.start.getHours() || a.start.getMinutes());
+        const end = new Date(a.start.getTime() + (hasTime ? 3_600_000 : 86_400_000));
+        return await eventFromChat(turn, { title: a.title, start: a.start, end, allDay: !hasTime, hasTime, attendees: emailsIn(trimmed) }, trimmed);
+      }
+      // "chem test tmrw", "got maybe 6 hrs": code knows exactly what these are.
+      // "i owe my mom 20 bucks": code already knows the to-do, no model needed.
+      if (n >= 1 && (extracted.assessments.length || extracted.sleep || extracted.todos.some((t) => t.title.startsWith("Pay back ")))) return await handleUpdate(turn, trimmed, extracted);
     }
     // "I have a dentist appointment Friday at 3" → calendar event + prep to-do, then ask what's missing.
     const event = !awaiting ? parseEventStatement(trimmed) : null;
@@ -1285,13 +1302,53 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted): Promise<Ass
   touched.push(...assessmentItems);
   let ask: Awaiting | null = null;
   let question: string | null = null;
+  let options: string[] | null = null;
   for (const m of x.meetings) {
     const todo = await addTodo(cap(m.title), null, "high");
     if (todo && !ask) {
       ask = { kind: "meeting_when", refs: [], meeting: { todoId: todo.id, title: m.who ? `Meeting with ${m.who}` : "Meeting" } };
       question = `When is the meeting${m.who ? ` with ${m.who}` : ""}? I'll put it on your calendar (or say "not set yet").`;
+      options = ["Not set yet"];
     }
   }
+  for (const e of x.events) {
+    const prep = needsPrep(e.title);
+    const { event, onGoogle } = await createEvent(userId, { title: e.title, start: e.start, end: e.end, allDay: e.allDay });
+    actions.push({ op: "create", type: "event", id: event.id, title: e.title, area: "general", href: "/schedule", detail: `${describeEventTime(event)}${onGoogle ? " · on Google Calendar" : ""}` });
+    touched.push(e.title);
+    if (prep === "yes") await addPrep(turn, event, text, actions);
+    else {
+      const r = await eventReminder(userId, event);
+      if (r) actions.push({ op: "create", type: "reminder", id: r.id, title: r.text, area: "general", href: "/schedule", detail: fmtDue(r.fireAt) });
+    }
+    // One follow-up at a time: the first event missing a time (or prep answer) gets the question.
+    if (!ask) {
+      const q = nextEventQuestion({ id: event.id, title: e.title, askPrep: prep === "ask" }, e.hasTime, false);
+      if (q) {
+        ask = q.awaiting;
+        question = `${e.title}: ${lowerFirst(q.text)}`;
+        options = q.options;
+      }
+    }
+  }
+  // Plans the patterns missed: the model proposes, code keeps only what's grounded in his words.
+  for (const p of await secondLook(x.reflection)) {
+    if (p.kind === "todo") {
+      await addTodo(p.title, p.date);
+      continue;
+    }
+    if (x.events.some((e) => sameTask(e.title, p.title))) continue;
+    const start = p.date!;
+    if (!p.hasTime) start.setHours(0, 0, 0, 0);
+    const { event, onGoogle } = await createEvent(userId, { title: p.title, start, end: new Date(start.getTime() + (p.hasTime ? 3_600_000 : 86_400_000)), allDay: !p.hasTime });
+    actions.push({ op: "create", type: "event", id: event.id, title: p.title, area: "general", href: "/schedule", detail: `${describeEventTime(event)}${onGoogle ? " · on Google Calendar" : ""}` });
+    touched.push(p.title);
+    const r = await eventReminder(userId, event);
+    if (r) actions.push({ op: "create", type: "reminder", id: r.id, title: r.text, area: "general", href: "/schedule", detail: fmtDue(r.fireAt) });
+  }
+  // Done things: workouts tick the Workout habit, meals get nutrition estimated from just their clause.
+  for (const w of x.workouts) actions.push(...(await applyCapture(userId, [{ kind: "workout", title: w, area: "physical", done: true }], w, source)));
+  for (const m of x.meals) actions.push(...(await applyCapture(userId, [{ kind: "meal", title: m.name, area: "physical", done: true }], m.text, source)));
   // How the day went (and anything else) goes in the journal.
   if (x.reflection.join(" ").length >= 20) {
     const j = await applyCapture(userId, [{ kind: "journal", title: "Journal", area: "mental" }], text, source);
@@ -1302,7 +1359,7 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted): Promise<Ass
   lines.push(describeActions(actions));
   if (already.length) lines.push(`Already on your list: ${[...new Set(already)].join(" · ")}`);
   if (question) lines.push(question);
-  return save(turn, lines.filter(Boolean).join("\n"), { actions, awaiting: ask, meta: { ...(ask ? { options: ["Not set yet"] } : {}), items: [...new Set(touched)] } });
+  return save(turn, lines.filter(Boolean).join("\n"), { actions, awaiting: ask, meta: { ...(ask && options ? { options } : {}), items: [...new Set(touched)] } });
 }
 
 async function answerMeeting(turn: Turn, meeting: NonNullable<Awaiting["meeting"]>, text: string): Promise<AssistantReply | null> {

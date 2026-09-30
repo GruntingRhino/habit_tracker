@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface ChatAction {
-  op: "create" | "complete" | "append";
+  op: "create" | "complete" | "append" | "update" | "delete";
   type: string;
   id: string;
   title: string;

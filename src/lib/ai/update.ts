@@ -273,8 +273,9 @@ const FUTURE = /\b(gotta|going to|gonna|need to|have to|will|plan to|want to|sho
 export function parseWorkout(clause: string): string | null {
   const c = normalize(clause).toLowerCase();
   if (FUTURE.test(c)) return null;
-  const split = c.match(/\b(?:hit|did|trained|worked|smashed|killed)\s+(legs|chest|back|arms|shoulders|push|pull|upper|lower|abs|cardio|core)(?:\s+(day|body))?\b/);
-  if (split) return cap(`${split[1]}${split[2] ? ` ${split[2]}` : ""}`);
+  const M = "legs|chest|back|arms|shoulders|push|pull|upper|lower|abs|cardio|core|tris|triceps|bis|biceps|glutes|calves";
+  const split = c.match(new RegExp(`\\b(?:hit|did|trained|worked|smashed|killed)\\s+(${M})(?:\\s*(?:and|&|\\/|\\+)\\s*(${M}))?(?:\\s+(day|body))?\\b`));
+  if (split) return cap([split[1], split[2]].filter(Boolean).join(" and ") + (split[3] ? ` ${split[3]}` : ""));
   const cardio = c.match(/\b(ran|jogged|biked|cycled|swam|walked|rowed)\s+(\d+(?:\.\d+)?)\s*(miles?|mi|k|km|laps?)\b/);
   if (cardio) return cap(`${cardio[1]} ${cardio[2]} ${cardio[3] === "mi" ? "miles" : cardio[3]}`);
   if (/\b(went to the gym|worked out|lifted|hit the gym|went lifting)\b/.test(c)) return "Gym";
@@ -317,6 +318,8 @@ export function extractUpdate(text: string, now = new Date()): Extracted {
     }
     if (!used) out.reflection.push(c);
   }
+  // "worked out today, did chest and tris": one workout, the specific one.
+  if (out.workouts.length > 1) out.workouts = out.workouts.filter((w) => w !== "Gym");
   return out;
 }
 

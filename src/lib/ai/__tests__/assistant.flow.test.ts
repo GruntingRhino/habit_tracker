@@ -457,16 +457,23 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   it("data questions skip the router even mid-chat", async () => {
     await say("hey");
     calls.length = 0;
-    const r = await say("what's on my plate today?");
+    const r = await say("how many workouts did i do this week?");
     expect(calls).toEqual(["other"]); // the data answerer
     expect(r.reply).toBe("data answer");
+    // Exact ones are code: no model at all.
+    calls.length = 0;
+    await prisma.todo.create({ data: { userId, title: "Call the dentist" } });
+    expect((await say("what's on my plate today?")).reply).toContain("- Call the dentist");
+    expect((await say("how much protein have i had today?")).reply).toBe("Nothing logged to eat today yet.");
+    expect(calls).toEqual([]);
+    await prisma.todo.deleteMany({ where: { userId } });
   });
 
   it("a failed data question apologizes instead of filing the question as a to-do", async () => {
     failRouter = true; // the data answerer shares the "other" branch; make the model fail there too
     const llm = await import("@/lib/ai/llm");
     vi.mocked(llm.chat).mockRejectedValueOnce(new Error("timeout"));
-    const r = await say("what's on my plate today?");
+    const r = await say("how many workouts did i do this week?");
     expect(r.reply).toContain("lost my train of thought");
     expect(await prisma.todo.count({ where: { userId } })).toBe(0);
   });
@@ -719,6 +726,28 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     expect(no.reply).toBe("Okay, just you.");
     const later = await say("share the dentist appointment with mom@gmail.com");
     expect(later.reply).toContain("Shared Dentist appointment");
+  });
+
+  it("habits by code: ticks, partial water, skipped, status question, mixed update; delete/mark done/undo", async () => {
+    for (const name of ["Workout", "Posture routine", "Drink 100 oz water", "Read my Bible"]) await prisma.habit.create({ data: { userId, name } });
+    calls.length = 0;
+    expect((await say("just did my posture routine")).reply).toContain("✅ Done: Posture routine");
+    expect((await say("drank like 60 oz of water so far")).reply).toContain("60 oz of 100");
+    expect((await say("didn't read my bible today")).reply).toContain("Read my Bible — not done today");
+    expect((await say("did i do my posture routine today?")).reply).toMatch(/^Yes — Posture routine is done/);
+    const mixed = await say("read my bible this morning, drank 100 oz so far and hit legs after school");
+    expect(mixed.actions.map((a) => `${a.op} ${a.type} ${a.title}`)).toEqual(["create workout Legs", "complete routine Read my Bible", "complete routine Drink 100 oz water"]);
+    const logs = await prisma.habitLog.findMany({ where: { habit: { userId } }, select: { completed: true, habit: { select: { name: true } } } });
+    expect(logs.filter((l) => l.completed).map((l) => l.habit.name).sort()).toEqual(["Drink 100 oz water", "Posture routine", "Read my Bible", "Workout"]);
+    await prisma.todo.create({ data: { userId, title: "Buy new cleats" } });
+    const del = await say("delete the cleats one");
+    expect(del.reply).toBe("🗑️ Removed: Buy new cleats");
+    await undoMessage(userId, del.id);
+    expect(await prisma.todo.count({ where: { userId, title: "Buy new cleats", status: "open" } })).toBe(1);
+    expect((await say("mark buy new cleats as done")).reply).toContain("✅ Done: Buy new cleats");
+    expect(calls).toEqual([]); // none of it needed the model
+    await prisma.habit.deleteMany({ where: { userId } });
+    await prisma.todo.deleteMany({ where: { userId } });
   });
 
   it("an event with 'make a plan' gets a planned prep project instead of a plain to-do", async () => {

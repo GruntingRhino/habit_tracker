@@ -1,8 +1,11 @@
 import prisma from "@/lib/prisma";
+import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
-import { actionableCount, extractUpdate, isUpdate, parseTodos, type Extracted } from "@/lib/ai/update";
+import { actionableCount, extractUpdate, isUpdate, parseWorkout, parseTodos, type Extracted } from "@/lib/ai/update";
 import { needsPrep } from "@/lib/prep";
 import { secondLook } from "@/lib/ai/leftovers";
+import { isWorkoutHabit, parseHabitReports, type HabitReport } from "@/lib/ai/habitcheck";
+import { DID_I_Q, habitStatusAnswer, NUTRITION_Q, nutritionAnswer, PLATE_Q, plateAnswer, SCORE_Q, scoreAnswer } from "@/lib/ai/facts";
 import * as chrono from "chrono-node";
 import { addAttendees, createEvent, describeEventTime, emailsIn, parseEventStatement, prepDue, updateEvent, type ParsedEvent } from "@/lib/calendar";
 import { planItem } from "@/lib/ai/itemai";
@@ -140,6 +143,7 @@ export function describeActions(actions: ItemAction[]) {
       const verb = a.op === "complete" ? "✅ Done" : TYPE_LABEL[a.type];
       const reminded = a.type === "todo" && actions.some((b) => b.type === "reminder" && b.title === a.title);
       if (a.type === "journal" && a.op === "append") return "🧠 Added to today's journal";
+      if (a.op === "delete") return `🗑️ Removed: ${a.title}`;
       const emoji = a.type === "event" ? "📅" : a.type === "sleep" ? "😴" : a.type === "meal" ? "🍽️" : AREA_EMOJI[a.area ?? "general"] ?? "📌";
       return `${emoji} ${verb}: ${a.title}${a.detail ? ` — ${a.detail}` : ""}${reminded ? " (I'll remind you)" : ""}`;
     })
@@ -153,6 +157,7 @@ function undoneLabel(a: ItemAction) {
   if (a.op === "update") return `The changes to the plan "${a.title}" were reverted`;
   if (a.op === "complete") return `"${a.title}" is marked not done again`;
   if (a.op === "append") return `The journal note was removed`;
+  if (a.op === "delete") return `"${a.title}" was put back`;
   return `${TYPE_LABEL[a.type]} "${a.title}" was deleted`;
 }
 
@@ -206,6 +211,8 @@ export async function handleMessage(userId: string, text: string, source: Source
     let awaiting = recent ? (last?.awaiting as Awaiting | null) : null;
     const wantsFiling = CAPTURE_SIGNAL.test(trimmed) && !NEGATED_CAPTURE.test(trimmed) && !NOTE_QUESTION.test(trimmed);
 
+    // "How much chips?" then "dinner: chicken and rice": a new meal, not the answer.
+    if (awaiting?.kind === "meal_amount" && /^\s*(breakfast|brunch|lunch|dinner|snack)\b|^\s*(i\s+)?(just\s+|also\s+)?(had|ate|drank)\b/i.test(trimmed)) awaiting = null;
     // 1. An answer to the clarifying question just asked ("2 is urgent", "at 6pm").
     if (awaiting && last && looksLikeAnswer(trimmed)) {
       await prisma.chatMessage.update({ where: { id: last.id }, data: { awaiting: Prisma.DbNull } });
@@ -229,11 +236,43 @@ export async function handleMessage(userId: string, text: string, source: Source
       const ref = await referToLast(turn, lastActions, recent, trimmed);
       if (ref) return ref;
     }
+    // Exact answers from his data, never the model's reading of it.
+    const asking = /\?\s*$/.test(trimmed) || /^\s*(how|what|whats|what's|show|tell me|list)\b/i.test(trimmed);
+    if (asking && NUTRITION_Q.test(trimmed)) return save(turn, await nutritionAnswer(userId, trimmed));
+    if (asking && SCORE_Q.test(trimmed) && /\b(my|i)\b/i.test(trimmed)) return save(turn, await scoreAnswer(userId, trimmed));
+    if (asking && PLATE_Q.test(trimmed)) return save(turn, await plateAnswer(userId));
+    if (DID_I_Q.test(trimmed)) {
+      const status = await habitStatusAnswer(userId, trimmed);
+      if (status) return save(turn, status);
+    }
+    // "delete the cleats one", "remove call the dentist from my list"
+    const del = !awaiting ? DELETE_ITEM.exec(trimmed) : null;
+    if (del) {
+      const removed = await deleteByName(turn, del[1]);
+      if (removed) return removed;
+    }
+    // "mark call the dentist as done", "check off posture"
+    const mark = MARK_DONE.exec(trimmed);
+    if (mark) {
+      const done = await applyComplete(userId, [{ kind: "todo", title: mark[1] ?? mark[2], area: "general" }]);
+      if (done.actions.length) return save(turn, describeActions(done.actions), { actions: done.actions });
+      return save(turn, `I couldn't find "${mark[1] ?? mark[2]}" on your to-dos or habits. What's it called on your list?`);
+    }
+    // "i feel kinda unmotivated today": into the journal, and a real reply.
+    if (!awaiting && FEELING.test(trimmed) && trimmed.length < 200 && !/\?\s*$/.test(trimmed)) {
+      flags.conversational = true;
+      const actions = await applyCapture(userId, [{ kind: "journal", title: "Journal", area: "mental" }], trimmed, source);
+      const talk = stripClaims(await companionReply(turn.conversationId, turn.userMessageId, trimmed, turn.opts.onToken, FEEL_NOTE));
+      return save(turn, [talk, describeActions(actions)].filter(Boolean).join("\n\n"), { actions });
+    }
     // A day update ("slept 11 to 6:40, have to study for my bio and math quiz tomorrow, …"): every piece handled.
     // A short, explicit calendar line ("add soccer game to my calendar saturday 10-12, share with …") goes to the calendar reader.
     if (!awaiting && !/\?\s*$/.test(trimmed) && !(trimmed.length < 120 && parseEventStatement(trimmed))) {
       const extracted = extractUpdate(trimmed);
       if (isUpdate(trimmed, extracted)) return await handleUpdate(turn, trimmed, extracted);
+      // "just did my posture routine", "drank 60 oz so far", "didn't read my bible": his habits, by code.
+      const habits = await prisma.habit.findMany({ where: { userId, isActive: true }, select: { id: true, name: true, area: true } });
+      if (parseHabitReports(trimmed, habits).length) return await handleUpdate(turn, trimmed, extracted, habits);
       const n = actionableCount(extracted);
       // "coach wants to meet thursday": one event said casually.
       if (n === 1 && extracted.events.length === 1) return await eventFromChat(turn, { ...extracted.events[0], attendees: emailsIn(trimmed) }, trimmed);
@@ -421,6 +460,8 @@ async function routeAndReply(turn: Turn, trimmed: string, midChat: boolean, flag
         // A single plain to-do ("I need to call the bank tomorrow"): the title is his words, not the model's paraphrase.
         const own = routed.items.length === 1 && routed.items[0].kind === "todo" ? parseTodos(trimmed, new Date()) : [];
         if (own.length === 1) routed.items[0] = { ...routed.items[0], title: own[0].title };
+        const lift = routed.items.length === 1 && routed.items[0].kind === "workout" ? parseWorkout(trimmed) : null;
+        if (lift && lift !== "Gym") routed.items[0] = { ...routed.items[0], title: lift };
         const actions = await applyCapture(userId, routed.items, trimmed, source);
         // A meal missing an amount that matters: ask instead of guessing (it's saved with typical portions meanwhile).
         const mealAsk = await mealQuestion(actions);
@@ -1167,6 +1208,8 @@ async function shareFromChat(turn: Turn, text: string): Promise<AssistantReply |
 /** The same message again within 10 minutes (slow first reply → sent twice): say so instead of redoing it. */
 async function duplicateOf(userId: string, messageId: string, text: string): Promise<string | null> {
   if (text.length < 25) return null; // "ok", "yes", "thanks" repeat on purpose
+  // Asking again gets a fresh answer (the data may have changed).
+  if (/\?\s*$/.test(text) || /^\s*(what|how|when|where|which|who|did|do|is|are|show|list)\b/i.test(text)) return null;
   const prev = await prisma.chatMessage.findFirst({
     where: { userId, role: "user", content: text, id: { not: messageId }, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } },
     orderBy: { createdAt: "desc" },
@@ -1250,7 +1293,7 @@ const fmtWhenShort = (d: Date) => {
  * with study to-dos, requested to-dos (no duplicates), meetings to set up (then asks when), and the
  * rest into the journal. The reply lists exactly what was done — nothing the code didn't do.
  */
-async function handleUpdate(turn: Turn, text: string, x: Extracted): Promise<AssistantReply> {
+async function handleUpdate(turn: Turn, text: string, x: Extracted, knownHabits?: { id: string; name: string; area: string }[]): Promise<AssistantReply> {
   const { userId, source } = turn;
   const actions: ItemAction[] = [];
   const lines: string[] = [];
@@ -1349,6 +1392,13 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted): Promise<Ass
   // Done things: workouts tick the Workout habit, meals get nutrition estimated from just their clause.
   for (const w of x.workouts) actions.push(...(await applyCapture(userId, [{ kind: "workout", title: w, area: "physical", done: true }], w, source)));
   for (const m of x.meals) actions.push(...(await applyCapture(userId, [{ kind: "meal", title: m.name, area: "physical", done: true }], m.text, source)));
+  // Habits he says he did (or didn't): ticked, or noted ("60 oz of 100"). A logged workout already ticks Workout.
+  const habits = knownHabits ?? (await prisma.habit.findMany({ where: { userId, isActive: true }, select: { id: true, name: true, area: true } }));
+  const reports = parseHabitReports(text, habits).filter((r) => !(isWorkoutHabit(r.habit.name) && x.workouts.length));
+  for (const r of reports) actions.push(await logHabit(userId, r, habits.find((h) => h.id === r.habit.id)?.area));
+  // Clauses that were only about habits aren't journal material.
+  const unclaimed = x.reflection.filter((c) => !parseHabitReports(c, habits).length);
+  x = { ...x, reflection: unclaimed };
   // How the day went (and anything else) goes in the journal.
   if (x.reflection.join(" ").length >= 20) {
     const j = await applyCapture(userId, [{ kind: "journal", title: "Journal", area: "mental" }], text, source);
@@ -1387,6 +1437,58 @@ async function answerMeeting(turn: Turn, meeting: NonNullable<Awaiting["meeting"
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Tick a habit for today, or note how far he got. Undo puts the old log back. */
+async function logHabit(userId: string, r: HabitReport, area = "general"): Promise<ItemAction> {
+  const today = getStartOfDay(new Date());
+  // "went to bed at 11:30 last night" is yesterday's habit.
+  const day = r.yesterday ? new Date(today.getTime() - 86_400_000) : today;
+  const notes = r.note && r.note !== "not done" ? r.note : null;
+  const before = await prisma.habitLog.findUnique({ where: { habitId_date: { habitId: r.habit.id, date: day } }, select: { completed: true, notes: true } });
+  await prisma.habitLog.upsert({
+    where: { habitId_date: { habitId: r.habit.id, date: day } },
+    update: { completed: r.done, notes },
+    create: { habitId: r.habit.id, date: day, completed: r.done, notes },
+  });
+  await recomputeCategoryScoreForDate(userId, day);
+  const prev = JSON.stringify(before);
+  const when = r.yesterday ? " (last night)" : "";
+  const detail = r.done
+    ? notes ? `${notes}${when}` : r.yesterday ? "last night" : undefined
+    : r.note === "not done" ? `not done${r.yesterday ? " yesterday" : " today"} (noted)` : / oz of /.test(r.note ?? "") ? `${r.note} — noted, not there yet` : `${r.note}${when} — missed (noted)`;
+  return r.done
+    ? { op: "complete", type: "routine", id: r.habit.id, title: r.habit.name, area, href: "/work?tab=habits", detail, prev, ...(r.yesterday ? { day: day.toISOString() } : {}) }
+    : { op: "update", type: "routine", id: r.habit.id, title: r.habit.name, area, href: "/work?tab=habits", detail, prev, ...(r.yesterday ? { day: day.toISOString() } : {}) };
+}
+
+const DELETE_ITEM = /^\s*(?:please\s+|can you\s+)?(?:delete|remove|get rid of|take off|scratch|drop)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:one|item|todo|to-do|task|reminder))?(?:\s+(?:from|off)\s+(?:of\s+)?(?:my\s+|the\s+)?(?:list|todos?|to-?do list|reminders))?\s*[.!]*$/i;
+const MARK_DONE = /^\s*(?:please\s+|can you\s+)?(?:mark|set)\s+(?:the\s+|my\s+)?(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished)\s*[.!]*$|^\s*(?:please\s+|can you\s+)?(?:check|tick|cross)\s+off\s+(?:the\s+|my\s+)?(.+?)\s*[.!]*$/i;
+const FEELING = /^\s*(?:(?:honestly|ngl|tbh|man|bro|ugh|so)[,\s]+)*(?:i'?m|i am|im|i feel|i felt|feeling|i'?ve been|been feeling)\s+(?:(?:kinda|kind of|really|so|pretty|super|a bit|a little|lowkey|very|hella|mad|lwk)\s+)*(unmotivated|tired|stressed|sad|down|anxious|lazy|burnt out|burned out|overwhelmed|bored|lonely|angry|annoyed|good|great|happy|motivated|proud|exhausted|drained|off|behind|stuck)\b/i;
+const FEEL_NOTE = `He's telling you how he feels. Reply in 1-2 short sentences: acknowledge it plainly (never "good to know"), then suggest ONE small concrete next step from his day (one easy habit, or 10 minutes on a to-do). No lists, no lecture, no questions.`;
+
+/** Delete an open to-do or pending reminder by name. Undo recreates it. */
+async function deleteByName(turn: Turn, name: string): Promise<AssistantReply | null> {
+  const { userId } = turn;
+  const target = name.replace(/^(the|my)\s+/i, "").trim();
+  if (!target || /^(it|that|this|them|those|everything|all)$/i.test(target)) return null;
+  const todos = await prisma.todo.findMany({ where: { userId, status: "open" } });
+  const todo = todos.find((t) => sameTask(target, t.title)) ?? bestMatch(target, todos, 0.5);
+  if (todo) {
+    await prisma.reminder.deleteMany({ where: { userId, todoId: todo.id, status: "pending" } });
+    await prisma.todo.delete({ where: { id: todo.id } });
+    const a: ItemAction = { op: "delete", type: "todo", id: todo.id, title: todo.title, area: todo.area, href: "/work", prev: JSON.stringify(todo) };
+    return save(turn, describeActions([a]), { actions: [a] });
+  }
+  const reminders = await prisma.reminder.findMany({ where: { userId, status: "pending" } });
+  const rem = reminders.map((r) => ({ ...r, title: r.text })).find((r) => sameTask(target, r.title)) ?? bestMatch(target, reminders.map((r) => ({ ...r, title: r.text })), 0.5);
+  if (rem) {
+    const { title: _t, ...row } = rem;
+    await prisma.reminder.delete({ where: { id: rem.id } });
+    const a: ItemAction = { op: "delete", type: "reminder", id: rem.id, title: rem.text, area: "general", href: "/work", prev: JSON.stringify(row) };
+    return save(turn, describeActions([a]), { actions: [a] });
+  }
+  return save(turn, `I couldn't find "${target}" on your to-dos or reminders — what's it called on your list?`);
+}
 
 const TASK_STOP = new Set(["for", "the", "my", "a", "an", "to", "on", "of", "and", "do", "some", "work"]);
 const taskWords = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w && !TASK_STOP.has(w)).map((w) => w.replace(/(ing|s)$/, "")));

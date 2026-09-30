@@ -28,7 +28,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 // Lines the server writes for created items; the UI shows them as rows instead.
-const ACTION_LINE = /^\S+ (To-do|Project|Task|Routine|Habit|Reminder|Meal|Workout|Journal|Note|✅ Done):/;
+const ACTION_LINE = /^\S+ (To-do|Project|Task|Routine|Habit|Reminder|Meal|Workout|Journal|Note|Calendar|Sleep|✅ Done|Removed):/;
 
 function PlanView({ plan, projectHref, undone }: { plan: PlanCard; projectHref?: string; undone: boolean }) {
   return (
@@ -105,7 +105,7 @@ function AssistantBody({ msg, onUndo }: { msg: ChatMsg; onUndo: (id: string) => 
           {actions.map((a) => (
             <Link key={`${a.type}-${a.id}-${a.op}`} href={a.href} className="flex items-center gap-2.5 py-1 text-sm hover:opacity-80">
               <AreaDot area={a.area} />
-              <span style={{ color: "var(--ink-500)" }}>{a.op === "complete" ? "Done" : TYPE_LABEL[a.type] ?? a.type}</span>
+              <span style={{ color: "var(--ink-500)" }}>{a.op === "complete" ? "Done" : a.op === "delete" ? "Removed" : TYPE_LABEL[a.type] ?? a.type}</span>
               <span className="truncate" style={{ color: "var(--ink-100)" }}>{a.title}</span>
               {a.detail && <span className="truncate text-xs" style={{ color: "var(--ink-500)" }}>{a.detail}</span>}
             </Link>

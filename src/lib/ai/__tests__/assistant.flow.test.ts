@@ -502,11 +502,11 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     expect((await prisma.todo.findFirst({ where: { userId } }))?.priority).toBe("urgent");
   });
 
-  it("a long reflection is journaled with a reply, not split into to-dos", async () => {
+  it("a long reflection is journaled (code-written reply, no model), not split into to-dos", async () => {
     calls.length = 0;
     const r = await say(`Here's my week: ${"I have class and work and gym and I feel like there is never enough time. ".repeat(4)}`);
     expect(r.actions).toMatchObject([{ type: "journal" }]);
-    expect(calls).toEqual(["chat"]); // no router
+    expect(calls).toEqual([]);
   });
 
   it("'what's my garage code?' is answered from notes; unknown ones aren't guessed", async () => {
@@ -772,5 +772,62 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     const yes = await say("yes");
     expect(yes.reply).toMatch(/^To-do: Prepare for robotics session/);
     expect(await prisma.todo.count({ where: { userId, title: { contains: "robotics" } } })).toBe(1);
+  });
+
+  it("his real day update: sleep, quizzes + study to-dos, journal; a resend isn't redone; the meeting; 'those two items'", async () => {
+    const LONG = "let’s do some informing i’ll tell you some data about how today is going. i slept from 11:00 to 6:40 am and i had my APUSH test. was somewhat focused today in the morning it’s 2:00 pm so im gonna go home, and do some work on the todo list. i have to study for my bio and math quiz for tomorrow too by the way. APUSH test was rough idk how it went. i’ll lyk when i get it back";
+    calls.length = 0;
+    const r = await say(LONG);
+    expect(r.reply.split("\n")).toEqual([
+      "😴 Sleep: 7h 40m — logged",
+      "📅 Calendar: Bio quiz — tomorrow",
+      expect.stringMatching(/^💼 To-do: Study for bio quiz — due (today 7pm|today \d+(:\d+)?[ap]m|tomorrow) \(I'll remind you\)$/),
+      "📅 Calendar: Math quiz — tomorrow",
+      expect.stringMatching(/^💼 To-do: Study for math quiz — due .* \(I'll remind you\)$/),
+      "🧠 Added to today's journal",
+    ]);
+    expect(calls).toEqual([]); // no model needed, nothing invented
+    const entry = await prisma.dailyEntry.findFirstOrThrow({ where: { userId } });
+    expect([entry.sleepHours, entry.bedtime]).toEqual([7.67, "23:00"]);
+
+    cid = null; // he resent it in a new chat because the first reply was slow
+    const again = await say(LONG);
+    expect(again.reply).toMatch(/^Already got that one/);
+    expect(await prisma.todo.count({ where: { userId } })).toBe(2);
+    expect((await prisma.dailyEntry.findFirstOrThrow({ where: { userId } })).notes!.match(/let’s do some informing/g)).toHaveLength(1);
+
+    const second = await say("uhh math is just algebra two bio we are just doing molecular stuff, bonds, LDF etc. not big deal i’ll allocate 4 hrs in total today for studying those things. great news i heard back from tech district leader that we can setup a meeting. also add bio and math studying yo todo list");
+    expect(second.reply).toContain("💼 To-do: Set up meeting with tech district leader");
+    expect(second.reply).toContain("Already on your list: Study for bio quiz · Study for math quiz");
+    expect(second.reply).toMatch(/When is the meeting with tech district leader\?/);
+    expect(await prisma.todo.count({ where: { userId } })).toBe(3);
+
+    const those = await say("nothing i just have to do those two items");
+    expect(those.reply).toBe("Got it — they're already on your list: Study for bio quiz · Study for math quiz. I'll keep you on them.");
+    expect(await prisma.todo.count({ where: { userId } })).toBe(3); // no "Do those two items"
+  });
+
+  it("the meeting time answer puts it on the calendar and ticks off 'set up meeting'", async () => {
+    await say("great news i heard back from the tech district leader that we can setup a meeting. also add bio and math studying to my todo list");
+    const r = await say("thursday at 3pm");
+    expect(r.reply).toMatch(/📅 Calendar: Meeting with tech district leader — Thu/);
+    expect(r.reply).toContain("✅ Done: Set up meeting with tech district leader");
+    expect(r.reply).toMatch(/Should I share it with anyone\?$/);
+  });
+
+  it("greetings, thanks and 'can you add a habit' are instant and sensible", async () => {
+    calls.length = 0;
+    expect((await say("hi")).reply).toBe("Hey! What's up?");
+    expect((await say("Hello")).reply).toBe("Hey! What's up?");
+    expect((await say("thanks")).reply).toBe("Anytime 👊");
+    expect((await say("can you add a habit for me")).reply).toBe(`Sure — what's the habit, and which days? e.g. "stretch every night" or "read 20 pages on weekdays"`);
+    expect(calls).toEqual([]);
+  });
+
+  it("chat replies never claim actions that didn't happen", async () => {
+    const { stripClaims } = await import("@/lib/ai/assistant");
+    expect(stripClaims("Great, you've got a meeting set up and added bio and math to your study list. Good luck on the quizzes!")).toBe("Good luck on the quizzes!");
+    expect(stripClaims("I've added it to your calendar. Nice work.")).toBe("Nice work.");
+    expect(stripClaims("Sounds like a rough test. Hang in there.")).toBe("Sounds like a rough test. Hang in there.");
   });
 });

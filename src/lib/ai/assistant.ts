@@ -1,4 +1,6 @@
 import prisma from "@/lib/prisma";
+import { getStartOfDay } from "@/lib/utils";
+import { extractUpdate, isUpdate, parseTodos, type Extracted } from "@/lib/ai/update";
 import { needsPrep } from "@/lib/prep";
 import * as chrono from "chrono-node";
 import { addAttendees, createEvent, describeEventTime, emailsIn, parseEventStatement, prepDue, updateEvent, type ParsedEvent } from "@/lib/calendar";
@@ -49,7 +51,9 @@ interface ItemRef {
 }
 
 interface Awaiting {
-  kind: "triage" | "reminder_time" | "prioritize" | "meal_amount" | "event_time" | "event_share" | "event_prep";
+  kind: "triage" | "reminder_time" | "prioritize" | "meal_amount" | "event_time" | "event_share" | "event_prep" | "meeting_when";
+  /** meeting_when: the "Set up meeting with …" to-do and who it's with. */
+  meeting?: { todoId: string; title: string };
   /** event_*: the calendar event being asked about (askPrep: still ask whether it needs preparing). */
   event?: { id: string; title: string; askPrep?: boolean };
   refs: ItemRef[];
@@ -63,6 +67,8 @@ export interface ReplyMeta {
   /** Set once he presses Undo: what was reversed, phrased for the model's context. */
   undone?: string[];
   undoneAt?: string;
+  /** To-do titles this reply was about, so "those two" next can point at them. */
+  items?: string[];
 }
 
 const SWITCH_BLOCK = /\b(switch|move|start|go|change)\s+(?:to\s+)?upper\s+([abc])\b/i;
@@ -117,6 +123,7 @@ const TYPE_LABEL: Record<ItemAction["type"], string> = {
   note: "Note",
   plan: "Plan",
   schedule: "Schedule",
+  sleep: "Sleep",
   measurement: "Measurement",
   event: "Calendar",
 };
@@ -124,10 +131,14 @@ const TYPE_LABEL: Record<ItemAction["type"], string> = {
 export function describeActions(actions: ItemAction[]) {
   return actions
     .filter((a) => a.type !== "plan")
-    .filter((a) => !(a.type === "todo" && actions.some((b) => b.type === "reminder" && b.title === a.title)))
+    // A to-do with its own reminder is one line: the to-do, "I'll remind you".
+    .filter((a) => !(a.type === "reminder" && actions.some((b) => b.type === "todo" && b.title === a.title)))
     .map((a) => {
       const verb = a.op === "complete" ? "✅ Done" : TYPE_LABEL[a.type];
-      return `${AREA_EMOJI[a.area ?? "general"] ?? "📌"} ${verb}: ${a.title}${a.detail ? ` — ${a.detail}` : ""}`;
+      const reminded = a.type === "todo" && actions.some((b) => b.type === "reminder" && b.title === a.title);
+      if (a.type === "journal" && a.op === "append") return "🧠 Added to today's journal";
+      const emoji = a.type === "event" ? "📅" : a.type === "sleep" ? "😴" : AREA_EMOJI[a.area ?? "general"] ?? "📌";
+      return `${emoji} ${verb}: ${a.title}${a.detail ? ` — ${a.detail}` : ""}${reminded ? " (I'll remind you)" : ""}`;
     })
     .join("\n");
 }
@@ -135,6 +146,7 @@ export function describeActions(actions: ItemAction[]) {
 /** What an undo reversed, in words the chat model reads later. */
 function undoneLabel(a: ItemAction) {
   if (a.type === "plan") return `The plan "${a.title}" was cancelled`;
+  if (a.type === "sleep") return `The sleep log (${a.title}) was removed`;
   if (a.op === "update") return `The changes to the plan "${a.title}" were reverted`;
   if (a.op === "complete") return `"${a.title}" is marked not done again`;
   if (a.op === "append") return `The journal note was removed`;
@@ -175,6 +187,12 @@ export async function handleMessage(userId: string, text: string, source: Source
   // Chat and planning failures get an apology; filing failures fall back to saving the input.
   const flags = { conversational: false };
   try {
+    // Sent the same thing again (the first reply was slow): don't do it twice.
+    const dupe = await duplicateOf(userId, userMsg.id, trimmed);
+    if (dupe) return save(turn, dupe);
+    const quick = await quickReply(userId, trimmed);
+    if (quick) return save(turn, quick);
+
     const last = await prisma.chatMessage.findFirst({
       where: { conversationId: conv.id, role: "assistant" },
       orderBy: { createdAt: "desc" },
@@ -203,6 +221,16 @@ export async function handleMessage(userId: string, text: string, source: Source
       return save(turn, `Which item do you mean? I don't have a numbered list open right now, so tell me its name (e.g. "the essay is due friday").`);
     }
     if (undoneSince.length && ABOUT_UNDO.test(trimmed)) return save(turn, undoAnswer(undoneSince));
+    // "those two items", "both of them": what was just added, not a new to-do called "Do those two items".
+    if (!awaiting && THOSE.test(trimmed) && !/\b(add|remind|new)\b/i.test(trimmed)) {
+      const ref = await referToLast(turn, lastActions, recent, trimmed);
+      if (ref) return ref;
+    }
+    // A day update ("slept 11 to 6:40, have to study for my bio and math quiz tomorrow, …"): every piece handled.
+    if (!awaiting && !/\?\s*$/.test(trimmed)) {
+      const extracted = extractUpdate(trimmed);
+      if (isUpdate(trimmed, extracted)) return await handleUpdate(turn, trimmed, extracted);
+    }
     // "I have a dentist appointment Friday at 3" → calendar event + prep to-do, then ask what's missing.
     const event = !awaiting ? parseEventStatement(trimmed) : null;
     if (event) return await eventFromChat(turn, event, trimmed);
@@ -331,7 +359,7 @@ export async function handleMessage(userId: string, text: string, source: Source
         if (done.actions.length) return save(turn, describeActions(done.actions), { actions: done.actions });
       }
     }
-    // A long reflection (like a reply to the evening check-in) is a journal entry, not a pile of to-dos.
+    // A long reflection with nothing to act on (like a reply to the evening check-in): the journal.
     if (!wantsFiling && trimmed.length > 220 && !/\?\s*$/.test(trimmed)) {
       const actions = await applyCapture(userId, [{ kind: "journal", title: "Reflection", area: "mental" }], trimmed, source);
       const talk = await sideReply(turn, trimmed, actions);
@@ -373,6 +401,9 @@ async function routeAndReply(turn: Turn, trimmed: string, midChat: boolean, flag
           const done = await applyComplete(userId, routed.items.map((i) => ({ ...i, title: i.title.replace(/^(finish|complete|do)\s+/i, "") })));
           if (done.actions.length && !done.missed.length) return save(turn, describeActions(done.actions), { actions: done.actions });
         }
+        // A single plain to-do ("I need to call the bank tomorrow"): the title is his words, not the model's paraphrase.
+        const own = routed.items.length === 1 && routed.items[0].kind === "todo" ? parseTodos(trimmed, new Date()) : [];
+        if (own.length === 1) routed.items[0] = { ...routed.items[0], title: own[0].title };
         const actions = await applyCapture(userId, routed.items, trimmed, source);
         // A meal missing an amount that matters: ask instead of guessing (it's saved with typical portions meanwhile).
         const mealAsk = await mealQuestion(actions);
@@ -410,8 +441,28 @@ async function routeAndReply(turn: Turn, trimmed: string, midChat: boolean, flag
 }
 
 async function chatReply(turn: Turn, text: string, note?: string) {
-  const reply = await companionReply(turn.conversationId, turn.userMessageId, text, turn.opts.onToken, note);
+  const reply = stripClaims(await companionReply(turn.conversationId, turn.userMessageId, text, turn.opts.onToken, note));
   return save(turn, reply || "🙂");
+}
+
+/** Sentences where the model says it did something ("I've added…", "you're all set, it's on your list"). */
+const CLAIM =
+  /\b(i('ve| have| just)?|i'll|we('ve)?|it'?s|they'?re|that'?s)\b[^.!?]{0,40}\b(added|created|scheduled|saved|logged|filed|booked|noted|marked|updated|set up|put (it|that|them|those)|reminded|set a reminder)\b|\b(added|put|saved|logged|scheduled)\b[^.!?]{0,30}\b(to|on|in) (your|the) (list|calendar|to-?do|to-?do list|study list|schedule|journal|plan)\b|\byou'?re all set\b/i;
+
+export function stripClaims(reply: string) {
+  return reply
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => !CLAIM.test(s))
+    .join(" ")
+    .trim();
+}
+
+function stripQuestions(reply: string) {
+  return reply
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => !/\?\s*$/.test(s))
+    .join(" ")
+    .trim();
 }
 
 /** The conversational half of a message that also filed something. Never fails the turn: the items are already saved. */
@@ -420,7 +471,8 @@ async function sideReply(turn: Turn, text: string, actions: ItemAction[]) {
     const done = describeActions(actions).replace(/^\S+ /gm, "").replace(/\n/g, "; ");
     const note = `The app just saved: ${done || "nothing"}. It's shown above your reply, so don't list it again; just answer the rest of his message.`;
     const reply = await companionReply(turn.conversationId, turn.userMessageId, text, turn.opts.onToken, note);
-    return dropEchoes(reply, actions.map((a) => a.title), text);
+    // Beside saved items: no claims of its own (code already said what was done) and no filler questions.
+    return stripQuestions(stripClaims(dropEchoes(reply, actions.map((a) => a.title), text)));
   } catch (error) {
     reportError({ context: "assistant.sideReply", error, userId: turn.userId });
     return "";
@@ -819,6 +871,7 @@ async function handleAnswer(turn: Turn, awaiting: Awaiting, text: string): Promi
   const { userId } = turn;
   if (awaiting.kind === "meal_amount" && awaiting.meal) return answerMealAmount(turn, awaiting.meal, text);
   if ((awaiting.kind === "event_time" || awaiting.kind === "event_share" || awaiting.kind === "event_prep") && awaiting.event) return answerEvent(turn, awaiting, text);
+  if (awaiting.kind === "meeting_when" && awaiting.meeting) return answerMeeting(turn, awaiting.meeting, text);
   if (awaiting.kind === "reminder_time") {
     const when = parseWhen(text);
     const ref = awaiting.refs[0];
@@ -1090,4 +1143,198 @@ async function shareFromChat(turn: Turn, text: string): Promise<AssistantReply |
   const target = match ?? [...upcoming].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   const r = await addAttendees(userId, target.id, emails);
   return save(turn, `Shared ${target.title} (${describeEventTime(target)}) with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : ". (Connect Google Calendar on the Schedule page so they get an invite.)"}`);
+}
+
+// ---- duplicates, quick replies, references ----------------------------------------------------
+
+/** The same message again within 10 minutes (slow first reply → sent twice): say so instead of redoing it. */
+async function duplicateOf(userId: string, messageId: string, text: string): Promise<string | null> {
+  if (text.length < 25) return null; // "ok", "yes", "thanks" repeat on purpose
+  const prev = await prisma.chatMessage.findFirst({
+    where: { userId, role: "user", content: text, id: { not: messageId }, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!prev) return null;
+  const reply = await prisma.chatMessage.findFirst({ where: { conversationId: prev.conversationId, role: "assistant", createdAt: { gte: prev.createdAt } }, orderBy: { createdAt: "asc" } });
+  if (!reply) return "Still working on that one — it takes up to a minute. It'll show up in the chat where you sent it.";
+  return `Already got that one (it came in twice), so I didn't add anything again. Here's what I did:\n\n${reply.content}`;
+}
+
+const GREETING = /^(hi+|hey+|hello+|yo+|sup|wh?at'?s up|wassup|howdy|good (morning|afternoon|evening)|gm|morning|evening)[\s!.,]*(abhay|bro|man|dude|there)?[\s!.]*$/i;
+const THANKS = /^(thanks|thank (you|u)|thx|ty|tysm|appreciate (it|you))( (so much|a lot|man|bro))?[\s!.]*$/i;
+const ACK = /^(ok(ay)?|k|cool|nice|great|bet|got it|sounds good|perfect|alright)[\s!.]*$/i;
+const ADD_WHAT = /^(?:can|could|will|would) you (?:please )?(?:add|make|create|set(?: up)?|start) (?:me )?(?:a |an |another |new )?(habit|to-?do|task|reminder|project|event|note|goal)(?: for me)?(?: please)?\??$/i;
+
+/** Greetings, thanks and "can you add a habit?" get instant, sensible replies (no model). */
+async function quickReply(userId: string, text: string): Promise<string | null> {
+  const t = text.trim();
+  if (GREETING.test(t)) {
+    const now = new Date();
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const due = await prisma.todo.count({ where: { userId, status: "open", dueAt: { lt: end } } });
+    const hi = /morning|gm/i.test(t) ? "Morning!" : /evening/i.test(t) ? "Evening!" : "Hey!";
+    return due ? `${hi} You've got ${due} thing${due === 1 ? "" : "s"} due today — say "what's on today?" for the list.` : `${hi} What's up?`;
+  }
+  if (THANKS.test(t)) return "Anytime 👊";
+  if (ACK.test(t)) return "👍";
+  const add = t.match(ADD_WHAT);
+  if (add) {
+    const kind = (add[1] ?? "").toLowerCase().replace("-", "");
+    const example: Record<string, string> = {
+      habit: `What's the habit, and which days? e.g. "stretch every night" or "read 20 pages on weekdays"`,
+      todo: `What's the to-do, and when's it due? e.g. "email my counselor by friday"`,
+      task: `What's the task, and when's it due? e.g. "email my counselor by friday"`,
+      reminder: `What should I remind you about, and when? e.g. "remind me at 6 to take my vitamins"`,
+      project: `What's the project? e.g. "project: science fair" — then open it on Work to add steps`,
+      event: `What's the event and when? e.g. "debate tournament saturday 8am"`,
+      note: `What should the note say? e.g. "note: locker combo 12-34-56"`,
+      goal: `What's the goal? e.g. "I want to bench 185 by summer"`,
+    };
+    const ask = example[kind] ?? "What should I add?";
+    return `Sure — ${ask.charAt(0).toLowerCase()}${ask.slice(1)}`;
+  }
+  return null;
+}
+
+const THOSE = /\b(those|these|both|them|the (two|three|2|3) (items|things|tasks|ones))\b/i;
+
+/** "I just have to do those two items": point at what was just added instead of filing a new to-do. */
+async function referToLast(turn: Turn, lastActions: ItemAction[], recent: boolean, text = ""): Promise<AssistantReply | null> {
+  // The items the last turn was about (created or already there), in the order he asked for them.
+  const last = recent ? await prisma.chatMessage.findFirst({ where: { conversationId: turn.conversationId, role: "assistant" }, orderBy: { createdAt: "desc" }, select: { meta: true } }) : null;
+  const named = ((last?.meta as { items?: string[] } | null)?.items ?? []).slice();
+  const n = { two: 2, "2": 2, three: 3, "3": 3, both: 2 }[(text.match(/\b(two|three|2|3|both)\b/i)?.[1] ?? "").toLowerCase()];
+  if (named.length) {
+    const pick = n ? named.slice(0, n) : named;
+    return save(turn, `Got it — they're already on your list: ${pick.join(" · ")}. I'll keep you on them.`, { meta: { items: pick } });
+  }
+  const items = recent ? lastActions.filter((a) => a.op === "create" && (a.type === "todo" || a.type === "task" || a.type === "event")) : [];
+  if (!items.length) {
+    // Maybe they're in the message before: look a little further back in this conversation.
+    const prev = await prisma.chatMessage.findMany({ where: { conversationId: turn.conversationId, role: "assistant", createdAt: { gte: new Date(Date.now() - 60 * 60_000) } }, orderBy: { createdAt: "desc" }, take: 3 });
+    const earlier = prev.flatMap((m) => ((m.actions as ItemAction[] | null) ?? []).filter((a) => a.op === "create" && (a.type === "todo" || a.type === "task")));
+    if (!earlier.length) return save(turn, "Which ones? Tell me the items and I'll add them.");
+    items.push(...earlier);
+  }
+  const todos = items.filter((a) => a.type !== "event");
+  return save(turn, `Got it — they're already on your list: ${todos.map((a) => a.title).join(" · ")}. I'll keep you on them.`);
+}
+
+// ---- a day update -----------------------------------------------------------------------------
+
+const fmtWhenShort = (d: Date) => {
+  const now = new Date();
+  const day = d.toDateString() === now.toDateString() ? "today" : d.toDateString() === new Date(now.getTime() + 86_400_000).toDateString() ? "tomorrow" : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return d.getHours() || d.getMinutes() ? `${day} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase()}` : day;
+};
+
+/**
+ * Everything in a "here's my day" message, done by code: sleep logged, quizzes/tests on the calendar
+ * with study to-dos, requested to-dos (no duplicates), meetings to set up (then asks when), and the
+ * rest into the journal. The reply lists exactly what was done — nothing the code didn't do.
+ */
+async function handleUpdate(turn: Turn, text: string, x: Extracted): Promise<AssistantReply> {
+  const { userId, source } = turn;
+  const actions: ItemAction[] = [];
+  const lines: string[] = [];
+  const open = await prisma.todo.findMany({ where: { userId, status: "open" }, select: { id: true, title: true } });
+  const already: string[] = [];
+  const touched: string[] = [];
+  const addTodo = async (title: string, due: Date | null, priority = "medium") => {
+    const dupe = open.find((o) => sameTask(o.title, title));
+    if (dupe) {
+      already.push(dupe.title);
+      touched.push(dupe.title);
+      return null;
+    }
+    touched.push(title.slice(0, 200));
+    const todo = await prisma.todo.create({ data: { userId, title: title.slice(0, 200), dueAt: due, priority, area: keywordArea(title) ?? "work", source } });
+    open.push({ id: todo.id, title: todo.title });
+    actions.push({ op: "create", type: "todo", id: todo.id, title: todo.title, area: todo.area, href: "/work", detail: due ? `due ${fmtWhenShort(due)}` : undefined });
+    return todo;
+  };
+
+  if (x.sleep) {
+    const day = getStartOfDay(new Date());
+    const before = await prisma.dailyEntry.findUnique({ where: { userId_date: { userId, date: day } }, select: { sleepHours: true } });
+    const entry = await prisma.dailyEntry.upsert({
+      where: { userId_date: { userId, date: day } },
+      update: { sleepHours: x.sleep.hours, ...(x.sleep.bedtime ? { bedtime: x.sleep.bedtime } : {}) },
+      create: { userId, date: day, sleepHours: x.sleep.hours, ...(x.sleep.bedtime ? { bedtime: x.sleep.bedtime } : {}) },
+    });
+    const h = Math.floor(x.sleep.minutes / 60);
+    const m = x.sleep.minutes % 60;
+    actions.push({ op: "update", type: "sleep", id: entry.id, title: `${h}h${m ? ` ${m}m` : ""}`, area: "physical", href: "/chat?tab=journal", detail: "logged", prev: before?.sleepHours != null ? String(before.sleepHours) : null });
+  }
+  for (const a of x.assessments) {
+    const end = a.start.getHours() || a.start.getMinutes() ? new Date(a.start.getTime() + 3_600_000) : new Date(a.start.getTime() + 86_400_000);
+    const { event, onGoogle } = await createEvent(userId, { title: a.title, start: a.start, end, allDay: !(a.start.getHours() || a.start.getMinutes()) });
+    actions.push({ op: "create", type: "event", id: event.id, title: a.title, area: "work", href: "/schedule", detail: `${fmtWhenShort(a.start)}${onGoogle ? " · on Google Calendar" : ""}` });
+    const due = prepDue(a.start);
+    const todo = await addTodo(cap(a.prepTitle), due, "high");
+    if (todo) {
+      await prisma.calendarEvent.update({ where: { id: event.id }, data: { todoId: todo.id } });
+      const r = await prisma.reminder.create({ data: { userId, text: todo.title, fireAt: due, todoId: todo.id } });
+      actions.push({ op: "create", type: "reminder", id: r.id, title: todo.title, area: "work", href: "/work", detail: fmtWhenShort(due) });
+    }
+  }
+  // What he asked for in this message comes first, so "those two" later means these.
+  const assessmentItems = [...touched];
+  touched.length = 0;
+  for (const t of x.todos) await addTodo(t.title, t.due);
+  touched.push(...assessmentItems);
+  let ask: Awaiting | null = null;
+  let question: string | null = null;
+  for (const m of x.meetings) {
+    const todo = await addTodo(cap(m.title), null, "high");
+    if (todo && !ask) {
+      ask = { kind: "meeting_when", refs: [], meeting: { todoId: todo.id, title: m.who ? `Meeting with ${m.who}` : "Meeting" } };
+      question = `When is the meeting${m.who ? ` with ${m.who}` : ""}? I'll put it on your calendar (or say "not set yet").`;
+    }
+  }
+  // How the day went (and anything else) goes in the journal.
+  if (x.reflection.join(" ").length >= 20) {
+    const j = await applyCapture(userId, [{ kind: "journal", title: "Journal", area: "mental" }], text, source);
+    actions.push(...j);
+  }
+
+  if (!actions.length && !already.length) return routeAndReply(turn, text, false, { conversational: false });
+  lines.push(describeActions(actions));
+  if (already.length) lines.push(`Already on your list: ${[...new Set(already)].join(" · ")}`);
+  if (question) lines.push(question);
+  return save(turn, lines.filter(Boolean).join("\n"), { actions, awaiting: ask, meta: { ...(ask ? { options: ["Not set yet"] } : {}), items: [...new Set(touched)] } });
+}
+
+async function answerMeeting(turn: Turn, meeting: NonNullable<Awaiting["meeting"]>, text: string): Promise<AssistantReply | null> {
+  const { userId } = turn;
+  if (/\b(not (set|sure|yet)|idk|don'?t know|tbd|later|no idea)\b/i.test(text)) return save(turn, "Okay — it stays on your list to set up. Tell me the time once you have it.");
+  const found = chrono.parse(text, new Date(), { forwardDate: true })[0];
+  if (!found) return null;
+  const start = found.start.date();
+  const hasTime = found.start.isCertain("hour");
+  if (hasTime && !found.start.isCertain("meridiem") && start.getHours() >= 1 && start.getHours() <= 6) start.setHours(start.getHours() + 12);
+  if (!hasTime) start.setHours(0, 0, 0, 0);
+  const end = found.end?.date() ?? new Date(start.getTime() + (hasTime ? 3_600_000 : 86_400_000));
+  const { event, onGoogle } = await createEvent(userId, { title: meeting.title, start, end, allDay: !hasTime });
+  // It's set up now: tick off "Set up meeting with …".
+  await prisma.todo.updateMany({ where: { id: meeting.todoId, userId, status: "open" }, data: { status: "done", completedAt: new Date() } });
+  const actions: ItemAction[] = [
+    { op: "create", type: "event", id: event.id, title: meeting.title, area: "work", href: "/schedule", detail: `${describeEventTime(event)}${onGoogle ? " · on Google Calendar" : ""}` },
+    { op: "complete", type: "todo", id: meeting.todoId, title: `Set up ${meeting.title.charAt(0).toLowerCase()}${meeting.title.slice(1)}`, area: "work", href: "/work" },
+  ];
+  const r = await eventReminder(userId, event);
+  if (r) actions.push({ op: "create", type: "reminder", id: r.id, title: r.text, area: "work", href: "/schedule", detail: fmtDue(r.fireAt) });
+  const q = nextEventQuestion({ id: event.id, title: meeting.title }, hasTime, false);
+  const reply = [describeActions(actions), q?.text].filter(Boolean).join("\n");
+  return save(turn, reply, { actions, awaiting: q?.awaiting ?? null, meta: q ? { options: q.options } : null });
+}
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const TASK_STOP = new Set(["for", "the", "my", "a", "an", "to", "on", "of", "and", "do", "some", "work"]);
+const taskWords = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w && !TASK_STOP.has(w)).map((w) => w.replace(/(ing|s)$/, "")));
+/** Same task? Every meaningful word of the shorter one is in the longer ("Study bio" = "Study for bio quiz", but not "Study math"). */
+export function sameTask(a: string, b: string) {
+  const [x, y] = [taskWords(a), taskWords(b)].sort((p, q) => p.size - q.size);
+  return x.size > 0 && [...x].every((w) => y.has(w));
 }

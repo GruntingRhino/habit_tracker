@@ -1,89 +1,202 @@
 /**
- * A long "here's how my day is going" message: pull out every actionable piece by code instead of
- * dumping the whole thing into the journal (or trusting a 1.7B model to spot five things at once).
+ * A "here's my day" message, read by code piece by piece (slang and typos included):
  *
- *   "i slept from 11:00 to 6:40"               → sleep 7.7 h (bed 11pm)
- *   "study for my bio and math quiz tomorrow"  → Bio quiz + Math quiz (tomorrow) + "Study for …" to-dos
- *   "add bio and math studying to my todo list"→ to-dos (skipping ones already on the list)
- *   "i have to call the counselor friday"      → to-do due Friday
- *   "we can set up a meeting" (tech leader)    → to-do "Set up meeting with tech district leader" + asks when
+ *   sleep        "slept 11 to 6:40", "crashed at like midnight, up at 7", "got maybe 6 hrs"
+ *   tests ahead  "bio and math quiz tomorrow", "gotta hit the books for chem tmrw, big test"
+ *   events       "coach wants to meet thursday", "meeting with the principal friday at 10"
+ *   to-dos       "have to / gotta / remember to / dont forget to …", "add X to my list",
+ *                "i owe my mom 20 bucks"
+ *   set-ups      "we can set up a meeting", "need to schedule a call with the district"
+ *   workouts     "hit legs", "did push day", "ran 3 miles";  meals "had chipotle for lunch"
  * Everything else (how it went, how he feels) is reflection → the journal.
  */
 import * as chrono from "chrono-node";
+import { parseEventStatement } from "@/lib/calendar";
+
+export interface UpdateEvent {
+  title: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+  hasTime: boolean;
+}
 
 export interface Extracted {
   sleep: { hours: number; minutes: number; bedtime: string | null } | null;
   assessments: { title: string; start: Date; prepTitle: string }[];
+  events: UpdateEvent[];
   todos: { title: string; due: Date | null }[];
   meetings: { title: string; who: string | null }[];
-  /** Clauses nothing else claimed: how the day went, feelings. */
+  workouts: string[];
+  meals: { name: string; category: string | null; text: string }[];
+  /** Clauses nothing claimed: how the day went, feelings. */
   reflection: string[];
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Clauses: sentences, and "also …" / "by the way …" / ", and …" pieces. */
-export function clauses(text: string) {
+/** His shorthand → words chrono and the patterns understand. */
+export function normalize(text: string) {
   return text
+    .replace(/[’‘]/g, "'")
+    .replace(/\b(tmrw|tmr|tmrow|tmmrw|tomoro|tomorow|tommorow|tommorrow|2morrow|2mrw)\b/gi, "tomorrow")
+    .replace(/\b(tonite|2nite)\b/gi, "tonight")
+    .replace(/\b(thurs|thur)\b/gi, "thursday")
+    .replace(/\btues\b/gi, "tuesday")
+    .replace(/\bweds\b/gi, "wednesday")
+    .replace(/\bw\/\s*/gi, "with ")
+    .replace(/\bb4\b/gi, "before")
+    .replace(/\babt\b/gi, "about")
+    .replace(/\bdont\b/gi, "don't");
+}
+
+/** Clauses: sentences, and "also …" / ", had …" / ", and dont …" pieces. */
+export function clauses(text: string) {
+  const lead = "(?:i|we|my|it'?s|im|i'?m|i'?ll|great|good|bad|but|had|ate|hit|did|went|got|gotta|need|don'?t|remember|ran|lifted|coach|mr|ms|mrs|then|and (?:then|i|don'?t|gotta|need|remember))";
+  return normalize(text)
     .replace(/\s+/g, " ")
-    .split(/(?<=[.!?])\s+|\s*;\s*|,?\s+(?:also|btw|oh and|and also|plus)\s+|,\s+(?=(?:i|we|my|it'?s|im|i'?m|i'?ll|great|good|bad|but)\b)/i)
-    .map((c) => c.replace(/^(also|and|plus|oh|so|ok(ay)?|uhh?|um+)\b[\s,]*/i, "").replace(/\b(too|by the way|lol|btw|tbh|idk|lmao)\b/gi, " ").replace(/\s+/g, " ").replace(/^[\s,.-]+|[\s,.]+$/g, "").trim())
+    .split(new RegExp(`(?<=[.!?])\\s+|\\s*;\\s*|,?\\s+(?:also|btw|oh and|and also|plus)\\s+|,\\s+(?=${lead}\\b)|\\s+and (?=(?:i|we) (?:should|have to|need to|gotta|got to|must|still|also)\\b)`, "i"))
+    .map((c) =>
+      c
+        .replace(/^((also|and|plus|oh|so|ok(ay)?|uhh?|um+|honestly|like)\b[\s,]*)+/gi, "")
+        .replace(/\b(too|by the way|lol|btw|tbh|idk|lmao|ngl)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .replace(/^[\s,.-]+|[\s,.]+$/g, "")
+        .trim()
+    )
     .filter((c) => c.length > 2);
+}
+
+/** chrono, plus: a bare "at 5" in a plan means 5pm today, not 5am tomorrow. */
+export function when(text: string, now: Date) {
+  const r = chrono.parse(text, now, { forwardDate: true })[0];
+  if (!r) return null;
+  const hasTime = r.start.isCertain("hour");
+  let date = r.start.date();
+  if (hasTime && !r.start.isCertain("meridiem") && date.getHours() >= 1 && date.getHours() <= 6) {
+    const dated = r.start.isCertain("day") || r.start.isCertain("weekday");
+    // Time only: chrono pushed "5" to 5am tomorrow; take today's 5pm unless that's already gone.
+    const base = dated ? date : chrono.parse(text, now)[0]?.start.date() ?? date;
+    date = new Date(base.getTime() + 12 * 3_600_000);
+    if (!dated && date <= now) date = new Date(date.getTime() + 86_400_000);
+  }
+  return { date, hasTime, text: r.text };
 }
 
 // ---- sleep ------------------------------------------------------------------------------------
 
-function clock(h: string, m: string | undefined, ap: string | undefined, bedside: boolean) {
-  let hh = Number(h) % 12;
-  const pm = ap ? /p/i.test(ap) : bedside ? Number(h) >= 6 && Number(h) !== 12 : false; // "slept from 11" → 11pm; "to 6:40" → am
-  if (pm) hh += 12;
-  if (ap && /a/i.test(ap) && Number(h) === 12) hh = 0;
-  if (!ap && bedside && Number(h) === 12) hh = 0; // midnight
-  return hh * 60 + Number(m ?? 0);
+const T = "(\\d{1,2}(?::\\d{2})?(?:\\s*(?:am|pm|a|p)\\b)?|midnight|noon)";
+const FILL = "(?:\\s+(?:at|around|like|about|by|maybe|ish|from))*\\s+";
+
+function toMinutes(tok: string, bedside: boolean) {
+  const t = tok.trim().toLowerCase();
+  if (t === "midnight") return 0;
+  if (t === "noon") return 12 * 60;
+  const m = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  let h = n % 12;
+  // Bed "11" → 11pm, bed "12:30" → just after midnight, wake "6:40" → am.
+  const pm = m[3] ? /p/.test(m[3]) : bedside ? n >= 6 && n !== 12 : false;
+  if (pm) h += 12;
+  return h * 60 + Number(m[2] ?? 0);
 }
 
 export function parseSleep(text: string): Extracted["sleep"] {
-  const t = text.toLowerCase();
+  const t = normalize(text).toLowerCase();
   const range =
-    t.match(/\bslept (?:from )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|till|until|-|–)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/) ??
-    t.match(/\b(?:went to (?:bed|sleep)|fell asleep|slept) at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?.{0,40}?\b(?:woke(?: up)?|got up) at (\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    t.match(new RegExp(`\\bslept${FILL}${T}\\s*(?:to|till|until|-|–)\\s*${T}`)) ??
+    t.match(new RegExp(`\\b(?:went to (?:bed|sleep)|fell asleep|crashed|passed out|knocked out|slept|got to bed)${FILL}${T}.{0,40}?\\b(?:woke(?: up)?|got up|up)${FILL}${T}`));
   if (range) {
-    const bed = clock(range[1], range[2], range[3], true);
-    const wake = clock(range[4], range[5], range[6], false);
+    const bed = toMinutes(range[1], true);
+    const wake = toMinutes(range[2], false);
+    if (bed == null || wake == null) return null;
     const mins = (wake - bed + 1440) % 1440;
     if (mins < 60 || mins > 16 * 60) return null;
     return { hours: Math.round((mins / 60) * 100) / 100, minutes: mins, bedtime: `${pad(Math.floor(bed / 60))}:${pad(bed % 60)}` };
   }
-  const hours = t.match(/\b(?:slept|got|only got)(?: for| about| like| around)? (\d{1,2}(?:\.\d)?)\s*(?:h|hrs?|hours)\b(?: of sleep)?/);
-  if (hours && Number(hours[1]) > 0 && Number(hours[1]) <= 16) return { hours: Number(hours[1]), minutes: Math.round(Number(hours[1]) * 60), bedtime: null };
+  const dur =
+    t.match(/\b(?:slept|got|had)\s+(?:(?:maybe|like|about|around|only|just|roughly|barely|a solid|a good|for)\s+)*(\d{1,2}(?:\.\d+)?)\s*(?:h|hrs?|hours?)\b/) ??
+    t.match(/\b(\d{1,2}(?:\.\d+)?)\s*(?:h|hrs?|hours?) of sleep\b/);
+  if (dur) {
+    const h = Number(dur[1]);
+    if (h > 0 && h <= 16) return { hours: h, minutes: Math.round(h * 60), bedtime: null };
+  }
   return null;
 }
 
-// ---- quizzes, tests, exams ahead ---------------------------------------------------------------
+// ---- tests ahead -------------------------------------------------------------------------------
 
-const ASSESS = /\b((?:[a-z0-9]+(?:\s*(?:,|and|&)\s*))*[a-z0-9]+)\s+(quiz|test|exam|midterm|final)(?:z?es|s)?\b/i;
-const NOT_SUBJECT = new Set(["my", "a", "the", "big", "pop", "this", "that", "next", "first", "last", "unit", "practice", "for", "our", "and", "have", "had", "study"]);
+const KIND = "(quiz|test|exam|midterm|final)";
+const SUBJECTS = /\b(math|algebra|geometry|precalc|calc(?:ulus)?|stats|bio(?:logy)?|chem(?:istry)?|physics|science|apush|history|english|lit(?:erature)?|spanish|french|latin|chinese|econ(?:omics)?|gov(?:ernment)?|psych(?:ology)?|ela|sat|act|psat)\b/i;
+const NOT_SUBJECT = new Set(["my", "a", "the", "big", "pop", "this", "that", "next", "first", "last", "unit", "practice", "for", "our", "and", "have", "had", "study", "got", "huge", "hard", "an", "another"]);
+const PAST_TEST = new RegExp(`\\b(had|took|finished|did|done with|got)\\b[^.]{0,30}\\b${KIND}\\b(?!\\s+(?:on|tomorrow|next|this|monday|tuesday|wednesday|thursday|friday|saturday|sunday))|\\b${KIND}s?\\s+(went|was|were)\\b|\\b${KIND}\\s+back\\b`, "i");
 
 export function parseAssessments(clause: string, now: Date): Extracted["assessments"] {
-  const c = clause.toLowerCase();
-  // "had my APUSH test", "took the math test": it's over, nothing to add.
-  if (/\b(had|took|finished|did|got (?:it|my \w+ \w+) back|done with)\b[^.]{0,30}\b(quiz|test|exam|midterm|final)/.test(c)) return [];
-  const m = c.match(ASSESS);
-  if (!m) return [];
-  const when = chrono.parse(clause, now, { forwardDate: true })[0];
+  const c = normalize(clause).toLowerCase();
+  const when = chrono.parse(c, now, { forwardDate: true })[0];
   if (!when) return [];
+  if (PAST_TEST.test(c) && !/\b(tomorrow|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/.test(c)) return [];
+  const m = c.match(new RegExp(`\\b((?:[a-z0-9]+(?:\\s*(?:,|and|&)\\s*))*[a-z0-9]+)\\s+${KIND}(?:z?es|s)?\\b`, "i"));
+  if (!m) return [];
   const kind = m[2];
-  const subjects = m[1]
+  let subjects = m[1]
     .split(/\s*(?:,|\band\b|&)\s*/)
     .map((s) => s.trim().split(/\s+/).filter((w) => !NOT_SUBJECT.has(w)).slice(-2).join(" "))
-    .filter(Boolean);
+    .filter((s) => s && !/^\d+$/.test(s));
+  // "gotta hit the books for chem tomorrow, big test": the subject sits elsewhere in the sentence.
+  if (!subjects.some((s) => SUBJECTS.test(s))) {
+    const known = c.match(SUBJECTS)?.[1];
+    subjects = known ? [known] : subjects.filter((s) => !/\b(books|lock|grind|tomorrow|today)\b/.test(s));
+  }
   const start = when.start.date();
   if (!when.start.isCertain("hour")) start.setHours(0, 0, 0, 0);
   return (subjects.length ? subjects : [""]).map((s) => {
-    const name = s ? `${s.length <= 5 && !/\s/.test(s) && /^(apush|ap|sat|act|psat)/.test(s) ? s.toUpperCase() : s} ${kind}` : kind;
+    const name = s ? `${/^(apush|sat|act|psat|ela|ap\b.*)$/.test(s) ? s.toUpperCase() : s} ${kind}` : kind;
     return { title: cap(name), start, prepTitle: `Study for ${name}` };
   });
+}
+
+// ---- events with people ------------------------------------------------------------------------
+
+const DAYWORD = "(?:on|at|this|next|tomorrow|today|tonight|after|before|about|monday|tuesday|wednesday|thursday|friday|saturday|sunday)";
+
+function eventFrom(title: string, clause: string, now: Date): UpdateEvent | null {
+  const w = when(clause, now);
+  if (!w) return null;
+  const { hasTime } = w;
+  const start = w.date;
+  if (!hasTime) start.setHours(0, 0, 0, 0);
+  const end = new Date(start.getTime() + (hasTime ? 3_600_000 : 86_400_000));
+  return { title: cap(title), start, end, allDay: !hasTime, hasTime };
+}
+
+export function parseEvents(clause: string, now: Date): UpdateEvent[] {
+  const c = normalize(clause);
+  const lc = c.toLowerCase();
+  const one = (title: string) => {
+    const e = eventFrom(title, c, now);
+    return e ? [e] : [];
+  };
+  // "coach wants to meet thursday", "mr lee wants to talk after school tomorrow"
+  const wants = lc.match(/\b((?:(?:mr|ms|mrs|dr)\.?\s+)?[a-z]+)\s+wants?\s+to\s+(meet|talk|call|chat|see me)\b/);
+  if (wants && !/^(he|she|they|it|who|that|everyone|nobody)$/.test(wants[1])) {
+    const what = { meet: "Meeting", "see me": "Meeting", call: "Call", talk: "Talk", chat: "Talk" }[wants[2]]!;
+    return one(`${what} with ${wants[1].replace(/\./, "")}`);
+  }
+  // "meeting with the principal friday at 10"
+  const withWho = lc.match(new RegExp(`\\b(meeting|call|interview|appointment|session|dinner|lunch)\\s+with\\s+(.+?)(?=\\s+${DAYWORD}\\b|[.,!]|$)`));
+  if (withWho && !/\b(set ?up|schedule|book|arrange|had|went)\b/.test(lc)) return one(`${withWho[1]} with ${withWho[2].trim()}`);
+  // "hanging with jake saturday", "going out with sam friday night"
+  const hang = lc.match(new RegExp(`\\b(hanging(?: out)?|hang(?:ing)? out|chilling|going out|meeting up|linking(?: up)?)\\s+with\\s+(.+?)(?=\\s+${DAYWORD}\\b|[.,!]|$)`));
+  if (hang) return one(`${hang[1].replace(/\s+(out|up)$/, "")} with ${hang[2].trim()}`);
+  // "soccer game saturday at 4", "debate tournament next weekend"
+  const thing = lc.match(/\b([a-z]+ (?:game|match|tournament|scrimmage|recital|concert|party|competition)|(?:track|swim) meet)\b/);
+  if (thing && !/^(the|a|my|our|this|next|that|big) /.test(thing[1]) && !/\b(had|went|was|were|won|lost|played)\b/.test(lc)) return one(thing[1]);
+  // "i have a dentist appointment friday at 3": the calendar's own reader.
+  const own = parseEventStatement(c, now);
+  return own ? [{ title: own.title, start: own.start, end: own.end, allDay: own.allDay, hasTime: own.hasTime }] : [];
 }
 
 // ---- to-dos ------------------------------------------------------------------------------------
@@ -109,64 +222,113 @@ function cleanTitle(t: string) {
     .trim();
 }
 
+const TODO_CUE = /\b(?:i\s+)?(?:have to|need to|gotta|got to|must|should really|really need to|really have to|remember to|don'?t forget to|make sure (?:i |to )+)\s*(.+)$/i;
+
 export function parseTodos(clause: string, now: Date): Extracted["todos"] {
-  const c = clause.trim();
-  // "add X to my todo list", "put X on my list"
-  // Typos welcome: "add bio and math studying yo todo list".
+  const c = normalize(clause).trim();
+  // "add X to my todo list" (typos welcome: "yo todo list"), "put X on my list"
   const add = c.match(/\b(?:add|put)\s+(.+?)\s+(?:to|yo|too|2|on|onto|in|into)\s+(?:(?:my|the|ur|your)\s+)?(?:to-?do\s*)?(?:list|todos?)\b/i) ?? c.match(/^(?:add|put)\s+(.+)$/i);
   if (add) {
     const when = chrono.parse(add[1], now, { forwardDate: true })[0];
     const phrase = (when ? add[1].replace(when.text, " ") : add[1]).replace(/\s+/g, " ").trim();
     return splitItems(cleanTitle(phrase)).map((title) => ({ title, due: when?.date() ?? null }));
   }
-  // "i have to call the counselor friday", "need to finish the essay"
-  const need = c.match(/\b(?:i\s+)?(?:have to|need to|gotta|got to|must|should really)\s+(.+)$/i);
+  // "i owe my mom 20 bucks", "i owe mike $15"
+  const owe = c.match(/\bi owe\s+((?:my |the )?[a-z]+?)\s+\$?(\d+(?:\.\d{2})?)(?:\s*(?:bucks|dollars))?\b/i);
+  if (owe) return [{ title: `Pay back ${owe[1].trim()} $${owe[2]}`, due: null }];
+  // "gonna need a ride to the soccer game saturday" → a to-do to sort out the ride
+  const ride = c.match(/\bneed (?:a )?ride (to|home from|from) (?:the |my )?([a-z ]+?)(?=\s+(?:on|at|this|next|tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|[.,!]|$)/i);
+  if (ride) {
+    // Sorted before it starts: an hour ahead of a set time, else the day before.
+    const w = when(c, now);
+    const due = w ? new Date(w.date.getTime() - (w.hasTime ? 3_600_000 : 86_400_000 - 19 * 3_600_000)) : null;
+    return [{ title: `Get a ride ${ride[1]} the ${ride[2].trim()}`, due }];
+  }
+  const need = c.match(TODO_CUE);
   if (need && !/\b(quiz|test|exam|midterm|final)\b/i.test(need[1])) {
-    const when = chrono.parse(need[1], now, { forwardDate: true })[0];
-    const title = cleanTitle((when ? need[1].replace(when.text, " ") : need[1]).replace(/\s+/g, " ")).replace(/\b(for|on|by|at)\s*$/i, "").trim();
-    if (title.split(/\s+/).length >= 2 && !/^(go|be|say|think|admit)\b/i.test(title)) return [{ title: cap(title), due: when?.date() ?? null }];
+    const w = when(need[1], now);
+    const title = cleanTitle((w ? need[1].replace(w.text, " ") : need[1]).replace(/\s+/g, " ")).replace(/\s+(for|on|by|at|before)\s*$/i, "").trim();
+    if (title.split(/\s+/).length >= 2 && !/^(go|be|say|think|admit|lock in|sleep|chill|relax)\b/i.test(title)) {
+      return [{ title: cap(title), due: w?.date ?? null }];
+    }
   }
   return [];
 }
 
-// ---- meetings to set up ------------------------------------------------------------------------
+// ---- things to set up (no date yet) ------------------------------------------------------------
 
 export function parseMeetings(clause: string, whole: string): Extracted["meetings"] {
-  const c = clause.toLowerCase();
-  const m = c.match(/\b(?:set ?up|schedule|book|arrange|have)\s+(?:a|the|another)?\s*(meeting|call|interview|chat)\b(?:\s+with\s+(?:the\s+|my\s+)?([a-z ]+?))?(?:[.,!]|$|\s+(?:soon|next|this|about|to)\b)/);
+  const c = normalize(clause).toLowerCase();
+  const m = c.match(/\b(?:set ?up|schedule|book|arrange)\s+(?:a|the|another)?\s*(meeting|call|interview|chat)\b(?:\s+with\s+((?:the\s+|my\s+)?[a-z ]+?))?(?=[.,!]|$|\s+(?:soon|next|this|about|to)\b)/);
   if (!m) return [];
-  const who = m[2]?.trim() || whole.toLowerCase().match(/\bheard (?:back )?from (?:the |my )?([a-z ]+?)(?: that| saying| and|[.,])/)?.[1]?.trim() || null;
-  return [{ title: `Set up ${m[1]}${who ? ` with ${who}` : ""}`, who }];
+  const heard = normalize(whole).toLowerCase().match(/\bheard (?:back )?from (?:the |my )?([a-z ]+?)(?: that| saying| and|[.,])/)?.[1]?.trim();
+  const who = m[2]?.trim() || heard || null;
+  return [{ title: `Set up ${m[1]}${who ? ` with ${who}` : ""}`, who: who?.replace(/^(the|my)\s+/, "") ?? null }];
 }
 
+// ---- workouts and meals ------------------------------------------------------------------------
+
+const FUTURE = /\b(gotta|going to|gonna|need to|have to|will|plan to|want to|should|tomorrow|later|tonight)\b/i;
+
+export function parseWorkout(clause: string): string | null {
+  const c = normalize(clause).toLowerCase();
+  if (FUTURE.test(c)) return null;
+  const split = c.match(/\b(?:hit|did|trained|worked|smashed|killed)\s+(legs|chest|back|arms|shoulders|push|pull|upper|lower|abs|cardio|core)(?:\s+(day|body))?\b/);
+  if (split) return cap(`${split[1]}${split[2] ? ` ${split[2]}` : ""}`);
+  const cardio = c.match(/\b(ran|jogged|biked|cycled|swam|walked|rowed)\s+(\d+(?:\.\d+)?)\s*(miles?|mi|k|km|laps?)\b/);
+  if (cardio) return cap(`${cardio[1]} ${cardio[2]} ${cardio[3] === "mi" ? "miles" : cardio[3]}`);
+  if (/\b(went to the gym|worked out|lifted|hit the gym|went lifting)\b/.test(c)) return "Gym";
+  const sport = c.match(/\b(?:had|did|went to)\s+(?:\w+\s+)?(mma|boxing|sparring|jiu ?jitsu|bjj|wrestling)\b/);
+  if (sport) return cap(sport[1]);
+  return null;
+}
+
+export function parseMeal(clause: string): Extracted["meals"][number] | null {
+  const c = normalize(clause);
+  if (/\b(skipped|didn'?t eat|no (breakfast|lunch|dinner))\b/i.test(c) || FUTURE.test(c)) return null;
+  const m = c.match(/\b(?:had|ate|got|grabbed)\s+(.+?)\s+for\s+(breakfast|lunch|dinner|a snack|snack)\b/i);
+  if (!m) return null;
+  const name = m[1].trim().replace(/^(some|a|an)\s+/i, "");
+  if (/\b(test|quiz|exam|practice|class|meeting|time|fun|nap)\b/i.test(name)) return null;
+  return { name: cap(name), category: m[2].toLowerCase().replace(/^a /, ""), text: clause };
+}
+
+// ---- the whole message -------------------------------------------------------------------------
+
 export function extractUpdate(text: string, now = new Date()): Extracted {
-  const out: Extracted = { sleep: parseSleep(text), assessments: [], todos: [], meetings: [], reflection: [] };
+  const out: Extracted = { sleep: parseSleep(text), assessments: [], events: [], todos: [], meetings: [], workouts: [], meals: [], reflection: [] };
   for (const c of clauses(text)) {
-    let used = false;
-    if (parseSleep(c)) used = true;
+    let used = !!parseSleep(c);
     const a = parseAssessments(c, now);
-    if (a.length) {
-      for (const x of a) if (!out.assessments.some((y) => y.title === x.title)) out.assessments.push(x);
-      used = true;
-    }
-    const m = parseMeetings(c, text);
-    if (m.length) {
+    for (const x of a) if (!out.assessments.some((y) => y.title === x.title)) out.assessments.push(x);
+    if (a.length) used = true;
+    else {
+      const m = parseMeetings(c, text);
+      const e = m.length ? [] : parseEvents(c, now);
+      const t = m.length ? [] : parseTodos(c, now);
+      const w = parseWorkout(c);
+      const meal = parseMeal(c);
       out.meetings.push(...m);
-      used = true;
-    } else if (!a.length) {
-      const t = parseTodos(c, now);
-      if (t.length) {
-        out.todos.push(...t);
-        used = true;
-      }
+      out.events.push(...e);
+      out.todos.push(...t);
+      if (w) out.workouts.push(w);
+      if (meal) out.meals.push(meal);
+      if (m.length || e.length || t.length || w || meal) used = true;
     }
     if (!used) out.reflection.push(c);
   }
   return out;
 }
 
+export function actionableCount(x: Extracted) {
+  return (x.sleep ? 1 : 0) + x.assessments.length + x.events.length + x.todos.length + x.meetings.length + x.workouts.length + x.meals.length;
+}
+
 /** Worth handling as an update: several things in one message, not just a question. */
 export function isUpdate(text: string, x: Extracted) {
-  const actionable = (x.sleep ? 1 : 0) + x.assessments.length + x.todos.length + x.meetings.length;
+  const actionable = actionableCount(x);
   return text.length >= 120 && !/\?\s*$/.test(text.trim()) ? true : actionable >= 2 || (actionable >= 1 && x.reflection.length >= 1 && text.length >= 80);
 }
+
+/** Leftover clauses that sound like something to do or somewhere to be: worth a checked second look. */
+export const INTENT = /\b(will|gonna|going to|need|have to|gotta|should|want to|plan(?:ning)? to|remind|due|deadline|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this weekend|at \d|by \d)\b/i;

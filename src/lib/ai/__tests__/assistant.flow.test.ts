@@ -705,7 +705,10 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
   it("an event with a time and an email is shared right away; 'no' to sharing is fine", async () => {
     const r = await say("add soccer game to my calendar saturday 10-12 and share it with Mike@gmail.com");
     expect(r.reply).toContain("Shared with mike@gmail.com");
-    expect(r.awaiting).toBeNull();
+    // A game may or may not need prep: he's asked instead of getting a to-do.
+    expect(r.reply).toMatch(/Do you need to prepare for it\?$/);
+    const skip = await say("no");
+    expect(skip.awaiting).toBeNull();
     const d = await say("i have a dentist appointment friday at 3pm");
     // Nothing to prepare for a dentist appointment: no to-do, just a reminder an hour before.
     expect(d.actions.map((x) => x.type)).toEqual(["event", "reminder"]);

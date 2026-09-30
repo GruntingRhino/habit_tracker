@@ -50,7 +50,7 @@ export function grounded(title: string, clause: string) {
 
 export function candidates(reflection: string[]) {
   // Feelings, and vague "gonna go home and do some work on the todo list", aren't new items.
-  const VAGUE = /\b(feel|felt|tired|stressed|happy|sad|mad|annoyed|proud|grateful|to-?do list|my list|the list|go home|head home|go to (bed|sleep)|some work|lyk|let you know)\b/i;
+  const VAGUE = /\b(feel|felt|tired|stressed|happy|sad|mad|annoyed|proud|grateful|to-?do list|my list|the list|go home|head home|go to (bed|sleep)|going to (bed|sleep)|heading to bed|bed now|some work|lyk|let you know)\b/i;
   return reflection.filter((c) => INTENT.test(c) && c.length <= 200 && !VAGUE.test(c)).slice(0, 5);
 }
 

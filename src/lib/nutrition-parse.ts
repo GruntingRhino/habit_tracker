@@ -51,6 +51,9 @@ function normalize(input: string) {
     .toLowerCase()
     .replace(/(\d)?\s?([½¼¾⅓⅔⅛])/g, (_m, w, f) => ` ${(w ? Number(w) : 0) + Number(`0${FRACTIONS[f]}`)} `)
     .replace(/\bw\/\s?/g, " with ")
+    // "dinner was salmon, rice…", "for lunch i had…": the meal label isn't a food.
+    .replace(/\b(breakfast|brunch|lunch|dinner|snack)\s*(was|is|:|-)\s*/g, " ")
+    .replace(/^\s*(for\s+)?(breakfast|brunch|lunch|dinner|snack)\s+(i\s+)?(had|ate)\s+/g, " ")
     .replace(/\bhalf ?(and|&|n|-) ?half\b/g, "creamer")
     .replace(/\b(over ?(easy|medium|hard|well)|sunny ?side ?up)\b/g, " ")
     .replace(/\b(12|twelve) ?(-| )?inch\b|\bfoot ?long\b/g, " footlong ")

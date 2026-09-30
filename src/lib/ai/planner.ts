@@ -48,6 +48,20 @@ Rules:
 - summary: one encouraging sentence about the day's focus.
 Reply with minified JSON only: {"picks":[{"n":3,"reason":"due today"}],"summary":"..."}`;
 
+/** Why an item is on today's list, from its due date and priority only. */
+export function factReason(c: OpenItem, now = new Date()) {
+  if (c.due) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const days = Math.floor((new Date(c.due.getFullYear(), c.due.getMonth(), c.due.getDate()).getTime() - day.getTime()) / 86_400_000);
+    if (days < 0) return "overdue";
+    if (days === 0) return "due today";
+    if (days === 1) return "due tomorrow";
+    if (days <= 6) return `due ${c.due.toLocaleDateString("en-US", { weekday: "long" })}`;
+  }
+  if (c.priority === "urgent" || c.priority === "high") return `${c.priority} priority`;
+  return undefined;
+}
+
 export function fallbackPlan(candidates: OpenItem[]): PlanItem[] {
   return candidates.slice(0, MAX_FOCUS).map((c) => ({
     type: c.type,
@@ -122,7 +136,8 @@ export async function planDay(
       const c = candidates[p.n - 1];
       if (!c || seen.has(p.n) || items.length >= MAX_FOCUS) continue;
       seen.add(p.n);
-      items.push({ type: c.type, id: c.id, title: c.title, area: c.area, projectId: c.projectId, reason: p.reason?.slice(0, 80) });
+      // The model picks; the reason is written from the item itself (it once called an undated to-do "due today").
+      items.push({ type: c.type, id: c.id, title: c.title, area: c.area, projectId: c.projectId, reason: factReason(c) });
     }
     // A tiny model sometimes under-picks; top up from the priority-sorted pool.
     const minItems = Math.min(4, candidates.length);

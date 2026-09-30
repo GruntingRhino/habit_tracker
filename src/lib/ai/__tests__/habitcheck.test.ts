@@ -21,3 +21,15 @@ describe("habit check-offs, however he says it", () => {
   ])("%s", (t, want) => expect(s(t)).toEqual(want));
   it.each(["gonna read my bible later", "should i do posture now?", "need to drink more water", "had chipotle for lunch", "call the dentist"])("nothing: %s", (t) => expect(s(t)).toEqual([]));
 });
+
+describe("from the simulated day", () => {
+  it("a bedtime past the habit's time isn't a tick", () => {
+    expect(s("slept from 11:15 to 6:45, feel pretty rested")).toEqual(["Sleep by 10:30: not (bed at 11:15)"]);
+  });
+});
+
+describe("going to bed", () => {
+  it("phone away at 9:50, going to bed → both evening habits", () => {
+    expect(s("phone away at 9:50, going to bed")).toEqual(["No phone after 10: done (phone off at 9:50)", "Sleep by 10:30: done (bed at 9:50)"]);
+  });
+});

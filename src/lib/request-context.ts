@@ -41,7 +41,8 @@ const WORDS: Record<Pronouns, Record<string, string>> = {
 export const OWNER_NAME = "Abhay";
 
 export function personalize(text: string, ctx: Pick<RequestContext, "name" | "pronouns"> | null) {
-  if (!ctx || (ctx.name === OWNER_NAME && ctx.pronouns === "he")) return text;
+  // The prompts were written for the owner: leave them byte-for-byte as they are (keeps his prompt cache too).
+  if (!ctx || (ctx.name.startsWith(OWNER_NAME) && ctx.pronouns === "he")) return text;
   const map = WORDS[ctx.pronouns];
   let out = text.replace(/\bAbhay\b/g, ctx.name);
   if (ctx.pronouns !== "he") out = out.replace(/\b(he|He|HE|his|His|HIS|him|Him|HIM|himself)\b/g, (w) => map[w] ?? w);

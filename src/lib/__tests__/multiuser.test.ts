@@ -55,3 +55,18 @@ describe("the model client", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("flaky public link", () => {
+  it("retries a connection dropped during the TLS handshake, then succeeds", async () => {
+    let n = 0;
+    vi.stubGlobal("fetch", async () => {
+      n++;
+      if (n < 3) throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET", message: "Client network socket disconnected before secure TLS connection was established" } });
+      return new Response(JSON.stringify({ message: { content: "ok" }, done: true }) + "\n", { status: 200 });
+    });
+    const { chat } = await import("../ai/llm");
+    expect((await chat({ messages: [{ role: "user", content: "hi" }] })).content).toBe("ok");
+    expect(n).toBe(3);
+    vi.unstubAllGlobals();
+  });
+});

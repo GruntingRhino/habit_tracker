@@ -6,7 +6,7 @@ import { getOwner } from "@/lib/users";
 export { activeUsers, getOwner } from "@/lib/users";
 import { readSession, SESSION_COOKIE } from "@/lib/auth";
 import { cache } from "react";
-import { setContextResolver, type Pronouns } from "@/lib/request-context";
+import { firstName, setContextResolver, type Pronouns } from "@/lib/request-context";
 
 export interface OwnerSession {
   user: { id: string; email: string; name: string | null; username: string | null; isAdmin: boolean };
@@ -27,7 +27,7 @@ const sessionUser = cache(async () => {
 // client's name/pronouns and queue header) finds them from the session.
 setContextResolver(async () => {
   const user = await sessionUser();
-  return user ? { userId: user.id, name: user.name ?? "there", pronouns: (user.pronouns as Pronouns) ?? "they" } : null;
+  return user ? { userId: user.id, name: firstName(user.name), pronouns: (user.pronouns as Pronouns) ?? "they" } : null;
 });
 
 /**

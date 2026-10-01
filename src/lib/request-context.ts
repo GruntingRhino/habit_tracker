@@ -27,9 +27,11 @@ export const currentContext = () => store.getStore() ?? null;
 export function enterContext(ctx: RequestContext) {
   store.enterWith({ ...store.getStore(), ...ctx });
 }
+/** Prompts use a first name ("Katie Freeman" → "Katie"). */
+export const firstName = (name: string | null | undefined) => (name ?? "").trim().split(/\s+/)[0] || "there";
 /** The context for a user row (worker / brain jobs). */
 export function contextFor(u: { id: string; name: string | null; pronouns: string }, extra: Partial<RequestContext> = {}): RequestContext {
-  return { userId: u.id, name: u.name ?? "there", pronouns: (["he", "she", "they"].includes(u.pronouns) ? u.pronouns : "they") as Pronouns, ...extra };
+  return { userId: u.id, name: firstName(u.name), pronouns: (["he", "she", "they"].includes(u.pronouns) ? u.pronouns : "they") as Pronouns, ...extra };
 }
 
 /** The prompts were written about the owner ("Abhay … he/his"): rewrite them for someone else. */

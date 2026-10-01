@@ -9,7 +9,7 @@ import { cache } from "react";
 import { firstName, setContextResolver, type Pronouns } from "@/lib/request-context";
 
 export interface OwnerSession {
-  user: { id: string; email: string; name: string | null; username: string | null; isAdmin: boolean };
+  user: { id: string; email: string; name: string | null; username: string | null; isAdmin: boolean; integrations: boolean };
 }
 
 /** The logged-in person's row, or null (once per request: React's cache is request-scoped). */
@@ -37,5 +37,5 @@ setContextResolver(async () => {
 export async function getOwnerSession(): Promise<OwnerSession> {
   const user = await sessionUser();
   if (!user) unauthorized();
-  return { user: { id: user.id, email: user.email, name: user.name, username: user.username, isAdmin: user.isAdmin } };
+  return { user: { id: user.id, email: user.email, name: user.name, username: user.username, isAdmin: user.isAdmin, integrations: user.integrations } };
 }

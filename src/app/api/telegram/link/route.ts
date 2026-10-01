@@ -6,6 +6,8 @@ import { getOwnerSession } from "@/lib/owner";
 /** A one-time code to link this person's Telegram chat: they send "/link CODE" (or open the t.me link) to the bot. */
 export async function POST() {
   const { user } = await getOwnerSession();
+  if (!user.integrations) return NextResponse.json({ error: "Not available on this account" }, { status: 403 });
+
   const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const code = Array.from(randomBytes(8), (b) => abc[b % abc.length]).join("");
   await prisma.user.update({ where: { id: user.id }, data: { telegramLinkCode: code } });

@@ -21,7 +21,7 @@ const arg = (k: string) => {
   let user;
   if (process.argv.includes("--owner")) {
     const owner = await getOwner();
-    user = await prisma.user.update({ where: { id: owner.id }, data: { username, passwordHash, isAdmin: true, pronouns: "he", sessionVersion: { increment: 1 } } });
+    user = await prisma.user.update({ where: { id: owner.id }, data: { username, passwordHash, isAdmin: true, integrations: true, pronouns: "he", sessionVersion: { increment: 1 } } });
   } else {
     const pronouns = arg("pronouns") ?? "they";
     if (!["he", "she", "they"].includes(pronouns)) throw new Error("--pronouns: he, she or they");

@@ -10,7 +10,7 @@ export async function getOwner() {
   return prisma.user.upsert({
     where: { email },
     update: {},
-    create: { email, name: process.env.OWNER_NAME ?? "Abhay", pronouns: "he", isAdmin: true },
+    create: { email, name: process.env.OWNER_NAME ?? "Abhay", pronouns: "he", isAdmin: true, integrations: true },
   });
 }
 

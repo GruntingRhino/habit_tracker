@@ -9,12 +9,15 @@ export const maxDuration = 60;
 export async function GET() {
   const { user } = await getOwnerSession();
   const acct = await prisma.googleAccount.findUnique({ where: { userId: user.id }, select: { email: true, lastSyncAt: true, lastError: true } });
-  return NextResponse.json({ configured: googleConfigured(), connected: !!acct, email: acct?.email ?? null, lastSyncAt: acct?.lastSyncAt ?? null, lastError: acct?.lastError ?? null });
+  // Accounts without integrations don't see Google Calendar at all.
+  return NextResponse.json({ configured: googleConfigured() && user.integrations, connected: !!acct, email: acct?.email ?? null, lastSyncAt: acct?.lastSyncAt ?? null, lastError: acct?.lastError ?? null });
 }
 
 /** "Sync now". */
 export async function POST() {
   const { user } = await getOwnerSession();
+  if (!user.integrations) return NextResponse.json({ error: "Not available on this account" }, { status: 403 });
+
   return NextResponse.json(await syncGoogle(user.id));
 }
 

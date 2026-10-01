@@ -1,5 +1,6 @@
 "use client";
 
+import { report } from "@/components/feedback";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, isThisYear, isToday } from "date-fns";
 import { Empty } from "@/components/ui";
@@ -85,7 +86,7 @@ export default function NotesList() {
     if (!draft.trim()) return;
     const { title, content } = split(draft);
     setDraft("");
-    const res = await send("/api/notes", "POST", { title, ...(content ? { content } : {}) });
+    const res = report(await send("/api/notes", "POST", { title, ...(content ? { content } : {}) }), "Note saved");
     if (res.ok) {
       const note = (await res.json()) as Note;
       setNotes((l) => [note, ...(l ?? [])]);
@@ -95,11 +96,11 @@ export default function NotesList() {
     if (!text.trim()) return;
     const { title, content } = split(text);
     setNotes((l) => l?.map((n) => (n.id === note.id ? { ...n, title, content, updatedAt: new Date().toISOString() } : n)) ?? null);
-    await send(`/api/notes/${note.id}`, "PATCH", { title, content });
+    report(await send(`/api/notes/${note.id}`, "PATCH", { title, content }), "Note saved");
   }
   async function remove(note: Note) {
     setNotes((l) => l?.filter((n) => n.id !== note.id) ?? null);
-    await send(`/api/notes/${note.id}`, "DELETE");
+    report(await send(`/api/notes/${note.id}`, "DELETE"), `Deleted "${note.title}"`);
   }
 
   return (

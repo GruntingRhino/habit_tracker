@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { Check as CheckIcon } from "lucide-react";
 import { AREA_META, normalizeArea } from "@/lib/areas";
 
@@ -33,16 +35,22 @@ export function AreaDot({ area }: { area?: string | null }) {
 }
 
 export function Checkbox({ checked, onClick, label }: { checked: boolean; onClick: () => void; label: string }) {
+  // Pops (and the ✓ draws) only when he ticks it, not when a page loads already-ticked boxes.
+  const [popped, setPopped] = useState(0);
   return (
     <button
-      onClick={onClick}
+      key={popped}
+      onClick={() => {
+        if (!checked) setPopped((n) => n + 1);
+        onClick();
+      }}
       aria-label={label}
       aria-pressed={checked}
       className="group flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full transition-colors"
       style={{ border: `1.5px solid ${checked ? "var(--ink-300)" : "var(--stroke-3)"}`, background: checked ? "var(--ink-300)" : "transparent" }}
     >
       <CheckIcon
-        className={`h-2.5 w-2.5 transition-opacity ${checked ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`}
+        className={`h-2.5 w-2.5 transition-opacity ${checked ? "opacity-100" : "opacity-0 group-hover:opacity-50"} ${popped && checked ? "fx-pop" : ""}`}
         strokeWidth={3}
         style={{ color: checked ? "var(--bg-base)" : "var(--ink-300)" }}
       />

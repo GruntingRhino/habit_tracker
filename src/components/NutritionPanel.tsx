@@ -1,5 +1,6 @@
 "use client";
 
+import { report, toast } from "@/components/feedback";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useLoad, useOnDataChanged } from "@/hooks/useAssistantChat";
@@ -88,7 +89,7 @@ function NutrientColumn({ day, onSaved }: { day: Day | null; onSaved: () => void
   async function save() {
     const body = Object.fromEntries(rows.map((r) => [r.key, values[r.key] === undefined ? target(r.key) : values[r.key] === "" ? null : Number(values[r.key])]));
     body.calories = body.calories === null ? null : Math.round(Number(body.calories));
-    const res = await post("/api/nutrition/targets", "PUT", body);
+    const res = report(await post("/api/nutrition/targets", "PUT", body), "Targets saved");
     if (res.ok) {
       setEditing(false);
       onSaved();
@@ -285,13 +286,14 @@ export default function NutritionPanel() {
     const when = date === iso(new Date()) ? new Date() : new Date(`${date}T12:00:00`);
     const res = d.id ? await post(`/api/meals/${d.id}`, "PATCH", body) : await post("/api/meals", "POST", { ...body, status: "eaten", plannedFor: when.toISOString() });
     if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? "Couldn't save");
+    toast(d.id ? `Saved ${body.name}` : `Logged ${body.name}`);
     setDraft(null);
     setText("");
     await load();
   }
 
   async function remove(id: string) {
-    await fetch(`/api/meals/${id}`, { method: "DELETE" });
+    report(await fetch(`/api/meals/${id}`, { method: "DELETE" }).catch(() => null), "Meal deleted");
     await load();
   }
 

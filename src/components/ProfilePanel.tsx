@@ -1,5 +1,6 @@
 "use client";
 
+import { report } from "@/components/feedback";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNowStrict } from "date-fns";
@@ -41,7 +42,7 @@ function Measurements({ tape, onSaved }: { tape: Tape | null; onSaved: () => voi
   async function save() {
     const body = Object.fromEntries(Object.entries(vals).filter(([, v]) => v.trim()).map(([k, v]) => [k, Number(v)]));
     if (!Object.keys(body).length) return;
-    const res = await post("/api/measurements", "POST", body);
+    const res = report(await post("/api/measurements", "POST", body), "Measurements saved");
     if (res.ok) {
       setVals({});
       setOpen(false);
@@ -125,7 +126,7 @@ export default function ProfilePanel() {
   useLoad(load);
 
   async function forget(cat: string, b: Belief) {
-    await post("/api/profile", "DELETE", { category: cat, beliefId: b.id });
+    report(await post("/api/profile", "DELETE", { category: cat, beliefId: b.id }), "Got it — it won't think that anymore");
     await load();
   }
 
@@ -135,7 +136,7 @@ export default function ProfilePanel() {
       return;
     }
     setNudges((list) => list.filter((x) => x.id !== n.id));
-    await post("/api/nudges", "POST", { id: n.id, act });
+    report(await post("/api/nudges", "POST", { id: n.id, act }), act === "do" ? "Done" : "Dismissed");
     if (act === "do") window.dispatchEvent(new CustomEvent("liveimproved:changed"));
   }
 
@@ -307,7 +308,7 @@ function Quiz({ answers: initial, onDone }: { answers: Record<string, string | s
       const list = [...(Array.isArray(cur) ? cur : cur ? [cur] : []), ...(extra ? [extra] : [])];
       if (list.length) merged[q.id] = q.multi ? list : extra || (cur as string);
     }
-    await post("/api/profile/quiz", "POST", { answers: merged });
+    report(await post("/api/profile/quiz", "POST", { answers: merged }), "Quiz saved — the AI will learn from it");
     setSaving(false);
     onDone();
   }

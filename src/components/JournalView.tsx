@@ -1,5 +1,6 @@
 "use client";
 
+import { DoneCheck, report } from "@/components/feedback";
 import { useEffect, useRef, useState } from "react";
 import { format, isToday } from "date-fns";
 import { Section, Empty } from "@/components/ui";
@@ -27,8 +28,10 @@ const QUICK: [Quick, string, string][] = [
   ["moneySaved", "Saved", "$"],
 ];
 
-async function save(data: Partial<Entry>) {
-  await fetch("/api/journal", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+/** okText null: autosave — quiet unless it fails. */
+async function save(data: Partial<Entry>, okText: string | null = "Saved") {
+  const res = await fetch("/api/journal", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).catch(() => null);
+  if (okText || !res?.ok) report(res, okText ?? "", "Your journal didn't save — check your connection");
 }
 
 const JOURNAL_PROMPT = `How did today go? A few honest lines help the AI read your day. Try:
@@ -75,7 +78,7 @@ export default function JournalView() {  const [entries, setEntries] = useState<
     setStatus("saving");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
-      await save({ notes: value.trim() || null });
+      await save({ notes: value.trim() || null }, null);
       setStatus("saved");
     }, 800);
   }
@@ -90,7 +93,7 @@ export default function JournalView() {  const [entries, setEntries] = useState<
   async function toggleGod() {
     const next = !god;
     setGod(next);
-    await save({ rightWithGod: next });
+    await save({ rightWithGod: next }, next ? "🙏 Marked right with God" : "Unmarked");
   }
 
   const latestFeedback = entries?.find((e) => e.journalFeedback);
@@ -100,7 +103,12 @@ export default function JournalView() {  const [entries, setEntries] = useState<
     <div>
       <p className="min-sub mb-2">
         {format(new Date(), "EEEE, MMM d")}
-        {status === "saving" ? " · saving…" : status === "saved" ? " · saved" : ""}
+        {status === "saving" ? " · saving…" : status === "saved" ? (
+          <span key={text.length} className="inline-flex items-center gap-1" style={{ color: "var(--good)" }}>
+            {" · "}
+            <DoneCheck size={11} /> saved
+          </span>
+        ) : ""}
       </p>
       <textarea
         value={text}
@@ -190,6 +198,7 @@ function TomorrowPlan() {
     setBusy(true);
     const res = await fetch("/api/todos/tomorrow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lines }) });
     setBusy(false);
+    report(res, "Added to tomorrow");
     if (res.ok) {
       setAdded(((await res.json()) as { title: string }[]).map((t) => t.title));
       setText("");

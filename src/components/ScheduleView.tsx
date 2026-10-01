@@ -1,5 +1,6 @@
 "use client";
 
+import { report, toast } from "@/components/feedback";
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { addDays, format, isSameDay, startOfWeek } from "date-fns";
@@ -117,7 +118,10 @@ export default function ScheduleView({ googleResult }: { googleResult?: string |
 
   async function syncNow() {
     setSyncing(true);
-    await send("/api/google/sync", "POST");
+    const r = await send("/api/google/sync", "POST");
+    const body = (await r.clone().json().catch(() => null)) as { ok?: boolean; changed?: number; error?: string } | null;
+    if (r.ok && body?.ok !== false) toast(`Synced with Google${body?.changed ? ` · ${body.changed} change${body.changed === 1 ? "" : "s"}` : ""}`);
+    else toast(`Google sync failed${body?.error ? `: ${body.error.slice(0, 60)}` : ""}`, "error");
     setSyncing(false);
     await load();
   }
@@ -130,13 +134,13 @@ export default function ScheduleView({ googleResult }: { googleResult?: string |
   }
   async function tick(b: Block) {
     if (b.ref?.type !== "todo") return;
-    await send(`/api/todos/${b.ref.id}`, "PATCH", { status: b.done ? "open" : "done" });
+    report(await send(`/api/todos/${b.ref.id}`, "PATCH", { status: b.done ? "open" : "done" }), b.done ? `Reopened "${b.title}"` : `✓ Done: ${b.title}`);
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
     await load();
   }
   async function addFixed() {
     if (!form.title.trim() || !form.days.length) return;
-    const res = await send("/api/schedule", "POST", form);
+    const res = report(await send("/api/schedule", "POST", form), `Added ${form.title.trim()} to your week`);
     if (res.ok) {
       setForm((f) => ({ ...f, title: "" }));
       setEditWeek(false);
@@ -284,7 +288,7 @@ export default function ScheduleView({ googleResult }: { googleResult?: string |
               <span className="text-xs" style={{ color: "var(--ink-500)" }}>
                 {daysLabel(f.days)} · {fmt12(f.start)}–{fmt12(f.end)}
               </span>
-              <button onClick={async () => (await send(`/api/schedule?id=${f.id}`, "DELETE"), load())} aria-label={`Remove ${f.title}`} className="p-0.5 opacity-60 hover:opacity-100">
+              <button onClick={async () => (report(await send(`/api/schedule?id=${f.id}`, "DELETE"), `Removed ${f.title} from your week`), load())} aria-label={`Remove ${f.title}`} className="p-0.5 opacity-60 hover:opacity-100">
                 <X className="h-3.5 w-3.5" style={{ color: "var(--ink-500)" }} />
               </button>
             </li>
@@ -353,6 +357,7 @@ function EventForm({ day, onClose, onSaved }: { day: Date; onClose: () => void; 
     const res = await send("/api/calendar", "POST", { title: f.title.trim(), start: start.toISOString(), end: end.toISOString(), allDay: f.allDay, attendees, prep });
     setBusy(false);
     if (!res.ok) return setError((await res.json().catch(() => null))?.error ?? "Couldn't save it.");
+    toast(`📅 Added ${f.title.trim()}`);
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
     onSaved();
   }
@@ -408,7 +413,7 @@ function EventSheet({ event, onClose, onChanged }: { event: CalEvent; onClose: (
   }
   async function remove() {
     if (!window.confirm(`Delete "${event.title}"${event.googleId ? " (also from Google Calendar)" : ""}?`)) return;
-    await send(`/api/calendar/${event.id}`, "DELETE");
+    report(await send(`/api/calendar/${event.id}`, "DELETE"), `Deleted "${event.title}"`);
     onChanged(null);
     onClose();
   }

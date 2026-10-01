@@ -1,5 +1,6 @@
 "use client";
 
+import { report } from "@/components/feedback";
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FolderPlus, X } from "lucide-react";
@@ -65,7 +66,7 @@ export default function TasksView() {
 
   async function complete(todo: Todo) {
     setLeaving((s) => new Set(s).add(todo.id));
-    await send(`/api/todos/${todo.id}`, "PATCH", { status: todo.status === "open" ? "done" : "open" });
+    report(await send(`/api/todos/${todo.id}`, "PATCH", { status: todo.status === "open" ? "done" : "open" }), todo.status === "open" ? `✓ Done: ${todo.title}` : `Reopened "${todo.title}"`);
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
     setTimeout(() => {
       setTodos((l) => l?.filter((t) => t.id !== todo.id) ?? null);

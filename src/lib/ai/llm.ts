@@ -48,6 +48,24 @@ export class LlmError extends Error {}
 /** The caller cancelled (e.g. background work yielding to a chat). */
 export class LlmAborted extends LlmError {}
 
+/**
+ * The public link to the server (Tailscale Funnel) sometimes drops a connection during the TLS
+ * handshake. Nothing reached the model yet, so those are safe to retry; anything later isn't.
+ */
+const RETRYABLE = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|UND_ERR_SOCKET|UND_ERR_CONNECT_TIMEOUT|EAI_AGAIN|ENOTFOUND/;
+async function fetchRetrying(url: string, init: RequestInit, tries = 4): Promise<Response> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      const code = (error as { cause?: { code?: string; message?: string } }).cause;
+      const retryable = error instanceof TypeError && RETRYABLE.test(`${code?.code ?? ""} ${code?.message ?? ""}`) && !init.signal?.aborted;
+      if (!retryable || i >= tries) throw error;
+      await new Promise((r) => setTimeout(r, 300 * i));
+    }
+  }
+}
+
 /** Most time a request may wait in the gate's queue before giving up (on top of its own timeout). */
 const MAX_QUEUE_WAIT_MS = 6 * 60_000;
 
@@ -63,7 +81,7 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
   opts.signal?.addEventListener("abort", cancel);
   const started = Date.now();
   try {
-    const res = await fetch(`${BASE_URL}/api/chat`, {
+    const res = await fetchRetrying(`${BASE_URL}/api/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

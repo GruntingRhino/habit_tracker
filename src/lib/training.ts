@@ -154,13 +154,13 @@ export const DEFAULT_TRAINING: TrainingState = {
 };
 
 export async function readTraining(userId?: string): Promise<TrainingState> {
-  const row = await prisma.brainState.findUnique({ where: { key: stateKey(TRAINING_KEY, userId) } });
+  const row = await prisma.brainState.findUnique({ where: { key: await stateKey(TRAINING_KEY, userId) } });
   return { ...DEFAULT_TRAINING, ...((row?.value ?? {}) as Partial<TrainingState>) };
 }
 
 export async function writeTraining(t: TrainingState, userId?: string) {
   const value = t as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: stateKey(TRAINING_KEY, userId) }, update: { value }, create: { key: stateKey(TRAINING_KEY, userId), value } });
+  await prisma.brainState.upsert({ where: { key: await stateKey(TRAINING_KEY, userId) }, update: { value }, create: { key: await stateKey(TRAINING_KEY, userId), value } });
 }
 
 /** "Upper A – Upper chest…" → "A". */

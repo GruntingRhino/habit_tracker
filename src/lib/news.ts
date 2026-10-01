@@ -148,11 +148,11 @@ export async function refreshNews(userId: string, now = new Date()): Promise<New
   });
   const state: NewsState = { at: now.toISOString(), topics, items: rankNews(raw, now), errors };
   const value = state as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: stateKey(NEWS_KEY, userId) }, update: { value }, create: { key: stateKey(NEWS_KEY, userId), value } });
+  await prisma.brainState.upsert({ where: { key: await stateKey(NEWS_KEY, userId) }, update: { value }, create: { key: await stateKey(NEWS_KEY, userId), value } });
   return state;
 }
 
 export async function readNews(userId?: string): Promise<NewsState | null> {
-  const row = await prisma.brainState.findUnique({ where: { key: stateKey(NEWS_KEY, userId) } });
+  const row = await prisma.brainState.findUnique({ where: { key: await stateKey(NEWS_KEY, userId) } });
   return (row?.value as unknown as NewsState) ?? null;
 }

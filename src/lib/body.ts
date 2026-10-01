@@ -167,13 +167,13 @@ export function weightTrend(daily: { date: Date; lb: number }[], history: { date
 }
 
 export async function readBody(userId?: string): Promise<BodyState> {
-  const row = await prisma.brainState.findUnique({ where: { key: stateKey(BODY_KEY, userId) } });
+  const row = await prisma.brainState.findUnique({ where: { key: await stateKey(BODY_KEY, userId) } });
   return normalizeBody((row?.value ?? {}) as BodyState);
 }
 
 async function writeBody(b: BodyState, userId?: string) {
   const value = b as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: stateKey(BODY_KEY, userId) }, update: { value }, create: { key: stateKey(BODY_KEY, userId), value } });
+  await prisma.brainState.upsert({ where: { key: await stateKey(BODY_KEY, userId) }, update: { value }, create: { key: await stateKey(BODY_KEY, userId), value } });
 }
 
 export interface UpdateResult {

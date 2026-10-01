@@ -21,9 +21,9 @@ export async function POST(req: NextRequest) {
   const known = new Set(QUIZ.map((q) => q.id));
   const incoming = Object.fromEntries(Object.entries(parsed.data.answers).filter(([k]) => known.has(k)));
   if (!Object.keys(incoming).length) return NextResponse.json({ error: "No known questions answered" }, { status: 400 });
-  const existing = await prisma.brainState.findUnique({ where: { key: stateKey("quiz") } });
+  const existing = await prisma.brainState.findUnique({ where: { key: await stateKey("quiz") } });
   const answers = { ...((existing?.value as { answers?: Record<string, unknown> } | null)?.answers ?? {}), ...incoming };
   const value = { answers } as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: stateKey("quiz") }, update: { value }, create: { key: stateKey("quiz"), value } });
+  await prisma.brainState.upsert({ where: { key: await stateKey("quiz") }, update: { value }, create: { key: await stateKey("quiz"), value } });
   return NextResponse.json({ ok: true, answered: Object.keys(answers).length, of: QUIZ.length });
 }

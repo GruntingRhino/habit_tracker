@@ -12,8 +12,8 @@ export async function GET() {
   const { user } = await getOwnerSession();
   const [docs, beat, quiz, body, owner] = await Promise.all([
     prisma.profileDoc.findMany({ where: { userId: user.id } }),
-    prisma.brainState.findUnique({ where: { key: stateKey("brain") } }),
-    prisma.brainState.findUnique({ where: { key: stateKey("quiz") } }),
+    prisma.brainState.findUnique({ where: { key: await stateKey("brain") } }),
+    prisma.brainState.findUnique({ where: { key: await stateKey("quiz") } }),
     readBody(),
     prisma.user.findUnique({ where: { id: user.id }, select: { nutritionTargets: true } }),
   ]);

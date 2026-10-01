@@ -20,9 +20,17 @@ describe("prompts for a second person", () => {
 
 describe("per-person state", () => {
   it("keys are per person, and missing a person fails loudly", async () => {
-    expect(stateKey("body", "u1")).toBe("body:u1");
-    expect(() => stateKey("body")).toThrow(/per person/);
-    await runAs(contextFor({ id: "u2", name: "Sam", pronouns: "they" }), async () => expect(stateKey("body")).toBe("body:u2"));
+    expect(await stateKey("body", "u1")).toBe("body:u1");
+    await expect(stateKey("body")).rejects.toThrow(/per person/);
+    await runAs(contextFor({ id: "u2", name: "Sam", pronouns: "they" }), async () => expect(await stateKey("body")).toBe("body:u2"));
+  });
+  it("a web handler with no context gets the logged-in person from the session resolver", async () => {
+    const { setContextResolver } = await import("../request-context");
+    setContextResolver(async () => ({ userId: "from-cookie", name: "Sam", pronouns: "she" }));
+    // e.g. readNews() called straight from a route handler
+    expect(await stateKey("news")).toBe("news:from-cookie");
+    setContextResolver(async () => null);
+    await expect(stateKey("news")).rejects.toThrow(/per person/);
   });
 });
 

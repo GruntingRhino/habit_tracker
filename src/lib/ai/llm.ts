@@ -10,7 +10,7 @@
 
 import { personalize, resolveContext } from "@/lib/request-context";
 
-export const LLM_MODEL = process.env.LLM_MODEL ?? "sparkx2.5-abliterated:1.7b";
+export const LLM_MODEL = process.env.LLM_MODEL ?? "sparkx2.5-abliterated:1.7b-q8";
 const BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
 // Set when Ollama sits behind deploy/ollama-gate.mjs (the Vercel deployment reaches it over Tailscale Funnel).
 const AUTH: Record<string, string> = process.env.OLLAMA_AUTH_TOKEN

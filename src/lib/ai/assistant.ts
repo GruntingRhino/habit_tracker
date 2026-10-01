@@ -1644,14 +1644,15 @@ const FEEL_NOTE = `He's telling you how he feels. Reply in 1-2 short sentences: 
 const STEPS_SYSTEM = `You brainstorm preparation steps for one task. Reply with minified JSON only: {"items":["..."]}.
 Give 5 different steps, each 3-10 words, starting with a verb, specific to the task. Cover different angles: what to bring, questions to ask, research, practice, follow-up.`;
 
-const GENERIC = new Set(["prepare", "meeting", "review", "research", "practice", "follow", "make", "with", "about", "your", "their", "items", "things"]);
-const keyWords = (s: string) => s.toLowerCase().replace(/[^a-z0-9_. ]/g, " ").split(/\s+/).filter((w) => w.length >= 5 && !GENERIC.has(w)).map((w) => w.replace(/(s|ing|ed)$/, ""));
+const GENERIC = new Set(["prepare", "meeting", "review", "research", "practice", "follow", "make", "about", "their", "things", "address", "remaining"]);
+// "OPEN_ITEMS.md checklist" → open, item, checklist (file names split into their words too).
+const keyWords = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 4 && !GENERIC.has(w) && !["with", "from", "your", "that", "this", "them", "into"].includes(w)).map((w) => w.replace(/(s|ing|ed)$/, ""));
 
 /**
  * "1 more thing that you think is good": a small model can't reliably avoid repeating his list, so it
  * brainstorms 5 and code keeps the ones that share no key word with what he already listed.
  */
-async function suggestSteps(title: string, said: string, have: string[], n: number): Promise<string[]> {
+export async function suggestSteps(title: string, said: string, have: string[], n: number): Promise<string[]> {
   const taken = new Set(have.flatMap(keyWords));
   const picked: string[] = [];
   for (let attempt = 0; attempt < 2 && picked.length < n; attempt++) {

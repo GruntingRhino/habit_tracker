@@ -1,5 +1,6 @@
 "use client";
 
+import { report } from "@/components/feedback";
 import { useCallback, useEffect, useState } from "react";
 import { differenceInCalendarDays, format, subDays } from "date-fns";
 import { ChevronRight, Flame, MoreHorizontal, X } from "lucide-react";
@@ -72,14 +73,14 @@ function HabitRow({ habit, onChanged }: { habit: Habit; onChanged: () => void })
   const rate = thirtyDayRate(habit);
 
   async function toggleToday() {
-    await send(`/api/habits/${habit.id}/log`, "POST", { completed: !doneToday });
+    report(await send(`/api/habits/${habit.id}/log`, "POST", { completed: !doneToday }), doneToday ? `Unchecked ${habit.name}` : `✓ ${habit.name}`);
     onChanged();
   }
   async function saveNote() {
     setNoting(false);
     if (note.trim() === todayNote) return;
     // Keep today's done/not-done as it is; the note tells the AI how much he actually did.
-    await send(`/api/habits/${habit.id}/log`, "POST", { completed: doneToday, notes: note.trim() });
+    report(await send(`/api/habits/${habit.id}/log`, "POST", { completed: doneToday, notes: note.trim() }), "Note saved");
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
     onChanged();
   }
@@ -89,7 +90,7 @@ function HabitRow({ habit, onChanged }: { habit: Habit; onChanged: () => void })
   }
   async function remove() {
     if (!window.confirm(`Delete "${habit.name}"?`)) return;
-    await send(`/api/habits/${habit.id}`, "DELETE");
+    report(await send(`/api/habits/${habit.id}`, "DELETE"), `Deleted "${habit.name}"`);
     onChanged();
   }
 
@@ -201,11 +202,11 @@ function RoutineRow({ routine, onChanged, coach }: { routine: Routine; onChanged
   const deload = coach?.deload[routine.id] ?? false;
 
   async function addExercise(name: string) {
-    await send(`/api/weights/routines/${routine.id}/exercises`, "POST", { name });
+    report(await send(`/api/weights/routines/${routine.id}/exercises`, "POST", { name }), `Added ${name}`);
     onChanged();
   }
   async function removeExercise(id: string) {
-    await send(`/api/weights/routines/${routine.id}/exercises?exerciseId=${id}`, "DELETE");
+    report(await send(`/api/weights/routines/${routine.id}/exercises?exerciseId=${id}`, "DELETE"), "Removed");
     onChanged();
   }
   async function saveLog() {
@@ -214,6 +215,7 @@ function RoutineRow({ routine, onChanged, coach }: { routine: Routine; onChanged
       .filter(({ v }) => v && (v.weight || v.sets || v.reps))
       .map(({ e, v }) => ({ exerciseId: e.id, exerciseName: e.name, weight: v.weight ? Number(v.weight) : undefined, sets: v.sets ? Number(v.sets) : undefined, reps: v.reps || undefined }));
     const res = await send("/api/weights/sessions", "POST", { routineId: routine.id, exerciseLogs });
+    report(res, `Logged ${routine.name}`);
     if (res.ok) {
       setLog({});
       setSaved(true);
@@ -223,7 +225,7 @@ function RoutineRow({ routine, onChanged, coach }: { routine: Routine; onChanged
   }
   async function remove() {
     if (!window.confirm(`Delete "${routine.name}"?`)) return;
-    await send(`/api/weights/routines/${routine.id}`, "DELETE");
+    report(await send(`/api/weights/routines/${routine.id}`, "DELETE"), `Deleted "${routine.name}"`);
     onChanged();
   }
 

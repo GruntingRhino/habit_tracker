@@ -1,5 +1,6 @@
 "use client";
 
+import { ActionButton, report } from "@/components/feedback";
 import { useCallback, useState } from "react";
 import { format, isPast, isToday, isTomorrow } from "date-fns";
 import { ChevronRight, FolderKanban, Loader2, Sparkles, X } from "lucide-react";
@@ -92,7 +93,7 @@ function AskAI({ type, id, onDone }: { type: "todo" | "project"; id: string; onD
   }
   async function undo() {
     if (!result?.snapshot) return;
-    const res = await send("/api/items/restore", "POST", { snapshot: result.snapshot });
+    const res = report(await send("/api/items/restore", "POST", { snapshot: result.snapshot }), "↩︎ Put back how it was");
     const body = await res.json().catch(() => null);
     setResult(null);
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
@@ -139,9 +140,9 @@ function AskAI({ type, id, onDone }: { type: "todo" | "project"; id: string; onD
           <p>{result.reply}</p>
           {result.changes.length > 0 && <p className="mt-0.5" style={{ color: "var(--ink-500)" }}>{result.changes.slice(0, 8).join(" · ")}</p>}
           {result.snapshot != null && (
-            <button onClick={undo} className="min-link mt-1">
+            <ActionButton onAction={undo} className="min-link mt-1" busyLabel="Putting it back…" doneLabel="↩︎ Undone">
               Undo
-            </button>
+            </ActionButton>
           )}
         </div>
       )}
@@ -198,17 +199,17 @@ export function TodoItem({ todo, open, onToggleOpen, onChanged, onOpenItem, leav
   const due = whenLabel(todo.dueAt);
   const done = todo.status === "done" || leaving;
   async function save(p: { title?: string; due?: string | null; priority?: string; description?: string | null }) {
-    await send(`/api/todos/${todo.id}`, "PATCH", { ...(p.title ? { title: p.title } : {}), ...(p.due !== undefined ? { dueAt: p.due } : {}), ...(p.priority ? { priority: p.priority } : {}), ...(p.description !== undefined ? { notes: p.description } : {}) });
+    report(await send(`/api/todos/${todo.id}`, "PATCH", { ...(p.title ? { title: p.title } : {}), ...(p.due !== undefined ? { dueAt: p.due } : {}), ...(p.priority ? { priority: p.priority } : {}), ...(p.description !== undefined ? { notes: p.description } : {}) }), "Saved");
     onChanged();
   }
   async function makeProject() {
-    const res = await send("/api/items/convert", "POST", { id: todo.id });
+    const res = report(await send("/api/items/convert", "POST", { id: todo.id }), "Turned into a project");
     const body = await res.json().catch(() => null);
     onChanged();
     if (body?.id) onOpenItem({ type: "project", id: body.id });
   }
   async function remove() {
-    await send(`/api/todos/${todo.id}`, "DELETE");
+    report(await send(`/api/todos/${todo.id}`, "DELETE"), `Deleted "${todo.title}"`);
     onChanged();
   }
   return (
@@ -272,7 +273,7 @@ export function ProjectItem({ project, open, onToggleOpen, onChanged, onOpenItem
   }
   async function removeTask(t: Task) {
     setTasks((l) => l?.filter((x) => x.id !== t.id) ?? null);
-    await send(`/api/projects/${project.id}/tasks/${t.id}`, "DELETE");
+    report(await send(`/api/projects/${project.id}/tasks/${t.id}`, "DELETE"), `Removed "${t.title}"`);
     onChanged();
   }
   async function addTask(title: string) {
@@ -283,12 +284,12 @@ export function ProjectItem({ project, open, onToggleOpen, onChanged, onOpenItem
     }
   }
   async function setStatus(status: "completed" | "active") {
-    await send(`/api/projects/${project.id}`, "PATCH", { status });
+    report(await send(`/api/projects/${project.id}`, "PATCH", { status }), status === "completed" ? `🎉 Completed "${project.title}"` : "Reopened");
     onChanged();
   }
   async function remove() {
     if (!window.confirm(`Delete "${project.title}" and its checklist?`)) return;
-    await send(`/api/projects/${project.id}`, "DELETE");
+    report(await send(`/api/projects/${project.id}`, "DELETE"), `Deleted "${project.title}"`);
     onChanged();
   }
   return (

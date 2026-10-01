@@ -22,6 +22,8 @@ export interface PlanCard {
 }
 
 export interface ChatMeta {
+  /** Briefly true after Undo: the undone items are struck through before the refresh. */
+  undoFx?: boolean;
   options?: string[];
   plan?: PlanCard;
   /** What an undo reversed. */
@@ -160,18 +162,22 @@ export function useAssistantChat({ sessionOnly = false }: { sessionOnly?: boolea
     }
   }, []);
 
-  const undo = useCallback(async (messageId: string) => {
+  const undo = useCallback(async (messageId: string): Promise<boolean> => {
     const res = await fetch("/api/chat/undo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId }),
-    });
-    if (!res.ok) return;
+    }).catch(() => null);
+    if (!res?.ok) return false;
+    // Strike the undone items through for a moment so it's clear what was reversed, then refresh.
+    setMessages((m) => m.map((x) => (x.id === messageId ? { ...x, meta: { ...x.meta, undoFx: true } } : x)));
+    await new Promise((r) => setTimeout(r, 900));
     // Undo can change more than this message (plan state, pending questions), so reload the conversation.
     const id = conversationRef.current;
     if (id) await load(id).catch(() => undefined);
     else setMessages((m) => m.map((x) => (x.id === messageId ? { ...x, actions: [], meta: { ...x.meta, options: undefined, undone: ["Undone"] }, content: `${x.content}\n\n↩︎ Undone` } : x)));
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
+    return true;
   }, [load]);
 
   const toggleSaved = useCallback(async () => {

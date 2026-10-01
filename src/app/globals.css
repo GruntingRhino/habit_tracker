@@ -404,3 +404,26 @@ body {
 .min-btn:disabled { opacity: .35; }
 .min-field { width: 100%; background: rgba(255,255,255,.03); color: var(--ink-100); font-size: .8125rem; border: 1px solid var(--stroke-1); border-radius: .5rem; padding: .3rem .5rem; outline: none; }
 .min-field:focus { border-color: var(--accent); }
+
+/* ─── Action feedback: it's clear the tap worked ─────────────────────────────*/
+@keyframes fx-pop { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@keyframes fx-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+@keyframes fx-draw { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes fx-flash { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 55%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+@keyframes fx-strike { from { background-size: 0 1.5px; } to { background-size: 100% 1.5px; } }
+@keyframes fx-spin { to { transform: rotate(360deg); } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 14px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 8px); } }
+.fx-pop { animation: fx-pop .38s cubic-bezier(.34, 1.56, .64, 1); }
+.fx-shake { animation: fx-shake .4s ease-in-out; }
+.fx-flash { animation: fx-flash .8s ease-out; border-radius: inherit; }
+.fx-check path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: fx-draw .35s ease-out .05s forwards; }
+.fx-spin { animation: fx-spin .8s linear infinite; }
+.fx-strike { background-image: linear-gradient(currentColor, currentColor); background-repeat: no-repeat; background-position: 0 55%; background-size: 100% 1.5px; animation: fx-strike .4s ease-out both; opacity: .5; transition: opacity .4s; }
+.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); z-index: 60; display: flex; align-items: center; gap: .5rem; max-width: min(92vw, 26rem); padding: .6rem .9rem; border-radius: 999px; font-size: .875rem; background: var(--ink-100); color: var(--bg-base); box-shadow: 0 8px 28px rgba(0,0,0,.35); animation: toast-in .28s cubic-bezier(.22, 1, .36, 1) both; }
+.toast[data-leaving="true"] { animation: toast-out .25s ease-in forwards; }
+.toast[data-kind="error"] { background: var(--bad); color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .fx-pop, .fx-shake, .fx-flash, .fx-strike, .toast, .toast[data-leaving="true"] { animation: none !important; }
+  .fx-check path { animation: none; stroke-dashoffset: 0; }
+}

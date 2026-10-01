@@ -1,5 +1,6 @@
 "use client";
 
+import { report } from "@/components/feedback";
 import { useCallback, useEffect, useState } from "react";
 import { differenceInCalendarDays, format } from "date-fns";
 import { Star, Trash2, X, Target } from "lucide-react";
@@ -56,18 +57,21 @@ export default function ChatHistory({ activeId, onOpen, onClose, onDeleted }: Ch
 
   async function toggleSaved(item: Item) {
     setItems((list) => list?.map((x) => (x.id === item.id ? { ...x, saved: !x.saved } : x)) ?? null);
-    await fetch(`/api/chat/conversations/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ saved: !item.saved }),
-    });
+    report(
+      await fetch(`/api/chat/conversations/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saved: !item.saved }),
+      }).catch(() => null),
+      item.saved ? "Unsaved — it'll clear after 30 days" : "Saved — it stays in your history"
+    );
     window.dispatchEvent(new CustomEvent(HISTORY_EVENT));
   }
 
   async function remove(item: Item) {
     if (!window.confirm(`Delete “${item.title}”?`)) return;
     setItems((list) => list?.filter((x) => x.id !== item.id) ?? null);
-    await fetch(`/api/chat/conversations/${item.id}`, { method: "DELETE" });
+    report(await fetch(`/api/chat/conversations/${item.id}`, { method: "DELETE" }).catch(() => null), "Chat deleted");
     onDeleted(item.id);
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { DoneCheck } from "@/components/feedback";
 import { useMemo, useState } from "react";
 import { formatDistanceToNowStrict, format } from "date-fns";
 import { RefreshCw } from "lucide-react";
@@ -35,6 +36,7 @@ const short = (t: string) => SHORT[t] ?? t;
 export default function NewsTerminal({ news, onRefresh }: { news: NewsData | null; onRefresh: () => Promise<void> }) {
   const [topic, setTopic] = useState<string>("All");
   const [busy, setBusy] = useState(false);
+  const [fresh, setFresh] = useState(false);
   const items = useMemo(() => news?.items ?? [], [news]);
   const topics = useMemo(() => ["All", ...[...new Set(items.map((i) => short(i.topic)))]], [items]);
   const shown = topic === "All" ? items : items.filter((i) => short(i.topic) === topic);
@@ -43,6 +45,8 @@ export default function NewsTerminal({ news, onRefresh }: { news: NewsData | nul
     setBusy(true);
     try {
       await onRefresh();
+      setFresh(true);
+      setTimeout(() => setFresh(false), 2000);
     } finally {
       setBusy(false);
     }
@@ -60,8 +64,8 @@ export default function NewsTerminal({ news, onRefresh }: { news: NewsData | nul
           {news?.at ? ` · ${format(new Date(news.at), "EEE h:mm a")}` : ""}
         </span>
         <button onClick={refresh} disabled={busy} className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 hover:opacity-80 disabled:opacity-50" aria-label="Refresh news">
-          <RefreshCw className={`h-3 w-3 ${busy ? "animate-spin" : ""}`} />
-          {busy ? "fetching…" : "refresh"}
+          {fresh ? <DoneCheck size={12} color="var(--good)" /> : <RefreshCw className={`h-3 w-3 ${busy ? "animate-spin" : ""}`} />}
+          <span style={fresh ? { color: "var(--good)" } : undefined}>{busy ? "fetching…" : fresh ? "updated" : "refresh"}</span>
         </button>
       </header>
 

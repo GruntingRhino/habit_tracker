@@ -1,5 +1,6 @@
 "use client";
 
+import { ActionButton } from "@/components/feedback";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUp, History, SquarePen, Star, Check } from "lucide-react";
@@ -89,7 +90,7 @@ function PlanView({ plan, projectHref, undone }: { plan: PlanCard; projectHref?:
   );
 }
 
-function AssistantBody({ msg, onUndo }: { msg: ChatMsg; onUndo: (id: string) => void }) {
+function AssistantBody({ msg, onUndo }: { msg: ChatMsg; onUndo: (id: string) => Promise<boolean> }) {
   const actions = msg.actions ?? [];
   const undone = Boolean(msg.meta?.undone);
   const text = msg.content
@@ -106,13 +107,19 @@ function AssistantBody({ msg, onUndo }: { msg: ChatMsg; onUndo: (id: string) => 
             <Link key={`${a.type}-${a.id}-${a.op}`} href={a.href} className="flex items-center gap-2.5 py-1 text-sm hover:opacity-80">
               <AreaDot area={a.area} />
               <span style={{ color: "var(--ink-500)" }}>{a.op === "complete" ? "Done" : a.op === "delete" ? "Removed" : TYPE_LABEL[a.type] ?? a.type}</span>
-              <span className="truncate" style={{ color: "var(--ink-100)" }}>{a.title}</span>
+              <span className={`truncate ${msg.meta?.undoFx ? "fx-strike" : ""}`} style={{ color: "var(--ink-100)" }}>{a.title}</span>
               {a.detail && <span className="truncate text-xs" style={{ color: "var(--ink-500)" }}>{a.detail}</span>}
             </Link>
           ))}
-          <button onClick={() => onUndo(msg.id)} className="min-link mt-1 text-xs">
+          <ActionButton
+            onAction={() => onUndo(msg.id)}
+            className="min-link mt-1 text-xs"
+            busyLabel="Undoing…"
+            doneLabel="↩︎ Undone"
+            toastText={`Undone: ${actions.map((a) => a.title).slice(0, 3).join(", ")}${actions.length > 3 ? "…" : ""}`}
+          >
             Undo
-          </button>
+          </ActionButton>
         </div>
       )}
       {msg.meta?.plan ? (

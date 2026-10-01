@@ -1,5 +1,6 @@
 "use client";
 
+import { report } from "@/components/feedback";
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { format, isPast } from "date-fns";
@@ -98,11 +99,11 @@ export default function HomePage() {
   }
   async function tickTodo(t: Todo) {
     setTodos((l) => l.filter((x) => x.id !== t.id));
-    await fetch(`/api/todos/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "done" }) });
+    report(await fetch(`/api/todos/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "done" }) }).catch(() => null), `✓ Done: ${t.title}`);
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
   }
   async function toggleHabit(h: Habit) {
-    await fetch(`/api/habits/${h.id}/log`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: !doneHabit(h) }) });
+    report(await fetch(`/api/habits/${h.id}/log`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: !doneHabit(h) }) }).catch(() => null), doneHabit(h) ? `Unchecked ${h.name}` : `✓ ${h.name}`);
     window.dispatchEvent(new CustomEvent("liveimproved:changed"));
     await load();
   }

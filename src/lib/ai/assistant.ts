@@ -2,7 +2,7 @@ import prisma from "@/lib/prisma";
 import { contextFor, currentContext, runAs } from "@/lib/request-context";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
-import { actionableCount, extractUpdate, isUpdate, parseWorkout, parseTodos, type Extracted } from "@/lib/ai/update";
+import { actionableCount, extractUpdate, isUpdate, parseNotesRequest, parseWorkout, parseTodos, type Extracted } from "@/lib/ai/update";
 import { needsPrep } from "@/lib/prep";
 import { secondLook } from "@/lib/ai/leftovers";
 import { afterBlock, CALENDAR_Q, calendarAnswer, MOVE_EVENT, moveEvent, nameMatches, newTime, rangeOf, WHEN_Q, whenAnswer } from "@/lib/ai/calendarchat";
@@ -1414,6 +1414,11 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted, knownHabits?
       actions.push({ op: "create", type: "reminder", id: r.id, title: todo.title, area: "work", href: "/work", detail: fmtWhenShort(due) });
     }
   }
+  // "I have a meeting on the 14th … I have to prepare for the meeting": the prep to-do is for that event.
+  if (x.events.length === 1) {
+    const ev = x.events[0];
+    x = { ...x, todos: x.todos.map((t) => (/^prepare for (?:the |that |this |my )?(?:meeting|it|that|this|event|call|interview)$/i.test(t.title) ? { title: `Prepare for ${ev.title.charAt(0).toLowerCase()}${ev.title.slice(1)}`, due: t.due ?? prepDue(ev.start) } : t)) };
+  }
   // What he asked for in this message comes first, so "those two" later means these.
   const assessmentItems = [...touched];
   touched.length = 0;
@@ -1468,6 +1473,29 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted, knownHabits?
   // Done things: workouts tick the Workout habit, meals get nutrition estimated from just their clause.
   for (const w of x.workouts) actions.push(...(await applyCapture(userId, [{ kind: "workout", title: w, area: "physical", done: true }], w, source)));
   for (const m of x.meals) actions.push(...(await applyCapture(userId, [{ kind: "meal", title: m.name, area: "physical", done: true }], m.text, source)));
+  // The prep to-do for this message's event: linked to it, with a reminder at its due time.
+  const prepAction = actions.find((a) => a.type === "todo" && a.op === "create" && /^prepare for /i.test(a.title));
+  const eventAction = actions.find((a) => a.type === "event" && a.op === "create");
+  if (prepAction && eventAction) {
+    const t = await prisma.todo.findUnique({ where: { id: prepAction.id } });
+    await prisma.calendarEvent.updateMany({ where: { id: eventAction.id, userId }, data: { todoId: prepAction.id } });
+    if (t?.dueAt && t.dueAt > new Date()) {
+      const r = await prisma.reminder.create({ data: { userId, text: t.title, fireAt: t.dueAt, todoId: t.id } });
+      actions.push({ op: "create", type: "reminder", id: r.id, title: t.title, area: t.area, href: "/work", detail: fmtWhenShort(t.dueAt) });
+    }
+  }
+  // "in the description include a mock presentation, the OPEN_ITEMS.md checklist and 1 more thing you think is good"
+  const notesReq = parseNotesRequest(text);
+  const target = prepAction ?? [...actions].reverse().find((a) => a.type === "todo" && a.op === "create");
+  let notesLine: string | null = null;
+  if (notesReq && target) {
+    const extra = notesReq.extra ? await suggestSteps(target.title, text, notesReq.items, notesReq.extra) : [];
+    const items = [...notesReq.items, ...extra];
+    if (items.length) {
+      await prisma.todo.updateMany({ where: { id: target.id, userId }, data: { notes: items.map((i) => `- ${i}`).join("\n") } });
+      notesLine = `📝 Description: ${items.map((i, n) => `${i}${n >= notesReq.items.length ? " (suggested)" : ""}`).join(" · ")}${notesReq.extra > extra.length ? " — couldn't come up with the extra one, add it anytime" : ""}`;
+    }
+  }
   // Habits he says he did (or didn't): ticked, or noted ("60 oz of 100"). A logged workout already ticks Workout.
   const habits = knownHabits ?? (await prisma.habit.findMany({ where: { userId, isActive: true }, select: { id: true, name: true, area: true } }));
   const reports = parseHabitReports(text, habits).filter((r) => !(isWorkoutHabit(r.habit.name) && x.workouts.length));
@@ -1483,6 +1511,7 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted, knownHabits?
 
   if (!actions.length && !already.length) return routeAndReply(turn, text, false, { conversational: false });
   lines.push(describeActions(actions));
+  if (notesLine) lines.push(notesLine);
   if (already.length) lines.push(`Already on your list: ${[...new Set(already)].join(" · ")}`);
   // Two or more new plain to-dos: which matters most (same question the router path asks).
   if (!ask && actions.length && actions.every((a) => a.type === "todo" && a.op === "create" && !a.detail)) {
@@ -1611,6 +1640,49 @@ async function correctLast(turn: Turn, recentActions: ItemAction[], text: string
 }
 
 const FEEL_NOTE = `He's telling you how he feels. Reply in 1-2 short sentences: acknowledge it plainly (never "good to know"), then suggest ONE small concrete next step from his day (one easy habit, or 10 minutes on a to-do). No lists, no lecture, no questions.`;
+
+const STEPS_SYSTEM = `You brainstorm preparation steps for one task. Reply with minified JSON only: {"items":["..."]}.
+Give 5 different steps, each 3-10 words, starting with a verb, specific to the task. Cover different angles: what to bring, questions to ask, research, practice, follow-up.`;
+
+const GENERIC = new Set(["prepare", "meeting", "review", "research", "practice", "follow", "make", "with", "about", "your", "their", "items", "things"]);
+const keyWords = (s: string) => s.toLowerCase().replace(/[^a-z0-9_. ]/g, " ").split(/\s+/).filter((w) => w.length >= 5 && !GENERIC.has(w)).map((w) => w.replace(/(s|ing|ed)$/, ""));
+
+/**
+ * "1 more thing that you think is good": a small model can't reliably avoid repeating his list, so it
+ * brainstorms 5 and code keeps the ones that share no key word with what he already listed.
+ */
+async function suggestSteps(title: string, said: string, have: string[], n: number): Promise<string[]> {
+  const taken = new Set(have.flatMap(keyWords));
+  const picked: string[] = [];
+  for (let attempt = 0; attempt < 2 && picked.length < n; attempt++) {
+    try {
+      const r = await chat({
+        messages: [
+          { role: "system", content: STEPS_SYSTEM },
+          { role: "user", content: `Task: ${title}\nContext: ${said.slice(0, 400)}\nAlready planned: ${have.join("; ") || "nothing"}.` },
+        ],
+        schema: { type: "object", properties: { items: { type: "array", items: { type: "string" } } }, required: ["items"] },
+        temperature: 0.7,
+        maxTokens: 130,
+        timeoutMs: 90_000,
+      });
+      for (const raw of parseJson<{ items?: unknown[] }>(r.content)?.items ?? []) {
+        if (typeof raw !== "string") continue;
+        const item = raw.trim().replace(/^[-•*\d.)\s]+/, "").replace(/[.!]+$/, "");
+        if (item.length < 8 || item.length > 80 || !/^[A-Za-z]/.test(item) || item.split(/\s+/).length < 3) continue;
+        const words = keyWords(item);
+        if (!words.length || words.some((w) => taken.has(w))) continue; // repeats something he listed (or already picked)
+        if (/^follow/i.test(item) && picked.length + 1 < n) continue; // prep comes before follow-up
+        picked.push(item.charAt(0).toUpperCase() + item.slice(1));
+        words.forEach((w) => taken.add(w));
+        if (picked.length >= n) break;
+      }
+    } catch {
+      // try once more, then give up quietly
+    }
+  }
+  return picked;
+}
 
 /** After sharing without Google: the hint to connect it, for accounts that can. */
 async function googleHint(userId: string) {

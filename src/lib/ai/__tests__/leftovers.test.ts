@@ -35,3 +35,11 @@ describe("secondLook", () => {
     expect(await secondLook(["gonna need a ride saturday"], now)).toEqual([]);
   });
 });
+
+describe("filler isn't a to-do", () => {
+  it("'I will' is rejected even though its words are in the clause", () => {
+    expect(grounded("I will", "I will also have to prepare for the meeting")).toBe(false);
+    expect(candidates(["I will"])).toEqual([]);
+    expect(grounded("Prepare for the meeting", "I will also have to prepare for the meeting")).toBe(true);
+  });
+});

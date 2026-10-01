@@ -56,7 +56,7 @@ export function clauses(text: string) {
   const lead = "(?:i|we|my|it'?s|im|i'?m|i'?ll|great|good|bad|but|had|ate|hit|did|went|got|gotta|need|don'?t|remember|ran|lifted|coach|mr|ms|mrs|then|and (?:then|i|don'?t|gotta|need|remember))";
   return normalize(text)
     .replace(/\s+/g, " ")
-    .split(new RegExp(`(?<=[.!?])\\s+|\\s*;\\s*|,?\\s+(?:also|btw|oh and|and also|plus)\\s+|,\\s+(?=${lead}\\b)|\\s+and (?=(?:i|we) (?:should|have to|need to|gotta|got to|must|still|also)\\b)|,?\\s+and\\s+(?=(?:a|an|my|the)\\s+[a-z]+\\s+(?:quiz|test|exam|midterm|final)\\b)`, "i"))
+    .split(new RegExp(`(?<=[.!?])\\s+|\\s*;\\s*|,\\s*(?:also|btw|oh and|and also|plus)\\s+|\\s+(?:btw|oh and|and also|plus)\\s+|,\\s+(?=${lead}\\b)|\\s+and (?=(?:i|we) (?:should|have to|need to|gotta|got to|must|still|also)\\b)|,?\\s+and\\s+(?=(?:a|an|my|the)\\s+[a-z]+\\s+(?:quiz|test|exam|midterm|final)\\b)`, "i"))
     .map((c) =>
       c
         .replace(/^((also|and|plus|oh|so|ok(ay)?|uhh?|um+|honestly|like)\b[\s,]*)+/gi, "")
@@ -68,8 +68,20 @@ export function clauses(text: string) {
     .filter((c) => c.length > 2);
 }
 
-/** chrono, plus: a bare "at 5" in a plan means 5pm today, not 5am tomorrow. */
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/** "on the 14th" (no month): chrono can't, so name the month — this month if it's still ahead, else next. */
+export function withMonths(text: string, now: Date) {
+  return text.replace(/\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b(?!\s+(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))/gi, (m, d: string) => {
+    const day = Number(d);
+    if (day < 1 || day > 31) return m;
+    const month = day >= now.getDate() ? now.getMonth() : now.getMonth() + 1;
+    return `on ${MONTHS[month % 12]} ${day}`;
+  });
+}
+
+/** chrono, plus: a bare "at 5" in a plan means 5pm today, not 5am tomorrow; "the 14th" is a date. */
 export function when(text: string, now: Date) {
+  text = withMonths(text, now);
   const all = chrono.parse(text, now, { forwardDate: true });
   let r = all[0];
   if (!r) return null;
@@ -142,7 +154,7 @@ const PAST_TEST = new RegExp(`\\b(had|took|finished|did|done with|got)\\b[^.]{0,
 
 export function parseAssessments(clause: string, now: Date): Extracted["assessments"] {
   const c = normalize(clause).toLowerCase();
-  const when = chrono.parse(c, now, { forwardDate: true })[0];
+  const when = chrono.parse(withMonths(c, now), now, { forwardDate: true })[0];
   if (!when) return [];
   if (PAST_TEST.test(c) && !/\b(tomorrow|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/.test(c)) return [];
   const m = c.match(new RegExp(`\\b((?:[a-z0-9]+(?:\\s*(?:,|and|&)\\s*))*[a-z0-9]+)\\s+${KIND}(?:z?es|s)?\\b`, "i"));
@@ -374,3 +386,33 @@ export function isUpdate(text: string, x: Extracted) {
 
 /** Leftover clauses that sound like something to do or somewhere to be: worth a checked second look. */
 export const INTENT = /\b(will|gonna|going to|need|have to|gotta|should|want to|plan(?:ning)? to|remind|due|deadline|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this weekend|at \d|by \d)\b/i;
+
+// ---- "in the description include …" -------------------------------------------------------------
+
+const GERUND: Record<string, string> = { doing: "Do", finishing: "Finish", making: "Make", reviewing: "Review", practicing: "Practice", practising: "Practice", writing: "Write", preparing: "Prepare", reading: "Read", studying: "Study", getting: "Get", creating: "Create", emailing: "Email", calling: "Call", printing: "Print", checking: "Check", updating: "Update", building: "Build", testing: "Test", planning: "Plan", rehearsing: "Rehearse", researching: "Research", drafting: "Draft", sending: "Send", bringing: "Bring" };
+
+/**
+ * What he wants in a to-do's description: his own items, plus how many the assistant should add
+ * ("1 more thing that you think is good"). Only when he asks.
+ */
+export function parseNotesRequest(text: string): { items: string[]; extra: number } | null {
+  const m = text.match(/\b(?:in|to|for|on)\s+(?:the|its|it'?s|that|this)\s+(?:description|notes|details|desc)\s*(?:,|:)?\s*(?:include|including|add|put|list|with|have|should (?:have|include|say)|write)?\s*:?\s*(.+?)\s*[.!]*$/i);
+  if (!m) return null;
+  let body = m[1];
+  let extra = 0;
+  const more = body.match(/\s*(?:,|\band\b)?\s*(?:also\s+)?(\d+|one|two|three|a couple(?: of)?|a few|some)\s+(?:more|other|extra)\s+(?:things?|ideas?|steps?|items?)\b[^,]*$/i);
+  if (more) {
+    const n = more[1].toLowerCase();
+    extra = /^\d+$/.test(n) ? Math.min(5, Number(n)) : n === "one" ? 1 : n === "two" || n.startsWith("a couple") ? 2 : 3;
+    body = body.slice(0, more.index);
+  }
+  const items = body
+    .split(/\s*,\s*(?:and\s+)?|\s+and\s+/i)
+    .map((x) => x.trim().replace(/^(?:a|an|the)\s+/i, ""))
+    .filter((x) => x.split(/\s+/).length >= 2 || /\.\w+$/.test(x))
+    .map((x) => {
+      const w = x.split(/\s+/)[0].toLowerCase();
+      return GERUND[w] ? `${GERUND[w]}${x.slice(w.length)}` : cap(x);
+    });
+  return items.length || extra ? { items, extra } : null;
+}

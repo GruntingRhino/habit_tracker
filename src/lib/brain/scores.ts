@@ -5,6 +5,7 @@
  * improvement options ("Finish “Call bank”"). The model only picks numbers: a score near the
  * rule-based baseline, which facts matter, which option helps most. It can't invent anything.
  */
+import { stateKey } from "@/lib/request-context";
 import { addDays } from "date-fns";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
@@ -134,7 +135,7 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
     prisma.user.findUnique({ where: { id: userId }, select: { nutritionTargets: true } }),
     prisma.dayPlan.findUnique({ where: { userId_date: { userId, date: day } } }),
     prisma.dailyEntry.findMany({ where: { userId, date: { gte: addDays(day, -14), lt: day } }, select: { date: true, moneySpent: true, workoutCompleted: true, sportsTrainingMinutes: true } }),
-    prisma.brainState.findUnique({ where: { key: BODY_STATE_KEY } }),
+    prisma.brainState.findUnique({ where: { key: stateKey(BODY_STATE_KEY, userId) } }),
     prisma.meal.findMany({ where: { userId, status: "eaten", plannedFor: { gte: addDays(day, -6), lt: day } }, select: { calories: true, protein: true, plannedFor: true } }),
   ]);
   const body = (bodyRow?.value ?? {}) as BodyInfo;
@@ -588,15 +589,15 @@ export interface LiveScoreState {
   day?: string;
 }
 
-export async function readLiveState(): Promise<LiveScoreState> {
-  const row = await prisma.brainState.findUnique({ where: { key: LIVE_STATE_KEY } });
+export async function readLiveState(userId?: string): Promise<LiveScoreState> {
+  const row = await prisma.brainState.findUnique({ where: { key: stateKey(LIVE_STATE_KEY, userId) } });
   return ((row?.value ?? { pending: false }) as unknown) as LiveScoreState;
 }
 
-export async function writeLiveState(value: LiveScoreState) {
+export async function writeLiveState(value: LiveScoreState, userId?: string) {
   await prisma.brainState.upsert({
-    where: { key: LIVE_STATE_KEY },
+    where: { key: stateKey(LIVE_STATE_KEY, userId) },
     update: { value: value as unknown as Prisma.InputJsonValue },
-    create: { key: LIVE_STATE_KEY, value: value as unknown as Prisma.InputJsonValue },
+    create: { key: stateKey(LIVE_STATE_KEY, userId), value: value as unknown as Prisma.InputJsonValue },
   });
 }

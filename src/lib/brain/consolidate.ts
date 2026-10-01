@@ -230,7 +230,7 @@ export async function consolidateCategory(
 
 /** "Now 134 lb, 6'0", 15, lean bulk; daily targets 2,850 kcal, 107 g protein…" */
 async function bodySummary(userId: string) {
-  const [body, owner] = await Promise.all([readBody(), prisma.user.findUnique({ where: { id: userId }, select: { nutritionTargets: true } })]);
+  const [body, owner] = await Promise.all([readBody(userId), prisma.user.findUnique({ where: { id: userId }, select: { nutritionTargets: true } })]);
   if (!body.weightLb) return null;
   const t = owner?.nutritionTargets as { calories?: number; protein?: number; carbs?: number; fat?: number } | null;
   const age = currentAge(body);

@@ -6,6 +6,7 @@
  *   - "big" = covered by many outlets (story clusters) and recent; his topics get a boost
  * Ranking is plain code over real headlines: nothing is invented. Stored in BrainState "news".
  */
+import { stateKey } from "@/lib/request-context";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 import type { ProfileContent } from "@/lib/brain/categories";
@@ -147,11 +148,11 @@ export async function refreshNews(userId: string, now = new Date()): Promise<New
   });
   const state: NewsState = { at: now.toISOString(), topics, items: rankNews(raw, now), errors };
   const value = state as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: NEWS_KEY }, update: { value }, create: { key: NEWS_KEY, value } });
+  await prisma.brainState.upsert({ where: { key: stateKey(NEWS_KEY, userId) }, update: { value }, create: { key: stateKey(NEWS_KEY, userId), value } });
   return state;
 }
 
-export async function readNews(): Promise<NewsState | null> {
-  const row = await prisma.brainState.findUnique({ where: { key: NEWS_KEY } });
+export async function readNews(userId?: string): Promise<NewsState | null> {
+  const row = await prisma.brainState.findUnique({ where: { key: stateKey(NEWS_KEY, userId) } });
   return (row?.value as unknown as NewsState) ?? null;
 }

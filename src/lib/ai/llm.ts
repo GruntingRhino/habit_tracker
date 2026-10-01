@@ -8,6 +8,8 @@
  * - Generation is ~10 tok/s, so outputs are schema-constrained and kept short.
  */
 
+import { currentContext, personalize } from "@/lib/request-context";
+
 export const LLM_MODEL = process.env.LLM_MODEL ?? "sparkx2.5-abliterated:1.7b";
 const BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
 // Set when Ollama sits behind deploy/ollama-gate.mjs (the Vercel deployment reaches it over Tailscale Funnel).
@@ -46,9 +48,16 @@ export class LlmError extends Error {}
 /** The caller cancelled (e.g. background work yielding to a chat). */
 export class LlmAborted extends LlmError {}
 
+/** Most time a request may wait in the gate's queue before giving up (on top of its own timeout). */
+const MAX_QUEUE_WAIT_MS = 6 * 60_000;
+
 export async function chat(opts: ChatOptions): Promise<ChatResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 60_000);
+  let timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 60_000);
+  const ctx = currentContext();
+  // Prompts are written about the owner; for anyone else the names and pronouns are swapped.
+  const messages = ctx ? opts.messages.map((m) => (m.role === "system" ? { ...m, content: personalize(m.content, ctx) } : m)) : opts.messages;
+  const queueDeadline = Date.now() + MAX_QUEUE_WAIT_MS;
   const cancel = () => controller.abort();
   if (opts.signal?.aborted) controller.abort();
   opts.signal?.addEventListener("abort", cancel);
@@ -56,11 +65,17 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
   try {
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...AUTH },
+      headers: {
+        "Content-Type": "application/json",
+        ...AUTH,
+        // The gate's queue: whose request, and how urgent (chat > scheduled jobs > background brain).
+        ...(ctx ? { "X-LI-User": ctx.userId } : {}),
+        "X-LI-Priority": ctx?.priority ?? process.env.LLM_PRIORITY ?? "interactive",
+      },
       signal: controller.signal,
       body: JSON.stringify({
         model: LLM_MODEL,
-        messages: opts.messages,
+        messages,
         // Streamed so response headers arrive at once: Node fetch aborts after 300s
         // without headers, and thinking-mode jobs can run longer than that.
         stream: true,
@@ -90,6 +105,7 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
         buffer = buffer.slice(nl + 1);
         if (!line) continue;
         const part = JSON.parse(line) as {
+          queued?: number;
           message?: { content?: string; thinking?: string };
           done?: boolean;
           eval_count?: number;
@@ -97,6 +113,14 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
           error?: string;
         };
         if (part.error) throw new LlmError(part.error);
+        // Waiting in the gate's line: say where, and don't let the wait eat the request's own time.
+        if (part.queued != null) {
+          ctx?.onQueue?.(part.queued);
+          clearTimeout(timer);
+          // In line: wait up to the queue limit. Our turn (0): the request's own timeout starts now.
+          timer = setTimeout(() => controller.abort(), part.queued > 0 ? Math.max(1000, queueDeadline - Date.now()) : opts.timeoutMs ?? 60_000);
+          continue;
+        }
         const piece = part.message?.content ?? "";
         content += piece;
         if (piece) opts.onToken?.(piece);

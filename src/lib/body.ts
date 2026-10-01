@@ -18,6 +18,7 @@
  * Weight used is the 7-day average of logged morning weights when there are 3+, so one weigh-in
  * never swings the numbers.
  */
+import { stateKey } from "@/lib/request-context";
 import { addDays, differenceInCalendarDays, format } from "date-fns";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
@@ -165,14 +166,14 @@ export function weightTrend(daily: { date: Date; lb: number }[], history: { date
   return null;
 }
 
-export async function readBody(): Promise<BodyState> {
-  const row = await prisma.brainState.findUnique({ where: { key: BODY_KEY } });
+export async function readBody(userId?: string): Promise<BodyState> {
+  const row = await prisma.brainState.findUnique({ where: { key: stateKey(BODY_KEY, userId) } });
   return normalizeBody((row?.value ?? {}) as BodyState);
 }
 
-async function writeBody(b: BodyState) {
+async function writeBody(b: BodyState, userId?: string) {
   const value = b as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: BODY_KEY }, update: { value }, create: { key: BODY_KEY, value } });
+  await prisma.brainState.upsert({ where: { key: stateKey(BODY_KEY, userId) }, update: { value }, create: { key: stateKey(BODY_KEY, userId), value } });
 }
 
 export interface UpdateResult {
@@ -187,7 +188,7 @@ export interface UpdateResult {
  */
 export async function updateBody(userId: string, update: { weightLb?: number; heightIn?: number; age?: number } = {}, opts: { checkIn?: boolean; now?: Date } = {}): Promise<UpdateResult> {
   const now = opts.now ?? new Date();
-  const b = await readBody();
+  const b = await readBody(userId);
   const today = format(now, "yyyy-MM-dd");
   const history = [...(b.history ?? [])];
   if (update.weightLb != null || update.heightIn != null) {
@@ -207,7 +208,7 @@ export async function updateBody(userId: string, update: { weightLb?: number; he
   }
   b.history = history.slice(-104);
   if (!b.weightLb) {
-    await writeBody(b);
+    await writeBody(b, userId);
     return { lines: ["Tell me your weight (e.g. “134 lb”) and I'll set your targets."], targets: null, changed: [] };
   }
 
@@ -252,7 +253,7 @@ export async function updateBody(userId: string, update: { weightLb?: number; he
     .filter((k) => prev[k] != null && prev[k] !== result.targets[k])
     .map((k) => `${k} ${prev[k]} → ${result.targets[k]}${k === "calories" ? "" : " g"}`);
   await prisma.user.update({ where: { id: userId }, data: { nutritionTargets: result.targets as unknown as Prisma.InputJsonValue } });
-  await writeBody(b);
+  await writeBody(b, userId);
   return { lines: [...lines, ...result.lines, `Water ≈ ${waterOz(weightUsed)} oz a day (+16 oz on training days). Sleep ${b.sleepTargetHours} h.`], targets: result.targets, changed };
 }
 
@@ -283,7 +284,7 @@ export function parseBodyUpdate(text: string): { weightLb?: number; heightIn?: n
 
 /** Reply text for a logged body update (chat and Telegram). */
 export async function recordBodyUpdate(userId: string, update: { weightLb?: number; heightIn?: number; age?: number }, now = new Date()) {
-  const b = await readBody();
+  const b = await readBody(userId);
   // A weigh-in within a day of the Sunday check-in counts as the check-in (the trend step).
   const checkIn = update.weightLb != null && (now.getDay() === 0 || now.getDay() === 1) && b.lastCheckIn !== format(now, "yyyy-MM-dd");
   const r = await updateBody(userId, update, { checkIn, now });

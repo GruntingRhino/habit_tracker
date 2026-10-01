@@ -1,3 +1,4 @@
+import { stateKey } from "@/lib/request-context";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma";
@@ -11,8 +12,8 @@ export async function GET() {
   const { user } = await getOwnerSession();
   const [docs, beat, quiz, body, owner] = await Promise.all([
     prisma.profileDoc.findMany({ where: { userId: user.id } }),
-    prisma.brainState.findUnique({ where: { key: "brain" } }),
-    prisma.brainState.findUnique({ where: { key: "quiz" } }),
+    prisma.brainState.findUnique({ where: { key: stateKey("brain") } }),
+    prisma.brainState.findUnique({ where: { key: stateKey("quiz") } }),
     readBody(),
     prisma.user.findUnique({ where: { id: user.id }, select: { nutritionTargets: true } }),
   ]);

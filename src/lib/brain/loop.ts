@@ -12,6 +12,8 @@
  *   P5  night shift           after 00:30: stats, consolidate each category (with summary),
  *                             stale-data pass, size caps, snapshot
  */
+import { currentContext, OWNER_NAME, runAs } from "@/lib/request-context";
+import { stateKey } from "@/lib/request-context";
 import prisma from "@/lib/prisma";
 import { chat, LlmAborted } from "@/lib/ai/llm";
 import { getStartOfDay } from "@/lib/utils";
@@ -132,7 +134,8 @@ export class Brain {
 
   /** One unit of work. Returns what it did, or null if it waited. */
   async tick(): Promise<string | null> {
-    const did = await this.step();
+    // A brain always works for one person: when the caller didn't say so (tests), it's its own user.
+    const did = currentContext() ? await this.step() : await runAs({ userId: this.deps.userId, name: OWNER_NAME, pronouns: "he", priority: "background" }, () => this.step());
     if (did) this.save();
     return did;
   }
@@ -150,8 +153,8 @@ export class Brain {
     const changedAt = this.deps.changedAt();
     if (changedAt > (s.changeSeen ?? 0)) {
       s.changeSeen = changedAt;
-      const live = await readLiveState();
-      if (!live.pending) await writeLiveState({ ...live, pending: true, since: new Date(changedAt).toISOString() });
+      const live = await readLiveState(this.deps.userId);
+      if (!live.pending) await writeLiveState({ ...live, pending: true, since: new Date(changedAt).toISOString() }, this.deps.userId);
       return "change-seen";
     }
 
@@ -168,7 +171,7 @@ export class Brain {
         if (same || !facts.facts.length || existing?.finalized) {
           if (changed) {
             s.gradedChange = s.changeSeen;
-            await writeLiveState({ pending: false, gradedAt: (await readLiveState()).gradedAt, fingerprint: s.fingerprint, day: dayKey(now) });
+            await writeLiveState({ pending: false, gradedAt: (await readLiveState(this.deps.userId)).gradedAt, fingerprint: s.fingerprint, day: dayKey(now) }, this.deps.userId);
             return "regrade-unchanged";
           }
           return checkDue ? "fingerprint-same" : null;
@@ -180,7 +183,7 @@ export class Brain {
         s.fingerprint = facts.fingerprint;
         s.fingerprintDay = dayKey(now);
         s.gradedChange = s.changeSeen;
-        await writeLiveState({ pending: false, gradedAt: new Date().toISOString(), fingerprint: facts.fingerprint, day: dayKey(now) });
+        await writeLiveState({ pending: false, gradedAt: new Date().toISOString(), fingerprint: facts.fingerprint, day: dayKey(now) }, this.deps.userId);
         this.log(`regraded ${dayKey(now)}${r !== "failed" && r.usedModel ? "" : " (rules)"}`);
         return "regrade";
       }
@@ -203,14 +206,14 @@ export class Brain {
     if (t - (s.lastCorrections ?? 0) >= 60_000) {
       s.lastCorrections = t;
       const touched = await applyCorrections(store, userId, now);
-      const quiz = await prisma.brainState.findUnique({ where: { key: QUIZ_STATE_KEY } });
+      const quiz = await prisma.brainState.findUnique({ where: { key: stateKey(QUIZ_STATE_KEY, this.deps.userId) } });
       if (quiz && quiz.updatedAt.toISOString() !== s.quizAt) {
         const value = quiz.value as { answers?: QuizAnswers };
         touched.push(...seedQuiz(store, value.answers ?? {}, quiz.updatedAt));
         s.quizAt = quiz.updatedAt.toISOString();
         this.log("quiz answers loaded");
       }
-      const imported = await prisma.brainState.findUnique({ where: { key: IMPORT_STATE_KEY } });
+      const imported = await prisma.brainState.findUnique({ where: { key: stateKey(IMPORT_STATE_KEY, this.deps.userId) } });
       if (imported && imported.updatedAt.toISOString() !== s.importAt) {
         const value = imported.value as { facts?: ImportedFact[] };
         touched.push(...seedImported(store, value.facts ?? [], imported.updatedAt));

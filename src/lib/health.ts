@@ -113,8 +113,11 @@ export async function runChecks(): Promise<Record<string, string>> {
     if (!r.ok) problems[`job-${name}`] = `${label}: ${r.error ?? "failed"}.`;
     else if (age > hours) problems[`job-${name}`] = `${label} (last run ${Math.round(age)} h ago).`;
   }
-  const news = (await prisma.brainState.findUnique({ where: { key: "news" } }))?.value as { at?: string; items?: unknown[] } | undefined;
-  if (news?.at && (news.items?.length ?? 0) < 20) problems.news = `The news update only found ${news.items?.length ?? 0} stories.`;
+  // Per person: "news:<user>", "live-scores:<user>".
+  for (const row of await prisma.brainState.findMany({ where: { key: { startsWith: "news:" } } })) {
+    const news = row.value as { at?: string; items?: unknown[] } | undefined;
+    if (news?.at && (news.items?.length ?? 0) < 20) problems.news = `The news update only found ${news.items?.length ?? 0} stories.`;
+  }
   // Google Calendar sync (when connected).
   const google = await prisma.googleAccount.findFirst({ select: { lastSyncAt: true, lastError: true } });
   if (google) {
@@ -126,8 +129,10 @@ export async function runChecks(): Promise<Record<string, string>> {
   const stuck = await prisma.reminder.count({ where: { status: "pending", fireAt: { lt: new Date(Date.now() - 10 * MIN) } } });
   if (stuck) problems.reminders = `${stuck} reminder${stuck === 1 ? "" : "s"} past due but not sent.`;
   // Live scores waiting too long for a re-grade.
-  const live = (await prisma.brainState.findUnique({ where: { key: "live-scores" } }))?.value as { pending?: boolean; since?: string } | undefined;
-  if (live?.pending && live.since && Date.now() - new Date(live.since).getTime() > 20 * MIN) problems.scores = "Live scores have been waiting to update for 20+ minutes.";
+  for (const row of await prisma.brainState.findMany({ where: { key: { startsWith: "live-scores:" } } })) {
+    const live = row.value as { pending?: boolean; since?: string } | undefined;
+    if (live?.pending && live.since && Date.now() - new Date(live.since).getTime() > 20 * MIN) problems.scores = "Live scores have been waiting to update for 20+ minutes.";
+  }
   // The brain's night shift ran (by 7am).
   const beat = (await prisma.brainState.findUnique({ where: { key: "brain" } }))?.value as { lastNight?: string | null } | undefined;
   const now = new Date();

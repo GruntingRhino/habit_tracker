@@ -80,17 +80,14 @@ describe("weight trend", () => {
 describe.skipIf(!/test/.test(DB))("check-ins update targets (real DB)", () => {
   let prisma: typeof import("@/lib/prisma").default;
   let userId = "";
-  let saved: unknown = null;
   beforeAll(async () => {
     prisma = (await import("@/lib/prisma")).default;
-    saved = (await prisma.brainState.findUnique({ where: { key: "body" } }))?.value ?? null;
-    await prisma.brainState.upsert({ where: { key: "body" }, update: { value: { age: 15, ageAsOf: "2026-09-29", goal: "bulk", heightIn: 72 } }, create: { key: "body", value: { age: 15, ageAsOf: "2026-09-29", goal: "bulk", heightIn: 72 } } });
     userId = (await prisma.user.create({ data: { email: `body-${Date.now()}@test.local` } })).id;
+    await prisma.brainState.create({ data: { key: `body:${userId}`, value: { age: 15, ageAsOf: "2026-09-29", goal: "bulk", heightIn: 72 } } });
   });
   afterAll(async () => {
     await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
-    if (saved) await prisma.brainState.update({ where: { key: "body" }, data: { value: saved as object } });
-    else await prisma.brainState.delete({ where: { key: "body" } }).catch(() => undefined);
+    await prisma.brainState.deleteMany({ where: { key: { endsWith: `:${userId}` } } });
   });
 
   it("a weigh-in sets targets; a stalled trend at a later check-in adds 125 kcal", async () => {

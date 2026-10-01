@@ -45,17 +45,20 @@ export function readActivity(root?: string): Activity {
   };
 }
 
-export function readChangedAt(root?: string): number {
-  return read<{ at: number }>("changed.json", root)?.at ?? 0;
+/** When this person's data last changed (the gate writes changed-<user>.json on every app write). */
+export function readChangedAt(root?: string, userId?: string): number {
+  const own = userId ? read<{ at: number }>(`changed-${userId}.json`, root)?.at ?? 0 : 0;
+  // Older writers (no user): counts for everyone.
+  return Math.max(own, read<{ at: number }>("changed.json", root)?.at ?? 0);
 }
 
-export function touchChanged(root?: string) {
-  write("changed.json", { at: Date.now() }, root);
+export function touchChanged(root?: string, userId?: string) {
+  write(userId ? `changed-${userId}.json` : "changed.json", { at: Date.now() }, root);
 }
 
 let workerInflight = 0;
 /** Wrap interactive work in the worker (a Telegram message) so the brain pauses meanwhile. */
-export async function interactive<T>(fn: () => Promise<T>, root?: string): Promise<T> {
+export async function interactive<T>(fn: () => Promise<T>, root?: string, userId?: string): Promise<T> {
   workerInflight++;
   write("worker.json", { inflight: workerInflight, last: Date.now() }, root);
   try {
@@ -63,6 +66,6 @@ export async function interactive<T>(fn: () => Promise<T>, root?: string): Promi
   } finally {
     workerInflight--;
     write("worker.json", { inflight: workerInflight, last: Date.now() }, root);
-    touchChanged(root);
+    touchChanged(root, userId);
   }
 }

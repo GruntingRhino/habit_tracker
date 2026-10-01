@@ -8,7 +8,7 @@
  * - Generation is ~10 tok/s, so outputs are schema-constrained and kept short.
  */
 
-import { currentContext, personalize } from "@/lib/request-context";
+import { personalize, resolveContext } from "@/lib/request-context";
 
 export const LLM_MODEL = process.env.LLM_MODEL ?? "sparkx2.5-abliterated:1.7b";
 const BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
@@ -54,7 +54,7 @@ const MAX_QUEUE_WAIT_MS = 6 * 60_000;
 export async function chat(opts: ChatOptions): Promise<ChatResult> {
   const controller = new AbortController();
   let timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 60_000);
-  const ctx = currentContext();
+  const ctx = await resolveContext();
   // Prompts are written about the owner; for anyone else the names and pronouns are swapped.
   const messages = ctx ? opts.messages.map((m) => (m.role === "system" ? { ...m, content: personalize(m.content, ctx) } : m)) : opts.messages;
   const queueDeadline = Date.now() + MAX_QUEUE_WAIT_MS;
@@ -142,6 +142,11 @@ export async function chat(opts: ChatOptions): Promise<ChatResult> {
     if (opts.signal?.aborted) throw new LlmAborted("Cancelled");
     if (error instanceof Error && error.name === "AbortError") {
       throw new LlmError(`Model timed out after ${opts.timeoutMs ?? 60_000}ms`);
+    }
+    // "fetch failed" hides the reason (refused, reset, TLS…): keep it.
+    if (error instanceof TypeError && (error as { cause?: unknown }).cause) {
+      const c = (error as { cause: { code?: string; message?: string } }).cause;
+      throw new LlmError(`Model unreachable: ${c.code ?? ""} ${c.message ?? ""}`.trim());
     }
     throw error;
   } finally {

@@ -30,8 +30,8 @@ export async function GET(req: NextRequest) {
         finalized: true,
       },
     }),
-    req.nextUrl.searchParams.get("live") ? prisma.brainState.findUnique({ where: { key: stateKey(LIVE_STATE_KEY) } }) : null,
-    req.nextUrl.searchParams.get("live") ? prisma.brainState.findUnique({ where: { key: stateKey("brain") } }) : null,
+    req.nextUrl.searchParams.get("live") ? prisma.brainState.findUnique({ where: { key: await stateKey(LIVE_STATE_KEY) } }) : null,
+    req.nextUrl.searchParams.get("live") ? prisma.brainState.findUnique({ where: { key: await stateKey("brain") } }) : null,
   ]);
   if (!req.nextUrl.searchParams.get("live")) return NextResponse.json(scores);
   const state = (live?.value ?? { pending: false }) as unknown as LiveScoreState;

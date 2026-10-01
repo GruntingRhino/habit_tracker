@@ -51,9 +51,22 @@ export function personalize(text: string, ctx: Pick<RequestContext, "name" | "pr
   return out;
 }
 
+/**
+ * Web requests: who's logged in, from the session cookie (registered by src/lib/owner.ts, so the
+ * worker and brain never load web code). Async-local context set inside an awaited helper doesn't
+ * flow back to the caller, so anything that needs "the current person" asks here.
+ */
+let resolver: (() => Promise<RequestContext | null>) | null = null;
+export function setContextResolver(fn: () => Promise<RequestContext | null>) {
+  resolver = fn;
+}
+export async function resolveContext(): Promise<RequestContext | null> {
+  return currentContext() ?? (resolver ? await resolver().catch(() => null) : null);
+}
+
 /** BrainState keys that belong to one person ("body" → "body:<userId>"). */
-export function stateKey(key: string, userId?: string) {
-  const uid = userId ?? currentContext()?.userId;
+export async function stateKey(key: string, userId?: string) {
+  const uid = userId ?? (await resolveContext())?.userId;
   if (!uid) throw new Error(`"${key}" is per person, but no user is in context`);
   return `${key}:${uid}`;
 }

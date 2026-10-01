@@ -206,14 +206,14 @@ export class Brain {
     if (t - (s.lastCorrections ?? 0) >= 60_000) {
       s.lastCorrections = t;
       const touched = await applyCorrections(store, userId, now);
-      const quiz = await prisma.brainState.findUnique({ where: { key: stateKey(QUIZ_STATE_KEY, this.deps.userId) } });
+      const quiz = await prisma.brainState.findUnique({ where: { key: await stateKey(QUIZ_STATE_KEY, this.deps.userId) } });
       if (quiz && quiz.updatedAt.toISOString() !== s.quizAt) {
         const value = quiz.value as { answers?: QuizAnswers };
         touched.push(...seedQuiz(store, value.answers ?? {}, quiz.updatedAt));
         s.quizAt = quiz.updatedAt.toISOString();
         this.log("quiz answers loaded");
       }
-      const imported = await prisma.brainState.findUnique({ where: { key: stateKey(IMPORT_STATE_KEY, this.deps.userId) } });
+      const imported = await prisma.brainState.findUnique({ where: { key: await stateKey(IMPORT_STATE_KEY, this.deps.userId) } });
       if (imported && imported.updatedAt.toISOString() !== s.importAt) {
         const value = imported.value as { facts?: ImportedFact[] };
         touched.push(...seedImported(store, value.facts ?? [], imported.updatedAt));

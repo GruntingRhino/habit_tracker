@@ -135,7 +135,7 @@ export async function buildFacts(userId: string, date: Date, opts: { final?: boo
     prisma.user.findUnique({ where: { id: userId }, select: { nutritionTargets: true } }),
     prisma.dayPlan.findUnique({ where: { userId_date: { userId, date: day } } }),
     prisma.dailyEntry.findMany({ where: { userId, date: { gte: addDays(day, -14), lt: day } }, select: { date: true, moneySpent: true, workoutCompleted: true, sportsTrainingMinutes: true } }),
-    prisma.brainState.findUnique({ where: { key: stateKey(BODY_STATE_KEY, userId) } }),
+    prisma.brainState.findUnique({ where: { key: await stateKey(BODY_STATE_KEY, userId) } }),
     prisma.meal.findMany({ where: { userId, status: "eaten", plannedFor: { gte: addDays(day, -6), lt: day } }, select: { calories: true, protein: true, plannedFor: true } }),
   ]);
   const body = (bodyRow?.value ?? {}) as BodyInfo;
@@ -590,14 +590,14 @@ export interface LiveScoreState {
 }
 
 export async function readLiveState(userId?: string): Promise<LiveScoreState> {
-  const row = await prisma.brainState.findUnique({ where: { key: stateKey(LIVE_STATE_KEY, userId) } });
+  const row = await prisma.brainState.findUnique({ where: { key: await stateKey(LIVE_STATE_KEY, userId) } });
   return ((row?.value ?? { pending: false }) as unknown) as LiveScoreState;
 }
 
 export async function writeLiveState(value: LiveScoreState, userId?: string) {
   await prisma.brainState.upsert({
-    where: { key: stateKey(LIVE_STATE_KEY, userId) },
+    where: { key: await stateKey(LIVE_STATE_KEY, userId) },
     update: { value: value as unknown as Prisma.InputJsonValue },
-    create: { key: stateKey(LIVE_STATE_KEY, userId), value: value as unknown as Prisma.InputJsonValue },
+    create: { key: await stateKey(LIVE_STATE_KEY, userId), value: value as unknown as Prisma.InputJsonValue },
   });
 }

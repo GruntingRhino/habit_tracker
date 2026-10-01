@@ -55,13 +55,13 @@ export function fmt12(hhmm: string) {
 }
 
 export async function readPrefs(userId?: string): Promise<SchedulePrefs> {
-  const row = await prisma.brainState.findUnique({ where: { key: stateKey(SCHEDULE_PREFS_KEY, userId) } });
+  const row = await prisma.brainState.findUnique({ where: { key: await stateKey(SCHEDULE_PREFS_KEY, userId) } });
   return { bedtime: "22:00", ...((row?.value ?? {}) as Partial<SchedulePrefs>) };
 }
 
 export async function writePrefs(p: SchedulePrefs, userId?: string) {
   const value = p as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: stateKey(SCHEDULE_PREFS_KEY, userId) }, update: { value }, create: { key: stateKey(SCHEDULE_PREFS_KEY, userId), value } });
+  await prisma.brainState.upsert({ where: { key: await stateKey(SCHEDULE_PREFS_KEY, userId) }, update: { value }, create: { key: await stateKey(SCHEDULE_PREFS_KEY, userId), value } });
 }
 
 /** Free gaps in [from, to) given busy intervals (minutes). */

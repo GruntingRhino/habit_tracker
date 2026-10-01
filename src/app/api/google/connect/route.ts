@@ -5,7 +5,8 @@ import { authUrl, googleConfigured } from "@/lib/google";
 
 /** Start "Connect Google Calendar": off to Google's consent screen. */
 export async function GET() {
-  await getOwnerSession();
+  const { user } = await getOwnerSession();
+  if (!user.integrations) return NextResponse.json({ error: "Not available on this account" }, { status: 403 });
   if (!googleConfigured()) return NextResponse.json({ error: "Google isn't configured on the server" }, { status: 500 });
   const state = randomBytes(16).toString("hex");
   const res = NextResponse.redirect(authUrl(state));

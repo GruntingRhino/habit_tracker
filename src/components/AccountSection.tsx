@@ -8,6 +8,7 @@ interface Me {
   name: string | null;
   username: string | null;
   telegram: boolean;
+  integrations: boolean;
 }
 
 const input = { background: "var(--bg-elev-1)", border: "1px solid var(--stroke-2)", color: "var(--ink-100)" } as const;
@@ -55,6 +56,8 @@ export default function AccountSection() {
         </button>
       </p>
 
+      {me?.integrations && (
+        <>
       <p className="mb-1 text-sm" style={{ color: "var(--ink-200)" }}>
         Telegram {me?.telegram ? "· connected" : ""}
       </p>
@@ -80,6 +83,8 @@ export default function AccountSection() {
         <button className="min-link mb-4 text-xs" onClick={connectTelegram}>
           Connect Telegram (reminders, briefs, chat)
         </button>
+      )}
+        </>
       )}
 
       <form onSubmit={changePassword} className="space-y-2">

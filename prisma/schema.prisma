@@ -19,6 +19,8 @@ model User {
   /** For prompts written about the owner: "he" | "she" | "they" */
   pronouns      String    @default("they")
   isAdmin       Boolean   @default(false)
+  /** Google Calendar and Telegram (off for everyone but the owner unless turned on). */
+  integrations  Boolean   @default(false)
   telegramChatId   String? @unique
   telegramLinkCode String? @unique
   nutritionTargets Json?  // {calories, protein, carbs, fat} per day

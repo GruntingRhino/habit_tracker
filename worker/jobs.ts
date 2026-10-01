@@ -19,9 +19,10 @@ import { reminderKeyboard, sendToOwner, sendToUser } from "./telegram";
 import { contextFor, runAs } from "@/lib/request-context";
 
 /** Run a job once per person, as that person; one person's failure doesn't stop the others. */
-async function forEachPerson(fn: (u: { id: string; name: string | null; pronouns: string }) => Promise<void>) {
+async function forEachPerson(fn: (u: { id: string; name: string | null; pronouns: string }) => Promise<void>, opts: { telegramOnly?: boolean } = {}) {
   const errors: string[] = [];
   for (const u of await activeUsers()) {
+    if (opts.telegramOnly && !u.integrations) continue;
     try {
       await runAs(contextFor(u, { priority: "normal" }), () => fn(u));
     } catch (error) {
@@ -81,14 +82,14 @@ export async function morningBrief() {
   await forEachPerson(async (u) => {
     const { text, keyboard } = await formatBrief(u.id, "morning");
     await sendToUser(u.id, text, keyboard);
-  });
+  }, { telegramOnly: true });
 }
 
 export async function eveningReview() {
   await forEachPerson(async (u) => {
     const { text, keyboard } = await formatBrief(u.id, "evening");
     await sendToUser(u.id, text, keyboard);
-  });
+  }, { telegramOnly: true });
 }
 
 export async function nightlyJudge(date = new Date()) {
@@ -100,7 +101,7 @@ export async function nightlyJudge(date = new Date()) {
 }
 
 export async function weeklyDigest() {
-  await forEachPerson((u) => weeklyDigestFor(u.id));
+  await forEachPerson((u) => weeklyDigestFor(u.id), { telegramOnly: true });
 }
 
 async function weeklyDigestFor(userId: string) {

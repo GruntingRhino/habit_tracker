@@ -24,7 +24,8 @@ export function isTelegramConfigured() {
 
 /** A person's Telegram chat: linked in the app (User.telegramChatId); the owner's also from the env. */
 async function chatIdFor(userId: string) {
-  const u = await prisma.user.findUnique({ where: { id: userId }, select: { telegramChatId: true, email: true } });
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { telegramChatId: true, email: true, integrations: true } });
+  if (!u?.integrations) return null;
   if (u?.telegramChatId) return Number(u.telegramChatId);
   const owner = await getOwner();
   return userId === owner.id && ownerChatId ? ownerChatId : null;
@@ -79,7 +80,7 @@ export function setupBot() {
     const code = ctx.message?.text?.match(/^\/(?:link|start)\s+([A-Z0-9]{6,12})\s*$/i)?.[1]?.toUpperCase();
     if (code) {
       const u = await prisma.user.findUnique({ where: { telegramLinkCode: code } });
-      if (u) {
+      if (u?.integrations) {
         await prisma.user.update({ where: { id: u.id }, data: { telegramChatId: String(chatId), telegramLinkCode: null } });
         await ctx.reply(`Linked, ${u.name ?? "you're in"}! Text me anything to track it. /today shows your plan, /score your scores.`);
         return;

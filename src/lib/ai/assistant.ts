@@ -1257,7 +1257,7 @@ async function answerEvent(turn: Turn, awaiting: Awaiting, text: string): Promis
   const emails = emailsIn(text);
   if (emails.length) {
     const r = await addAttendees(userId, ev.id, emails);
-    return askNextOrDone(turn, awaiting.event!, `Shared ${ev.title} with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : ". (Connect Google Calendar on the Schedule page so they get an invite.)"}`, true);
+    return askNextOrDone(turn, awaiting.event!, `Shared ${ev.title} with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : (await googleHint(turn.userId))}`, true);
   }
   if (NO.test(text)) return askNextOrDone(turn, awaiting.event!, "Okay, just you.", true);
   if (/^\s*(yes|yeah|yep|sure|ok|okay)\b/i.test(text) || /\b(share|invite)\b/i.test(text)) {
@@ -1276,7 +1276,7 @@ async function shareFromChat(turn: Turn, text: string): Promise<AssistantReply |
   const match = words.length >= 3 ? bestMatch(words, upcoming, 0.5) : null;
   const target = match ?? [...upcoming].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   const r = await addAttendees(userId, target.id, emails);
-  return save(turn, `Shared ${target.title} (${describeEventTime(target)}) with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : ". (Connect Google Calendar on the Schedule page so they get an invite.)"}`);
+  return save(turn, `Shared ${target.title} (${describeEventTime(target)}) with ${emails.join(", ")}${r?.onGoogle ? " — they'll get a Google Calendar invite." : (await googleHint(turn.userId))}`);
 }
 
 // ---- duplicates, quick replies, references ----------------------------------------------------
@@ -1611,6 +1611,12 @@ async function correctLast(turn: Turn, recentActions: ItemAction[], text: string
 }
 
 const FEEL_NOTE = `He's telling you how he feels. Reply in 1-2 short sentences: acknowledge it plainly (never "good to know"), then suggest ONE small concrete next step from his day (one easy habit, or 10 minutes on a to-do). No lists, no lecture, no questions.`;
+
+/** After sharing without Google: the hint to connect it, for accounts that can. */
+async function googleHint(userId: string) {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { integrations: true } });
+  return u?.integrations ? ". (Connect Google Calendar on the Schedule page so they get an invite.)" : ".";
+}
 
 /** Delete an open to-do or pending reminder by name. Undo recreates it. */
 async function deleteByName(turn: Turn, name: string): Promise<AssistantReply | null> {

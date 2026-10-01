@@ -6,6 +6,8 @@ import { reportError } from "@/lib/monitoring";
 /** Google sends him back here after he approves access. */
 export async function GET(req: NextRequest) {
   const { user } = await getOwnerSession();
+  if (!user.integrations) return NextResponse.json({ error: "Not available on this account" }, { status: 403 });
+
   const url = req.nextUrl;
   const back = (q: string) => NextResponse.redirect(new URL(`/schedule?google=${q}`, url.origin));
   const code = url.searchParams.get("code");

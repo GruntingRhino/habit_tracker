@@ -41,17 +41,22 @@ const STOP = new Set(["a", "an", "the", "to", "for", "of", "on", "at", "with", "
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9$ ]/g, " ").split(/\s+/).filter((w) => w && !STOP.has(w));
 
 /** Every meaningful word of the title must come from the clause (a light stem match). */
+/** Filler that can't make a to-do on its own ("I will", "so also"). */
+const FILLER = new Set(["i", "will", "also", "so", "just", "we", "me", "it", "that", "this", "then", "really", "gonna", "need", "should", "want", "would", "can", "could", "be", "is", "am", "are"]);
+
 export function grounded(title: string, clause: string) {
   const have = words(clause);
   const want = words(title);
   if (!want.length || want.length > 8) return false;
+  // A real item has at least one real word (a verb or a thing), not just "I will".
+  if (!want.some((w) => w.length >= 3 && !FILLER.has(w))) return false;
   return want.every((w) => have.some((h) => h === w || h.startsWith(w.slice(0, 4)) || w.startsWith(h.slice(0, 4))));
 }
 
 export function candidates(reflection: string[]) {
   // Feelings, and vague "gonna go home and do some work on the todo list", aren't new items.
   const VAGUE = /\b(feel|felt|tired|stressed|happy|sad|mad|annoyed|proud|grateful|to-?do list|my list|the list|go home|head home|go to (bed|sleep)|going to (bed|sleep)|heading to bed|bed now|some work|lyk|let you know)\b/i;
-  return reflection.filter((c) => INTENT.test(c) && c.length <= 200 && !VAGUE.test(c)).slice(0, 5);
+  return reflection.filter((c) => INTENT.test(c) && c.length <= 200 && c.trim().split(/\s+/).length >= 3 && !VAGUE.test(c)).slice(0, 5);
 }
 
 export async function secondLook(reflection: string[], now = new Date(), timeoutMs = 45_000): Promise<Proposal[]> {

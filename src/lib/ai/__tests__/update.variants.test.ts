@@ -129,3 +129,21 @@ describe("from the five simulated days", () => {
     ["slept in, like 10 hours", ["sleep 10h"]],
   ])("%s", (t, want) => expect(summary(t)).toEqual(want));
 });
+
+describe("his meeting message (Oct 1)", () => {
+  const msg = "I got a meeting with district tech officer on the 14th, great news. I will also have to prepare for the meeting, so create a todo list and in the description include doing a mock presentation, finishing OPEN_ITEMS.md checklist and 1 more thing that you think is good.";
+  it("one event on the 14th and one prep to-do, no 'I will'", () => {
+    expect(summary(msg)).toEqual(["event Meeting with district tech officer wed 10/14", "todo Prepare for the meeting"]);
+  });
+  it("the description request: his two items + one to suggest", async () => {
+    const { parseNotesRequest } = await import("../update");
+    expect(parseNotesRequest(msg)).toEqual({ items: ["Do a mock presentation", "Finish OPEN_ITEMS.md checklist"], extra: 1 });
+    expect(parseNotesRequest("add call the bank to my list")).toBeNull();
+  });
+  it("'the 3rd' is the next 3rd; 'the 30th' today is today", async () => {
+    const { withMonths } = await import("../update");
+    expect(withMonths("dentist on the 3rd", now)).toBe("dentist on October 3");
+    expect(withMonths("party on the 30th", now)).toBe("party on September 30");
+    expect(withMonths("the 14th of october", now)).toBe("the 14th of october");
+  });
+});

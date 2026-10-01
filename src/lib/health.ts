@@ -70,13 +70,18 @@ async function beatAge(key: string) {
   return at ? Date.now() - new Date(at).getTime() : Infinity;
 }
 
+/** Up if any of 3 tries answers (the public link drops the odd connection; one miss isn't an outage). */
 async function reachable(url: string, token?: string) {
-  try {
-    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(8000) });
-    return res.ok;
-  } catch {
-    return false;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(8000) });
+      if (res.ok) return true;
+    } catch {
+      // try again
+    }
+    await new Promise((r) => setTimeout(r, 1500));
   }
+  return false;
 }
 
 function newestBackupAgeH(dir = path.join(os.homedir(), "liveimproved-backups")) {

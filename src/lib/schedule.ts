@@ -11,6 +11,7 @@
  *
  * Wake time comes from bedtime and his sleep target (10pm + 9 h → 7am) unless he set it.
  */
+import { stateKey } from "@/lib/request-context";
 import { addDays, format } from "date-fns";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
@@ -53,14 +54,14 @@ export function fmt12(hhmm: string) {
   return `${hh}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`;
 }
 
-export async function readPrefs(): Promise<SchedulePrefs> {
-  const row = await prisma.brainState.findUnique({ where: { key: SCHEDULE_PREFS_KEY } });
+export async function readPrefs(userId?: string): Promise<SchedulePrefs> {
+  const row = await prisma.brainState.findUnique({ where: { key: stateKey(SCHEDULE_PREFS_KEY, userId) } });
   return { bedtime: "22:00", ...((row?.value ?? {}) as Partial<SchedulePrefs>) };
 }
 
-export async function writePrefs(p: SchedulePrefs) {
+export async function writePrefs(p: SchedulePrefs, userId?: string) {
   const value = p as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: SCHEDULE_PREFS_KEY }, update: { value }, create: { key: SCHEDULE_PREFS_KEY, value } });
+  await prisma.brainState.upsert({ where: { key: stateKey(SCHEDULE_PREFS_KEY, userId) }, update: { value }, create: { key: stateKey(SCHEDULE_PREFS_KEY, userId), value } });
 }
 
 /** Free gaps in [from, to) given busy intervals (minutes). */
@@ -106,8 +107,8 @@ export async function buildSchedule(userId: string, date = new Date(), now = new
   const dow = getDayOfWeek(day);
   const weekend = dow === "sat" || dow === "sun";
   const [prefs, body, fixed, habits, plan, dueTodos, training, events] = await Promise.all([
-    readPrefs(),
-    readBody(),
+    readPrefs(userId),
+    readBody(userId),
     prisma.scheduleBlock.findMany({ where: { userId, OR: [{ days: { has: dow } }, { date: day }] } }),
     prisma.habit.findMany({ where: { userId, isActive: true, targetDays: { has: dow } }, select: { id: true, name: true, timeOfDay: true, logs: { where: { date: day }, select: { completed: true } } } }),
     prisma.dayPlan.findUnique({ where: { userId_date: { userId, date: day } } }),

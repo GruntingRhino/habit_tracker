@@ -117,14 +117,14 @@ describe.skipIf(!enabled)("brain loop", () => {
       changedAt = clock.getTime();
       expect(await brain.tick()).toBe("change-seen");
     }
-    expect((await readLiveState()).pending).toBe(true);
+    expect((await readLiveState(userId)).pending).toBe(true);
     advance(5000); // 5 s after the last change: still waiting
     expect(await brain.tick()).not.toBe("regrade");
     expect(calls).not.toContain("grade");
     advance(6000);
     expect(await brain.tick()).toBe("regrade");
     expect(calls.filter((c) => c === "grade")).toHaveLength(1);
-    expect((await readLiveState()).pending).toBe(false);
+    expect((await readLiveState(userId)).pending).toBe(false);
 
     const row = await prisma.categoryScore.findUniqueOrThrow({ where: { userId_date: { userId, date: getStartOfDay(clock) } } });
     const r = readRationale(row.rationale);
@@ -219,9 +219,9 @@ describe.skipIf(!enabled)("brain loop", () => {
 
   it("loads quiz answers into the profile without the model", async () => {
     await prisma.brainState.upsert({
-      where: { key: "quiz" },
+      where: { key: `quiz:${userId}` },
       update: { value: { answers: { "learn-how": ["Watching videos", "Doing it hands-on"], "learn-stick": ["Practice problems"], "focus-span": "About 30 minutes" } } },
-      create: { key: "quiz", value: { answers: { "learn-how": ["Watching videos", "Doing it hands-on"], "learn-stick": ["Practice problems"], "focus-span": "About 30 minutes" } } },
+      create: { key: `quiz:${userId}`, value: { answers: { "learn-how": ["Watching videos", "Doing it hands-on"], "learn-stick": ["Practice problems"], "focus-span": "About 30 minutes" } } },
     });
     advance(61_000);
     calls.length = 0;
@@ -318,8 +318,8 @@ describe.skipIf(!enabled)("brain loop", () => {
   it("uses his body targets: 9 h sleep, 9k steps, bulk-aware calories, weekly averages, total sugar", async () => {
     const { buildFacts } = await import("../scores");
     const u = await prisma.user.create({ data: { email: `body-${Date.now()}@test.local`, nutritionTargets: { calories: 2800, protein: 110, carbs: 360, fat: 100, sugar: 30 } } });
-    const prev = await prisma.brainState.findUnique({ where: { key: "body" } });
-    await prisma.brainState.upsert({ where: { key: "body" }, update: { value: { goal: "bulk", sleepTargetHours: 9, stepsTarget: 9000 } }, create: { key: "body", value: { goal: "bulk", sleepTargetHours: 9, stepsTarget: 9000 } } });
+    const prev = await prisma.brainState.findUnique({ where: { key: `body:${u.id}` } });
+    await prisma.brainState.upsert({ where: { key: `body:${u.id}` }, update: { value: { goal: "bulk", sleepTargetHours: 9, stepsTarget: 9000 } }, create: { key: `body:${u.id}`, value: { goal: "bulk", sleepTargetHours: 9, stepsTarget: 9000 } } });
     try {
       const day = getStartOfDay(new Date());
       const at = (d: number, h: number) => new Date(day.getTime() + d * 86_400_000 + h * 3_600_000);
@@ -337,8 +337,8 @@ describe.skipIf(!enabled)("brain loop", () => {
       expect(t.find((x) => x.includes("Total sugar 45 g — under the 50 g limit"))).toBeTruthy();
     } finally {
       await prisma.user.delete({ where: { id: u.id } });
-      if (prev) await prisma.brainState.update({ where: { key: "body" }, data: { value: prev.value as object } });
-      else await prisma.brainState.delete({ where: { key: "body" } });
+      if (prev) await prisma.brainState.update({ where: { key: `body:${u.id}` }, data: { value: prev.value as object } });
+      else await prisma.brainState.delete({ where: { key: `body:${u.id}` } });
     }
   });
 

@@ -44,6 +44,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname),
+  // unauthorized() → 401 for a session that was revoked (password changed elsewhere).
+  experimental: { authInterrupts: true },
   // Pages folded into others by the consolidation; old links (including ones in chat history) keep working.
   async redirects() {
     return [

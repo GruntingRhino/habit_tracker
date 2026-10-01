@@ -12,6 +12,15 @@ model User {
   email         String    @unique
   username      String?   @unique
   name          String?
+  /** scrypt hash ("scrypt$N$salt$hash"); null = can't log in */
+  passwordHash  String?
+  /** Bumped on password change: older session cookies stop working. */
+  sessionVersion Int      @default(0)
+  /** For prompts written about the owner: "he" | "she" | "they" */
+  pronouns      String    @default("they")
+  isAdmin       Boolean   @default(false)
+  telegramChatId   String? @unique
+  telegramLinkCode String? @unique
   nutritionTargets Json?  // {calories, protein, carbs, fat} per day
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -489,4 +498,14 @@ model GoogleAccount {
   updatedAt    DateTime  @updatedAt
 
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+
+/** Failed logins, for rate limiting (key = "user:<username>" or "ip:<address>"). */
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
 }

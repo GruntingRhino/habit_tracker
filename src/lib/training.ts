@@ -10,6 +10,7 @@
  * - Blocks: Upper A → B → C, ~6 weeks each (4–8); keep lifts that still progress.
  * All of it is plain arithmetic on what he logged: nothing is guessed by a model.
  */
+import { stateKey } from "@/lib/request-context";
 import { addDays, differenceInCalendarWeeks } from "date-fns";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
@@ -152,14 +153,14 @@ export const DEFAULT_TRAINING: TrainingState = {
   split: { mon: ["upper"], tue: ["Lower A"], wed: ["Daily posture"], thu: ["upper"], fri: ["Abs A", "Daily posture"], sat: ["Lower B", "Abs A"], sun: [] },
 };
 
-export async function readTraining(): Promise<TrainingState> {
-  const row = await prisma.brainState.findUnique({ where: { key: TRAINING_KEY } });
+export async function readTraining(userId?: string): Promise<TrainingState> {
+  const row = await prisma.brainState.findUnique({ where: { key: stateKey(TRAINING_KEY, userId) } });
   return { ...DEFAULT_TRAINING, ...((row?.value ?? {}) as Partial<TrainingState>) };
 }
 
-export async function writeTraining(t: TrainingState) {
+export async function writeTraining(t: TrainingState, userId?: string) {
   const value = t as unknown as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: TRAINING_KEY }, update: { value }, create: { key: TRAINING_KEY, value } });
+  await prisma.brainState.upsert({ where: { key: stateKey(TRAINING_KEY, userId) }, update: { value }, create: { key: stateKey(TRAINING_KEY, userId), value } });
 }
 
 /** "Upper A – Upper chest…" → "A". */
@@ -174,8 +175,8 @@ export function upperLetter(name: string) {
 export async function noteSession(userId: string, routineName: string, at = new Date()) {
   const letter = upperLetter(routineName);
   if (letter) {
-    const t = await readTraining();
-    if (t.upperBlock !== letter) await writeTraining({ ...t, upperBlock: letter, blockStartedAt: at.toISOString().slice(0, 10) });
+    const t = await readTraining(userId);
+    if (t.upperBlock !== letter) await writeTraining({ ...t, upperBlock: letter, blockStartedAt: at.toISOString().slice(0, 10) }, userId);
   }
   // Posture sessions tick the posture habit; any other session ticks the workout habit.
   const posture = /posture/i.test(routineName);
@@ -232,7 +233,7 @@ export async function planRoutines(userId: string, routines: RoutineWithLogs[]):
 
 /** Today's routines from the split (current upper block on upper days). */
 export async function todaysTraining(userId: string, date = new Date()) {
-  const t = await readTraining();
+  const t = await readTraining(userId);
   const plan = t.split[getDayOfWeek(getStartOfDay(date))] ?? [];
   const routines = await prisma.weightRoutine.findMany({ where: { userId }, select: { id: true, name: true, exercises: { orderBy: { order: "asc" }, select: { id: true, name: true, descriptor: true } } } });
   const pick = (want: string) =>
@@ -243,7 +244,7 @@ export async function todaysTraining(userId: string, date = new Date()) {
 
 /** Block status: weeks in, and whether its lifts are still progressing. */
 export async function blockStatus(userId: string, now = new Date()) {
-  const t = await readTraining();
+  const t = await readTraining(userId);
   const weeks = differenceInCalendarWeeks(now, new Date(t.blockStartedAt), { weekStartsOn: 1 });
   const routines = await prisma.weightRoutine.findMany({ where: { userId }, select: { id: true, name: true, exercises: { select: { id: true, name: true, descriptor: true } } } });
   const upper = routines.find((r) => upperLetter(r.name) === t.upperBlock);

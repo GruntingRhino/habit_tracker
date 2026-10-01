@@ -1,3 +1,4 @@
+import { stateKey } from "@/lib/request-context";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma";
@@ -20,9 +21,9 @@ export async function POST(req: NextRequest) {
   const known = new Set(QUIZ.map((q) => q.id));
   const incoming = Object.fromEntries(Object.entries(parsed.data.answers).filter(([k]) => known.has(k)));
   if (!Object.keys(incoming).length) return NextResponse.json({ error: "No known questions answered" }, { status: 400 });
-  const existing = await prisma.brainState.findUnique({ where: { key: "quiz" } });
+  const existing = await prisma.brainState.findUnique({ where: { key: stateKey("quiz") } });
   const answers = { ...((existing?.value as { answers?: Record<string, unknown> } | null)?.answers ?? {}), ...incoming };
   const value = { answers } as Prisma.InputJsonValue;
-  await prisma.brainState.upsert({ where: { key: "quiz" }, update: { value }, create: { key: "quiz", value } });
+  await prisma.brainState.upsert({ where: { key: stateKey("quiz") }, update: { value }, create: { key: stateKey("quiz"), value } });
   return NextResponse.json({ ok: true, answered: Object.keys(answers).length, of: QUIZ.length });
 }

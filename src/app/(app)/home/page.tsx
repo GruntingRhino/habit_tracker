@@ -61,6 +61,7 @@ export default function HomePage() {
   const [nudges, setNudges] = useState<Nudge[]>([]);
   const [food, setFood] = useState<Food | null>(null);
   const [now, setNow] = useState<Date | null>(null);
+  const [name, setName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [s, t, h, n, u, f] = await Promise.all([
@@ -71,6 +72,7 @@ export default function HomePage() {
       json<Nudge[]>("/api/nudges", []),
       json<Food | null>("/api/nutrition", null),
     ]);
+    void json<{ name: string | null } | null>("/api/auth/me", null).then((m) => setName(m?.name?.split(" ")[0] ?? null));
     setBlocks(s?.schedule ?? null);
     setTodos(t);
     setHabits(h);
@@ -108,7 +110,7 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-[45rem] lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-8">
       <div className="min-w-0">
-      <h1 className="min-h1 mb-0.5">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, Abhay</h1>
+      <h1 className="min-h1 mb-0.5">{hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}{name ? `, ${name}` : ""}</h1>
       <p className="min-sub mb-4">{now ? format(now, "EEEE, MMMM d") : ""}</p>
 
       <div className="mb-6 flex justify-center">

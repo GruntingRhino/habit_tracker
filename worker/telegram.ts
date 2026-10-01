@@ -3,9 +3,13 @@ import { addDays, addHours } from "date-fns";
 import prisma from "@/lib/prisma";
 import { handleMessage, undoMessage, type AssistantReply, type ReplyMeta } from "@/lib/ai/assistant";
 import { planDay } from "@/lib/ai/planner";
-import { getOwner } from "@/lib/owner";
+import { getOwner } from "@/lib/users";
 import { getStartOfDay } from "@/lib/utils";
 import { interactive } from "@/lib/brain/signals";
+import { contextFor, runAs } from "@/lib/request-context";
+
+/** The person each incoming update belongs to (set by the first middleware). */
+const people = new WeakMap<object, { id: string; name: string | null; pronouns: string }>();
 import { describeWeek, weekScore } from "@/lib/weekly";
 import { esc, formatBrief, formatScores } from "./format";
 
@@ -18,16 +22,42 @@ export function isTelegramConfigured() {
   return Boolean(bot && ownerChatId);
 }
 
-export async function sendToOwner(text: string, keyboard?: InlineKeyboard) {
-  if (!bot || !ownerChatId) {
-    console.log(`[telegram disabled] ${text}`);
+/** A person's Telegram chat: linked in the app (User.telegramChatId); the owner's also from the env. */
+async function chatIdFor(userId: string) {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { telegramChatId: true, email: true } });
+  if (u?.telegramChatId) return Number(u.telegramChatId);
+  const owner = await getOwner();
+  return userId === owner.id && ownerChatId ? ownerChatId : null;
+}
+
+export async function sendToUser(userId: string, text: string, keyboard?: InlineKeyboard) {
+  const chat = bot ? await chatIdFor(userId) : null;
+  if (!bot || !chat) {
+    console.log(`[telegram not linked for ${userId}] ${text}`);
     return null;
   }
-  return bot.api.sendMessage(ownerChatId, text, {
+  return bot.api.sendMessage(chat, text, {
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
     ...(keyboard ? { reply_markup: keyboard } : {}),
   });
+}
+
+/** Health alerts and other owner-only messages. */
+export async function sendToOwner(text: string, keyboard?: InlineKeyboard) {
+  return sendToUser((await getOwner()).id, text, keyboard);
+}
+
+type Person = { id: string; name: string | null; pronouns: string };
+/** Who this chat belongs to: a linked chat, or the owner's chat from the env. */
+async function personForChat(chatId: number): Promise<Person | null> {
+  const linked = await prisma.user.findUnique({ where: { telegramChatId: String(chatId) }, select: { id: true, name: true, pronouns: true } });
+  if (linked) return linked;
+  if (ownerChatId && chatId === ownerChatId) {
+    const o = await getOwner();
+    return { id: o.id, name: o.name, pronouns: o.pronouns };
+  }
+  return null;
 }
 
 export function reminderKeyboard(id: string) {
@@ -37,45 +67,59 @@ export function reminderKeyboard(id: string) {
 export function setupBot() {
   if (!bot) return;
 
-  // Anyone else who finds the bot gets nothing but their chat id (for first-time setup).
+  // Only linked chats get in. Someone with a code from the app (Profile → Connect Telegram) links with "/link CODE".
   bot.use(async (ctx, next) => {
     const chatId = ctx.chat?.id;
-    if (!ownerChatId) {
-      if (ctx.message) await ctx.reply(`Set TELEGRAM_OWNER_CHAT_ID=${chatId} on the server to link this chat.`);
-      return;
+    if (!chatId) return;
+    const person = await personForChat(chatId);
+    if (person) {
+      people.set(ctx, person);
+      return next();
     }
-    if (chatId !== ownerChatId) return;
-    await next();
+    const code = ctx.message?.text?.match(/^\/(?:link|start)\s+([A-Z0-9]{6,12})\s*$/i)?.[1]?.toUpperCase();
+    if (code) {
+      const u = await prisma.user.findUnique({ where: { telegramLinkCode: code } });
+      if (u) {
+        await prisma.user.update({ where: { id: u.id }, data: { telegramChatId: String(chatId), telegramLinkCode: null } });
+        await ctx.reply(`Linked, ${u.name ?? "you're in"}! Text me anything to track it. /today shows your plan, /score your scores.`);
+        return;
+      }
+    }
+    if (ctx.message) await ctx.reply("This bot is private. To connect it, open LiveImproved → Profile → Connect Telegram and send me the code shown there.");
   });
 
-  // While he's talking to the bot the background brain pauses; afterwards it re-checks his scores.
-  bot.use((_ctx, next) => interactive(() => next()));
+  // While someone talks to the bot the background brain pauses; afterwards it re-checks their scores.
+  // Everything below runs as that person.
+  bot.use((ctx, next) => {
+    const p = people.get(ctx)!;
+    return interactive(() => runAs(contextFor(p, { priority: "interactive" }), () => next()), undefined, p.id);
+  });
 
   bot.command("start", (ctx) => ctx.reply("LiveImproved is connected. Text me anything to track it. /today shows your plan, /replan rebuilds it, /score shows last night's scores."));
 
   bot.command("today", async (ctx) => {
-    const owner = await getOwner();
+    const owner = people.get(ctx)!;
     const { text, keyboard } = await formatBrief(owner.id, "morning");
     await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
   });
 
   bot.command("replan", async (ctx) => {
     await ctx.replyWithChatAction("typing");
-    const owner = await getOwner();
+    const owner = people.get(ctx)!;
     await planDay(owner.id, { force: true });
     const { text, keyboard } = await formatBrief(owner.id, "morning");
     await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
   });
 
   bot.command("score", async (ctx) => {
-    const owner = await getOwner();
+    const owner = people.get(ctx)!;
     const latest = await prisma.categoryScore.findFirst({ where: { userId: owner.id }, orderBy: { date: "desc" } });
     const week = describeWeek(await weekScore(owner.id));
     await ctx.reply(latest ? `${formatScores(latest)}\n\n📈 ${esc(week)}` : "No scores yet.", { parse_mode: "HTML" });
   });
 
   bot.on("message:text", async (ctx) => {
-    const owner = await getOwner();
+    const owner = people.get(ctx)!;
     const typing = setInterval(() => ctx.replyWithChatAction("typing").catch(() => undefined), 4500);
     await ctx.replyWithChatAction("typing").catch(() => undefined);
     try {
@@ -87,7 +131,7 @@ export function setupBot() {
   });
 
   bot.on("callback_query:data", async (ctx) => {
-    const owner = await getOwner();
+    const owner = people.get(ctx)!;
     const [kind, a, b] = ctx.callbackQuery.data.split(":");
     let note = "";
 

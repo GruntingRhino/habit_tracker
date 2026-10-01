@@ -1,6 +1,6 @@
 import { addDays, format } from "date-fns";
 import prisma from "@/lib/prisma";
-import { getOwner } from "@/lib/owner";
+import { activeUsers } from "@/lib/users";
 import { planDay } from "@/lib/ai/planner";
 import { judgeDay } from "@/lib/ai/judge";
 import { SCORED_AREAS } from "@/lib/areas";
@@ -15,7 +15,21 @@ import { syncGoogle } from "@/lib/google";
 import { describeWeek, weekScore } from "@/lib/weekly";
 import { blockStatus } from "@/lib/training";
 import { esc, formatBrief, formatScores } from "./format";
-import { reminderKeyboard, sendToOwner } from "./telegram";
+import { reminderKeyboard, sendToOwner, sendToUser } from "./telegram";
+import { contextFor, runAs } from "@/lib/request-context";
+
+/** Run a job once per person, as that person; one person's failure doesn't stop the others. */
+async function forEachPerson(fn: (u: { id: string; name: string | null; pronouns: string }) => Promise<void>) {
+  const errors: string[] = [];
+  for (const u of await activeUsers()) {
+    try {
+      await runAs(contextFor(u, { priority: "normal" }), () => fn(u));
+    } catch (error) {
+      errors.push(`${u.name ?? u.id}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+  if (errors.length) throw new Error(errors.join("; "));
+}
 
 function nextOccurrence(date: Date, recurrence: string): Date | null {
   if (recurrence === "daily") return addDays(date, 1);
@@ -40,7 +54,7 @@ export async function sendDueReminders() {
       take: 20,
     });
     for (const r of due) {
-      const msg = await sendToOwner(`⏰ <b>${esc(r.text)}</b>`, reminderKeyboard(r.id));
+      const msg = await sendToUser(r.userId, `⏰ <b>${esc(r.text)}</b>`, reminderKeyboard(r.id));
       let next = nextOccurrence(r.fireAt, r.recurrence);
       while (next && next.getTime() <= Date.now()) next = nextOccurrence(next, r.recurrence);
       await prisma.reminder.update({
@@ -58,32 +72,38 @@ export async function sendDueReminders() {
 }
 
 export async function planToday() {
-  const owner = await getOwner();
-  await planDay(owner.id, { force: true });
+  await forEachPerson(async (u) => {
+    await planDay(u.id, { force: true });
+  });
 }
 
 export async function morningBrief() {
-  const owner = await getOwner();
-  const { text, keyboard } = await formatBrief(owner.id, "morning");
-  await sendToOwner(text, keyboard);
+  await forEachPerson(async (u) => {
+    const { text, keyboard } = await formatBrief(u.id, "morning");
+    await sendToUser(u.id, text, keyboard);
+  });
 }
 
 export async function eveningReview() {
-  const owner = await getOwner();
-  const { text, keyboard } = await formatBrief(owner.id, "evening");
-  await sendToOwner(text, keyboard);
+  await forEachPerson(async (u) => {
+    const { text, keyboard } = await formatBrief(u.id, "evening");
+    await sendToUser(u.id, text, keyboard);
+  });
 }
 
 export async function nightlyJudge(date = new Date()) {
-  const owner = await getOwner();
-  await judgeDay(owner.id, date);
-  const score = await prisma.categoryScore.findUnique({ where: { userId_date: { userId: owner.id, date: getStartOfDay(date) } } });
-  if (score) await sendToOwner(`${formatScores(score)}\n\n📈 ${esc(describeWeek(await weekScore(owner.id, date)))}`);
+  await forEachPerson(async (u) => {
+    await judgeDay(u.id, date);
+    const score = await prisma.categoryScore.findUnique({ where: { userId_date: { userId: u.id, date: getStartOfDay(date) } } });
+    if (score) await sendToUser(u.id, `${formatScores(score)}\n\n📈 ${esc(describeWeek(await weekScore(u.id, date)))}`);
+  });
 }
 
 export async function weeklyDigest() {
-  const owner = await getOwner();
-  const userId = owner.id;
+  await forEachPerson((u) => weeklyDigestFor(u.id));
+}
+
+async function weeklyDigestFor(userId: string) {
   const today = getStartOfDay(new Date());
   const weekAgo = addDays(today, -7);
   const [scores, doneTodos, doneTasks, openCount, stale, habits] = await Promise.all([
@@ -133,7 +153,7 @@ export async function weeklyDigest() {
     lines.push("", "<b>Experiment for this week</b>", `${weakest[0].toUpperCase()}${weakest.slice(1)} was your lowest area (${avg(weakest)}).${common ? ` Try: ${esc(common)}.` : ""}`);
   }
   lines.push("", ...(await weeklyCheckIn(userId)));
-  await sendToOwner(lines.join("\n"));
+  await sendToUser(userId, lines.join("\n"));
 }
 
 /**
@@ -173,16 +193,18 @@ export async function weeklyCheckIn(userId: string, now = new Date()) {
 }
 
 export async function nightlyNews() {
-  const owner = await getOwner();
-  const s = await refreshNews(owner.id);
-  if (s.items.length < 20) throw new Error(`only ${s.items.length} news items (${s.errors.join("; ")})`);
+  await forEachPerson(async (u) => {
+    const s = await refreshNews(u.id);
+    if (s.items.length < 20) throw new Error(`only ${s.items.length} news items (${s.errors.join("; ")})`);
+  });
 }
 
 export async function googleSync() {
-  const owner = await getOwner();
-  if (!(await prisma.googleAccount.findUnique({ where: { userId: owner.id } }))) return;
-  const r = await syncGoogle(owner.id);
-  if (!r.ok) throw new Error(r.error);
+  await forEachPerson(async (u) => {
+    if (!(await prisma.googleAccount.findUnique({ where: { userId: u.id } }))) return;
+    const r = await syncGoogle(u.id);
+    if (!r.ok) throw new Error(r.error);
+  });
 }
 
 export async function healthCheck() {

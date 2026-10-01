@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { contextFor, currentContext, runAs } from "@/lib/request-context";
 import { recomputeCategoryScoreForDate } from "@/lib/category-score";
 import { getStartOfDay } from "@/lib/utils";
 import { actionableCount, extractUpdate, isUpdate, parseWorkout, parseTodos, type Extracted } from "@/lib/ai/update";
@@ -184,7 +185,18 @@ async function save(
 
 const FILE_IT = /\bremind me\b|^\s*notes?\s*[:\-]/i;
 
+/**
+ * One message from a person. Runs as that person (their name/pronouns in prompts, their place in
+ * the model queue); while waiting in line the chat shows where they are.
+ */
 export async function handleMessage(userId: string, text: string, source: Source, opts: HandleOptions = {}): Promise<AssistantReply> {
+  const who = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, pronouns: true } });
+  if (!who) return handleTurn(userId, text, source, opts);
+  const onQueue = (n: number) => opts.onStatus?.(n > 0 ? `In line (#${n}) — the AI is finishing something else…` : "Thinking…");
+  return runAs(contextFor(who, { priority: currentContext()?.priority ?? "interactive", onQueue }), () => handleTurn(userId, text, source, opts));
+}
+
+async function handleTurn(userId: string, text: string, source: Source, opts: HandleOptions = {}): Promise<AssistantReply> {
   const trimmed = text.trim().slice(0, 2000);
   const conv = await resolveConversation(userId, source, opts.conversationId);
   opts.onConversation?.(conv.id);

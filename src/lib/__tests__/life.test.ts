@@ -227,22 +227,17 @@ describe("news ranking", () => {
 describe.skipIf(!/test/.test(DB))("schedule and coach against the database", () => {
   let prisma: typeof import("@/lib/prisma").default;
   let userId = "";
-  const saved: Record<string, unknown> = {};
   beforeAll(async () => {
     prisma = (await import("@/lib/prisma")).default;
-    for (const key of ["body", "schedule-prefs", "training"]) saved[key] = (await prisma.brainState.findUnique({ where: { key } }))?.value ?? null;
-    const put = (key: string, value: object) => prisma.brainState.upsert({ where: { key }, update: { value }, create: { key, value } });
+    userId = (await prisma.user.create({ data: { email: `life-${Date.now()}@test.local` } })).id;
+    const put = (key: string, value: object) => prisma.brainState.create({ data: { key: `${key}:${userId}`, value } });
     await put("body", { sleepTargetHours: 9, goal: "bulk", weightLb: 134, heightIn: 72, age: 15, ageAsOf: "2026-09-01" });
     await put("schedule-prefs", { bedtime: "22:00" });
     await put("training", { upperBlock: "A", blockStartedAt: "2026-09-01", split: { mon: ["upper"], tue: ["Lower A"], wed: [], thu: ["upper"], fri: [], sat: [], sun: [] } });
-    userId = (await prisma.user.create({ data: { email: `life-${Date.now()}@test.local` } })).id;
   });
   afterAll(async () => {
     await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
-    for (const [key, value] of Object.entries(saved)) {
-      if (value) await prisma.brainState.update({ where: { key }, data: { value: value as object } });
-      else await prisma.brainState.delete({ where: { key } }).catch(() => undefined);
-    }
+    await prisma.brainState.deleteMany({ where: { key: { endsWith: `:${userId}` } } });
   });
 
   it("builds a Monday: morning routine, school, workout after school, study session, focus item, wind-down", async () => {
@@ -298,7 +293,7 @@ describe.skipIf(!/test/.test(DB))("schedule and coach against the database", () 
     const habit = await prisma.habit.create({ data: { userId, name: "Workout", targetDays: ["mon", "tue", "thu", "sat"] } });
     const posture = await prisma.habit.create({ data: { userId, name: "Posture routine" } });
     await noteSession(userId, "Upper B – Chest, back thickness, shoulders", new Date(2026, 8, 28, 17));
-    expect((await readTraining()).upperBlock).toBe("B");
+    expect((await readTraining(userId)).upperBlock).toBe("B");
     expect(await prisma.habitLog.count({ where: { habitId: habit.id, completed: true } })).toBe(1);
     expect(await prisma.habitLog.count({ where: { habitId: posture.id } })).toBe(0);
     await noteSession(userId, "Daily posture", new Date(2026, 8, 28, 20));

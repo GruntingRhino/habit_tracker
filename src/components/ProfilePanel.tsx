@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ChevronRight, Lightbulb, X } from "lucide-react";
 import { Empty, Section } from "@/components/ui";
+import AccountSection from "@/components/AccountSection";
 import { useLoad } from "@/hooks/useAssistantChat";
 import type { Belief, ProfileContent } from "@/lib/brain/categories";
 import type { QuizQuestion } from "@/lib/brain/quiz";
@@ -271,6 +272,8 @@ export default function ProfilePanel() {
           </p>
         )}
       </Section>
+
+      <AccountSection />
     </div>
   );
 }

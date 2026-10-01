@@ -19,7 +19,7 @@ $ESB worker/brain.ts --outfile=dist/brain.mjs --banner:js="$BANNER"
 echo "› syncing to $HOST"
 ssh "$HOST" "mkdir -p $APP/dist && sudo install -d -o opc -g opc -m 700 /var/lib/liveimproved /var/lib/liveimproved/brain"
 rsync -az dist/ "$HOST:$APP/dist/"
-rsync -az deploy/ollama-gate.mjs "$HOST:$APP/ollama-gate.mjs"
+rsync -az deploy/ollama-gate.mjs deploy/gate-queue.mjs "$HOST:$APP/"
 rsync -az deploy/backup.sh "$HOST:$APP/backup.sh"
 rsync -az deploy/liveimproved-worker.service deploy/liveimproved-brain.service deploy/ollama-gate.service deploy/*.timer deploy/liveimproved-backup.service "$HOST:/tmp/"
 

@@ -66,7 +66,7 @@ async function main() {
       const m = p.store.manifest();
       const value = { at: new Date().toISOString(), bytes: m.total, files: m.files, cap: caps.hard, queue: p.brain.state.queue?.length ?? 0, lastNight: p.brain.state.night?.day ?? null };
       nights.push(value.lastNight);
-      const key = stateKey("brain", p.user.id);
+      const key = await stateKey("brain", p.user.id);
       await prisma.brainState.upsert({ where: { key }, update: { value: value as Prisma.InputJsonValue }, create: { key, value: value as Prisma.InputJsonValue } }).catch(() => undefined);
     }
     const overall = { at: new Date().toISOString(), people: people.size, lastNight: nights.sort()[0] ?? null };

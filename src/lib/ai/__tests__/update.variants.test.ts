@@ -147,3 +147,32 @@ describe("his meeting message (Oct 1)", () => {
     expect(withMonths("the 14th of october", now)).toBe("the 14th of october");
   });
 });
+
+describe("fresh messages (Oct 1 probe)", () => {
+  const fair = "my science fair project is due nov 3, it needs a poster, data tables and a write-up. add one thing you think i'm missing too";
+  it("'X is due nov 3' is one to-do with that date; the suggestion request isn't a to-do or journal", () => {
+    const x = extractUpdate(fair, now);
+    expect(x.todos).toEqual([{ title: "Science fair project", due: new Date(2026, 10, 3, 9), deadline: true }]);
+    expect(x.reflection).toEqual([]);
+  });
+  it("'it needs …' items go in the description, plus the one suggestion he asked for", async () => {
+    const { parseNotesRequest } = await import("../update");
+    expect(parseNotesRequest(fair)).toEqual({ items: ["Poster", "Data tables", "Write-up"], extra: 1 });
+    expect(parseNotesRequest("my car needs an oil change")).toBeNull();
+  });
+  it("study steps for a test stay to-dos here (the assistant folds them into the test's description)", () => {
+    expect(summary("i have a history test on the 20th, I need to study chapters 4-6 and make flashcards")).toEqual(["event History test tue 10/20 + Study for history test", "todo Study chapters 4-6", "todo Make flashcards"]);
+  });
+  it("'add milk and some other things to my list' is still a to-do", () => {
+    expect(extractUpdate("add milk to my list", now).todos.map((t) => t.title)).toEqual(["Milk"]);
+  });
+});
+
+describe("'I got a job interview at target on the 9th'", () => {
+  const msg = "I got a job interview at target on the 9th, need to prepare for it. in the description include printing my resume and 1 more thing you think is good";
+  it("is an event with where it is, plus the prep to-do; the description request isn't journal", () => {
+    const x = extractUpdate(msg, now);
+    expect(summary(msg)).toEqual(["event Job interview at Target fri 10/9", "todo Prepare for it"]);
+    expect(x.reflection).toEqual([]);
+  });
+});

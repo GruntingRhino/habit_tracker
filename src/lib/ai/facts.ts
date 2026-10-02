@@ -8,7 +8,7 @@ import { computeTargets, readBody } from "@/lib/body";
 
 export const NUTRITION_Q = /\b(how (much|many)|what'?s|whats|what is|total)\b.{0,25}\b(protein|calories|cals|kcal|carbs|fat|fiber|macros)\b|\b(protein|calories|cals|macros)\b.{0,20}\b(so far|today)\b.*\?/i;
 export const SCORE_Q = /\b(score|scored|grade|graded|rating)\b/i;
-export const PLATE_Q = /\b(on my plate|what do i (have|need) to do|what'?s (left|due|on)( for)? today|what should i do today|what'?s on (my|the) (list|to-?do list|todo)|my to-?dos?\b.*\?|what'?s on my to-?do)/i;
+export const PLATE_Q = /\b(on my plate|what (else )?do i (still )?(have|need|got) (left )?to do|what'?s (still )?left to do|what('?s| is) (still )?(open|pending) on my|what'?s (left|due|on)( for)? today|what should i do today|what'?s on (my|the) (list|to-?do list|todo)|my to-?dos?\b.*\?|what'?s on my to-?do)/i;
 
 const r0 = (n: number) => Math.round(n);
 

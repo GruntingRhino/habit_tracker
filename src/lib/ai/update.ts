@@ -25,7 +25,8 @@ export interface Extracted {
   sleep: { hours: number; minutes: number; bedtime: string | null } | null;
   assessments: { title: string; start: Date; prepTitle: string }[];
   events: UpdateEvent[];
-  todos: { title: string; due: Date | null }[];
+  /** deadline: "X is due friday" (reminded the evening before). */
+  todos: { title: string; due: Date | null; deadline?: boolean }[];
   meetings: { title: string; who: string | null }[];
   workouts: string[];
   meals: { name: string; category: string | null; text: string }[];
@@ -214,9 +215,11 @@ export function parseEvents(clause: string, now: Date): UpdateEvent[] {
   const thing = lc.match(/\b([a-z]+ (?:game|match|tournament|scrimmage|recital|concert|party|competition)|(?:track|swim) meet)\b/);
   if (thing && !/^(the|a|my|our|this|next|that|big) /.test(thing[1]) && !/\b(had|went|was|were|won|lost|played)\b/.test(lc)) return one(thing[1]);
   // "doctor appointment next monday at 10am", "haircut saturday at 2"
-  const noun = lc.match(/^(?:(?:so|also|oh|and|btw|i have|i've got|got)\s+)*(?:(?:a|an|my|the)\s+)?((?:[a-z]+\s+)?(?:appointment|appt|checkup|check-up|physical|haircut|interview|lesson|tutoring|orientation|recital|rehearsal|tryouts?|conference|dentist|doctor|orthodontist))\b/);
+  const noun = lc.match(/^(?:(?:so|also|oh|and|btw|yo|i have|i've got|ive got|i got|i just got|we have|got)\s+)*(?:(?:a|an|my|the)\s+)?((?:[a-z]+\s+)?(?:appointment|appt|checkup|check-up|physical|haircut|interview|lesson|tutoring|orientation|recital|rehearsal|tryouts?|conference|dentist|doctor|orthodontist))\b(?:\s+(at|with)\s+((?:the\s+)?[a-z][a-z'&]+(?:\s+(?!on\b|at\b|this\b|next\b|tomorrow\b|today\b|tonight\b)[a-z][a-z'&]+)?))?/);
   if (noun && !/\b(had|went|was|cancel|move|reschedule|remind)\b/.test(lc)) {
-    const e = eventFrom(noun[1].replace(/\bappt\b/, "appointment"), c, now);
+    // "job interview at target on the 9th" → "Job interview at Target"
+    const where = noun[3] && !/^(the\s+)?(\d|noon|night|morning|lunch)/.test(noun[3]) ? ` ${noun[2]} ${noun[3].replace(/\b[a-z]/g, (ch) => ch.toUpperCase()).replace(/^The /, "the ")}` : "";
+    const e = eventFrom(noun[1].replace(/\bappt\b/, "appointment") + where, c, now);
     if (e) return [e];
   }
   // "i have to be at the airport sunday at 6am"
@@ -258,11 +261,21 @@ const TODO_CUE = /\b(?:i\s+)?(?:have to|need to|gotta|got to|must|should really|
 export function parseTodos(clause: string, now: Date): Extracted["todos"] {
   const c = normalize(clause).trim();
   // "add X to my todo list" (typos welcome: "yo todo list"), "put X on my list"
+  if (suggestOnly(c)) return [];
   const add = c.match(/\b(?:add|put)\s+(.+?)\s+(?:to|yo|too|2|on|onto|in|into)\s+(?:(?:my|the|ur|your)\s+)?(?:to-?do\s*)?(?:list|todos?)\b/i) ?? (/\b(?:to|on|in)\s+(?:my|the)\s+calendar\b/i.test(c) ? null : c.match(/^(?:add|put)\s+(.+)$/i));
   if (add) {
     const when = chrono.parse(add[1], now, { forwardDate: true })[0];
     const phrase = (when ? add[1].replace(when.text, " ") : add[1]).replace(/\s+/g, " ").trim();
     return splitItems(cleanTitle(phrase)).map((title) => ({ title, due: when?.date() ?? null }));
+  }
+  // "my science fair project is due nov 3", "the essay's due friday": a to-do with that due date.
+  const deadline = c.match(/^(?:(?:so|and|oh|also|btw)\s+)*(?:(?:my|the|our|a|an)\s+)?([a-z0-9][a-z0-9 '-]{2,60}?)\s+(?:is|are|'s|s)\s+due\s+(.+?)$/i);
+  if (deadline && !/^(it|that|this|which|everything|something|nothing)$/i.test(deadline[1].trim())) {
+    const w = when(withMonths(deadline[2], now), now);
+    if (w) {
+      if (!w.hasTime) w.date.setHours(9, 0, 0, 0);
+      return [{ title: cap(deadline[1].trim()), due: w.date, deadline: true }];
+    }
   }
   // "i owe my mom 20 bucks", "i owe mike $15"
   const owe = c.match(/\bi owe\s+((?:my |the )?[a-z]+?)\s+\$?(\d+(?:\.\d{2})?)(?:\s*(?:bucks|dollars))?\b/i);
@@ -291,7 +304,7 @@ export function parseTodos(clause: string, now: Date): Extracted["todos"] {
   const need = c.match(TODO_CUE);
   if (need && !/\b(quiz|test|exam|midterm|final)\b/i.test(need[1])) {
     // Two jobs in one breath: "turn in the permission slip and pick up my brother at 4".
-    const parts = need[1].split(/\s+and\s+(?=(?:pick|get|call|email|text|buy|finish|turn|submit|clean|return|pay|send|make|take|bring|drop|write|practice|study|go to|grab|print|sign|book|schedule|order|fix|wash|do)\b)/i);
+    const parts = need[1].split(/\s+and\s+(?=(?:pick|get|call|email|text|buy|finish|turn|submit|clean|return|pay|send|make|take|bring|drop|write|practice|study|go to|grab|print|sign|book|schedule|order|fix|wash|do|review|redo|read|reread|memorize|outline|watch|go over)\b)/i);
     if (parts.length > 1) {
       const dayOnly = /\b(tomorrow|tonight|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week)\b/i.exec(c)?.[1];
       return parts.flatMap((part) => parseTodos(`need to ${dayOnly && !new RegExp(`\\b${dayOnly}\\b`, "i").test(part) ? `${part} ${dayOnly}` : part}`, now));
@@ -367,6 +380,7 @@ export function extractUpdate(text: string, now = new Date()): Extracted {
       if (meal) out.meals.push(meal);
       if (m.length || e.length || t.length || w || meal) used = true;
     }
+    if (!used && (suggestOnly(c) || /^(?:and\s+|also\s+)?(?:in|to|for|on)\s+(?:the|its|it'?s|that|this)\s+(?:description|notes|details|desc)\b/i.test(c))) used = true; // "add one thing you think i'm missing": handled with the to-do's description
     if (!used) out.reflection.push(c);
   }
   // "worked out today, did chest and tris": one workout, the specific one.
@@ -391,28 +405,39 @@ export const INTENT = /\b(will|gonna|going to|need|have to|gotta|should|want to|
 
 const GERUND: Record<string, string> = { doing: "Do", finishing: "Finish", making: "Make", reviewing: "Review", practicing: "Practice", practising: "Practice", writing: "Write", preparing: "Prepare", reading: "Read", studying: "Study", getting: "Get", creating: "Create", emailing: "Email", calling: "Call", printing: "Print", checking: "Check", updating: "Update", building: "Build", testing: "Test", planning: "Plan", rehearsing: "Rehearse", researching: "Research", drafting: "Draft", sending: "Send", bringing: "Bring" };
 
+/** "1 more thing you think is good", "add one thing you think i'm missing": he asks for suggestions. */
+export const SUGGEST = /\b(\d+|one|two|three|a couple(?: of)?|a few|some)\s+(?:more\s+|other\s+|extra\s+)?(?:things?|ideas?|steps?|items?)\b(?:\s+(?:that\s+)?(?:you think|you'?d (?:add|suggest|recommend)|you suggest|i'?m missing|i might be missing|i (?:might have |may have )?forgot(?:ten)?))|\b(\d+|one|two|three|a couple(?: of)?|a few|some)\s+(?:more|other|extra)\s+(?:things?|ideas?|steps?|items?)\b/i;
+/** The whole clause is the request: "add one thing you think i'm missing too". */
+const suggestOnly = (c: string) => new RegExp(`^(?:(?:also|and|plus|please|pls|can you|could you|then)\\s+)*(?:add|include|give me|suggest|throw in|put in)?\\s*(?:${SUGGEST.source})`, "i").test(c.trim());
+const NOT_ITEM = new Set(["it", "that", "this", "them", "stuff", "things", "everything", "more", "too", "also"]);
+
+function countOf(n: string) {
+  n = n.toLowerCase();
+  return /^\d+$/.test(n) ? Math.min(5, Number(n)) : n === "one" ? 1 : n === "two" || n.startsWith("a couple") ? 2 : 3;
+}
+
 /**
- * What he wants in a to-do's description: his own items, plus how many the assistant should add
- * ("1 more thing that you think is good"). Only when he asks.
+ * What goes in a to-do's description: his own items ("in the description include …", "it needs a
+ * poster, data tables and a write-up"), plus how many the assistant should add ("1 more thing that
+ * you think is good"). Only when he asks.
  */
 export function parseNotesRequest(text: string): { items: string[]; extra: number } | null {
-  const m = text.match(/\b(?:in|to|for|on)\s+(?:the|its|it'?s|that|this)\s+(?:description|notes|details|desc)\s*(?:,|:)?\s*(?:include|including|add|put|list|with|have|should (?:have|include|say)|write)?\s*:?\s*(.+?)\s*[.!]*$/i);
-  if (!m) return null;
-  let body = m[1];
-  let extra = 0;
-  const more = body.match(/\s*(?:,|\band\b)?\s*(?:also\s+)?(\d+|one|two|three|a couple(?: of)?|a few|some)\s+(?:more|other|extra)\s+(?:things?|ideas?|steps?|items?)\b[^,]*$/i);
-  if (more) {
-    const n = more[1].toLowerCase();
-    extra = /^\d+$/.test(n) ? Math.min(5, Number(n)) : n === "one" ? 1 : n === "two" || n.startsWith("a couple") ? 2 : 3;
-    body = body.slice(0, more.index);
-  }
+  const desc = text.match(/\b(?:in|to|for|on)\s+(?:the|its|it'?s|that|this)\s+(?:description|notes|details|desc)\s*(?:,|:)?\s*(?:include|including|add|put|list|with|have|should (?:have|include|say)|write)?\s*:?\s*(.+?)\s*[.!]*$/i);
+  const needs = desc ? null : text.match(/\b(?:it|that|this|which|they)\s+(?:needs|need|requires|require|has to have|have to have|should have|must have|includes|include|will need|is gonna need)\s+(.+?)(?:[.!?](?:\s|$)|$)/i);
+  const sugg = text.match(SUGGEST);
+  const extra = sugg ? countOf(sugg[1] ?? sugg[2]) : 0;
+  let body = (desc ?? needs)?.[1] ?? "";
+  // The suggestion request inside the list ("…, and 1 more thing you think is good") isn't an item.
+  const inBody = body.match(new RegExp(`\\s*(?:,|\\band\\b)?\\s*(?:also\\s+)?(?:add\\s+)?(?:${SUGGEST.source})[^,]*$`, "i"));
+  if (inBody) body = body.slice(0, inBody.index);
   const items = body
     .split(/\s*,\s*(?:and\s+)?|\s+and\s+/i)
-    .map((x) => x.trim().replace(/^(?:a|an|the)\s+/i, ""))
-    .filter((x) => x.split(/\s+/).length >= 2 || /\.\w+$/.test(x))
+    .map((x) => x.trim().replace(/[.!]+$/, "").replace(/^(?:a|an|the|some)\s+/i, ""))
+    .filter((x) => x.split(/\s+/).length >= 2 || /\.\w+$/.test(x) || (/^[a-z][a-z-]{2,}$/i.test(x) && !NOT_ITEM.has(x.toLowerCase())))
     .map((x) => {
       const w = x.split(/\s+/)[0].toLowerCase();
       return GERUND[w] ? `${GERUND[w]}${x.slice(w.length)}` : cap(x);
     });
+  if (!desc && !needs && !extra) return null;
   return items.length || extra ? { items, extra } : null;
 }

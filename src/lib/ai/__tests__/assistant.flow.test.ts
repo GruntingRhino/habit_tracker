@@ -691,7 +691,9 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     expect(ev.allDay).toBe(true);
     const todo = await prisma.todo.findFirstOrThrow({ where: { userId } });
     expect(todo).toMatchObject({ title: "Study for chem test", priority: "high" });
-    expect(todo.dueAt!.getHours()).toBe(19); // evening before
+    // The evening before (or an hour before, when that evening has already passed).
+    const { prepDue } = await import("@/lib/calendar");
+    expect(todo.dueAt!.getTime()).toBe(prepDue(ev.start).getTime());
 
     const t = await say("8am");
     expect(t.reply).toMatch(/Set: Chem test — .* 8am–9am\.\nShould I share it with anyone\?/);

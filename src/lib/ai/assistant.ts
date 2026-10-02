@@ -254,7 +254,9 @@ async function handleTurn(userId: string, text: string, source: Source, opts: Ha
     // "cancel the soccer game", "delete the cleats one", "cancel the grandma reminder", "delete the big mac meal"
     const del = !awaiting ? DELETE_ITEM.exec(trimmed) : null;
     if (del) {
-      const removed = await deleteByName(turn, del[1]);
+      // "cancel the history test reminder, it got pushed back": the name stops at the reason.
+      const name = del[1].split(/\s*[,;]\s*|\s+(?:because|since|cause|cuz|bc|it got|it'?s been|it was|they)\b/i)[0];
+      const removed = await deleteByName(turn, name, POSTPONED.test(trimmed));
       if (removed) return removed;
     }
     if (NEGATED_CAPTURE.test(trimmed)) return await cancelLast(turn, trimmed, undoneSince);
@@ -300,6 +302,11 @@ async function handleTurn(userId: string, text: string, source: Source, opts: Ha
       if (done.actions.length) return save(turn, describeActions(done.actions), { actions: done.actions });
       return save(turn, `I couldn't find "${mark[1] ?? mark[2]}" on your to-dos or habits. What's it called on your list?`);
     }
+    // "ugh i wasted the whole afternoon on youtube": noted, and pointed at the next thing to do.
+    if (!awaiting && SLIP.test(trimmed) && trimmed.length < 200 && !/\?\s*$/.test(trimmed)) {
+      const actions = await applyCapture(userId, [{ kind: "journal", title: "Journal", area: "mental" }], trimmed, source);
+      return save(turn, [await slipReply(userId), describeActions(actions)].filter(Boolean).join("\n\n"), { actions });
+    }
     // "i feel kinda unmotivated today": into the journal, and a real reply.
     if (!awaiting && FEELING.test(trimmed) && trimmed.length < 200 && !/\?\s*$/.test(trimmed)) {
       flags.conversational = true;
@@ -329,7 +336,7 @@ async function handleTurn(userId: string, text: string, source: Source, opts: Ha
       }
       // "chem test tmrw", "got maybe 6 hrs": code knows exactly what these are.
       // "i owe my mom 20 bucks": code already knows the to-do, no model needed.
-      if (n >= 1 && (extracted.assessments.length || extracted.sleep || extracted.todos.some((t) => t.title.startsWith("Pay back ")))) return await handleUpdate(turn, trimmed, extracted);
+      if (n >= 1 && (extracted.assessments.length || extracted.sleep || extracted.todos.some((t) => t.title.startsWith("Pay back ") || t.deadline))) return await handleUpdate(turn, trimmed, extracted);
     }
     // "I have a dentist appointment Friday at 3" → calendar event + prep to-do, then ask what's missing.
     const event = !awaiting ? parseEventStatement(trimmed) : null;
@@ -462,10 +469,12 @@ async function handleTurn(userId: string, text: string, source: Source, opts: Ha
     }
     // "Finished the literature review": tick off the matching open item before asking the model anything.
     if (COMPLETION_START.test(trimmed) && !/\?\s*$/.test(trimmed)) {
-      const object = trimmed.replace(COMPLETION_START, "").replace(/^\s*(the|my|a|an)\s+/i, "").replace(/[.!]+$/, "").trim();
+      const object = trimmed.replace(COMPLETION_START, "").replace(/^\s*(the|my|a|an)\s+/i, "").replace(/[.!]+$/, "").replace(TRAILING_WHEN, "").trim();
       if (object) {
         const done = await applyComplete(userId, [{ kind: "todo", title: object, area: "general" }]);
         if (done.actions.length) return save(turn, describeActions(done.actions), { actions: done.actions });
+        // One short thing that isn't on his list: say so plainly (no model, nothing made up).
+        if (!/[,;]|\band\b/i.test(object) && object.split(/\s+/).length <= 6 && !hasChatPart(trimmed)) return save(turn, await notOnList(userId, [object]));
       }
     }
     // A long reflection with nothing to act on (like a reply to the evening check-in): the journal.
@@ -534,8 +543,7 @@ async function routeAndReply(turn: Turn, trimmed: string, midChat: boolean, flag
         const { actions, missed } = await applyComplete(userId, routed.items);
         if (!actions.length) {
           // Nothing tracked matched ("I finished everything on my list!"): celebrate, don't just say "couldn't find".
-          flags.conversational = true;
-          return await chatReply(turn, trimmed, `He says he finished "${missed.join(", ")}", which doesn't match anything he's tracking, so nothing was marked done. Congratulate him briefly; if it sounds like a specific item, mention you couldn't find it on his lists.`);
+          return save(turn, await notOnList(userId, missed));
         }
         const lines = [describeActions(actions)];
         if (missed.length) lines.push(`Couldn't find: ${missed.join(", ")}`);
@@ -1422,7 +1430,22 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted, knownHabits?
   // What he asked for in this message comes first, so "those two" later means these.
   const assessmentItems = [...touched];
   touched.length = 0;
-  for (const t of x.todos) await addTodo(t.title, t.due);
+  // "history test on the 20th, I need to study chapters 4-6 and make flashcards": those are the steps
+  // of its study to-do, so they go in its description instead of the list as separate to-dos.
+  const studyTodo = x.assessments.length === 1 ? actions.find((a) => a.type === "todo" && a.op === "create") : undefined;
+  const folded = studyTodo ? x.todos.filter((t) => !t.due && STUDY_STEP.test(t.title)).map((t) => t.title) : [];
+  if (folded.length) x = { ...x, todos: x.todos.filter((t) => !folded.includes(t.title)) };
+  for (const t of x.todos) {
+    const todo = await addTodo(t.title, t.due, t.deadline ? "high" : "medium");
+    // "the science fair project is due nov 3": reminded the evening before.
+    if (todo && t.deadline && t.due) {
+      const fireAt = prepDue(t.due);
+      if (fireAt > new Date()) {
+        const r = await prisma.reminder.create({ data: { userId, text: todo.title, fireAt, todoId: todo.id } });
+        actions.push({ op: "create", type: "reminder", id: r.id, title: todo.title, area: todo.area, href: "/work", detail: fmtWhenShort(fireAt) });
+      }
+    }
+  }
   touched.push(...assessmentItems);
   let ask: Awaiting | null = null;
   let question: string | null = null;
@@ -1485,15 +1508,18 @@ async function handleUpdate(turn: Turn, text: string, x: Extracted, knownHabits?
     }
   }
   // "in the description include a mock presentation, the OPEN_ITEMS.md checklist and 1 more thing you think is good"
+  // "it needs a poster, data tables and a write-up": also description items.
   const notesReq = parseNotesRequest(text);
-  const target = prepAction ?? [...actions].reverse().find((a) => a.type === "todo" && a.op === "create");
+  const target = prepAction ?? studyTodo ?? [...actions].reverse().find((a) => a.type === "todo" && a.op === "create");
+  const own = [...folded, ...(notesReq?.items ?? [])];
+  const want = notesReq?.extra ?? 0;
   let notesLine: string | null = null;
-  if (notesReq && target) {
-    const extra = notesReq.extra ? await suggestSteps(target.title, text, notesReq.items, notesReq.extra) : [];
-    const items = [...notesReq.items, ...extra];
+  if ((own.length || want) && target) {
+    const extra = want ? await suggestSteps(target.title, text, own, want) : [];
+    const items = [...own, ...extra];
     if (items.length) {
       await prisma.todo.updateMany({ where: { id: target.id, userId }, data: { notes: items.map((i) => `- ${i}`).join("\n") } });
-      notesLine = `📝 Description: ${items.map((i, n) => `${i}${n >= notesReq.items.length ? " (suggested)" : ""}`).join(" · ")}${notesReq.extra > extra.length ? " — couldn't come up with the extra one, add it anytime" : ""}`;
+      notesLine = `📝 Description: ${items.map((i, n) => `${i}${n >= own.length ? " (suggested)" : ""}`).join(" · ")}${want > extra.length ? " — couldn't come up with the extra one, add it anytime" : ""}`;
     }
   }
   // Habits he says he did (or didn't): ticked, or noted ("60 oz of 100"). A logged workout already ticks Workout.
@@ -1642,8 +1668,10 @@ async function correctLast(turn: Turn, recentActions: ItemAction[], text: string
 const FEEL_NOTE = `He's telling you how he feels. Reply in 1-2 short sentences: acknowledge it plainly (never "good to know"), then suggest ONE small concrete next step from his day (one easy habit, or 10 minutes on a to-do). No lists, no lecture, no questions.`;
 
 const STEPS_SYSTEM = `You brainstorm preparation steps for one task. Reply with minified JSON only: {"items":["..."]}.
-Give 5 different steps, each 3-10 words, starting with a verb, specific to the task. Cover different angles: what to bring, questions to ask, research, practice, follow-up.`;
+Give 5 different steps, each 3-10 words, starting with a verb, specific to the task. Cover different angles: a piece of the work that's often forgotten, practicing or rehearsing it, what to print or bring, questions to ask, checking it against the requirements.
+Name concrete things ("Write a one-paragraph abstract", "Print a backup copy of the slides"), never vague ones ("Plan next steps", "Ensure accuracy").`;
 
+const VAGUE_STEP = /^(?:plan|verify|ensure|make sure|confirm|consider|think about|stay|keep|be|try to|focus on|work on|continue)\b|\b(?:next steps|follow-up steps|accuracy|progress|everything|as needed|if needed)\b/i;
 const GENERIC = new Set(["prepare", "meeting", "review", "research", "practice", "follow", "make", "about", "their", "things", "address", "remaining"]);
 // "OPEN_ITEMS.md checklist" → open, item, checklist (file names split into their words too).
 const keyWords = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 4 && !GENERIC.has(w) && !["with", "from", "your", "that", "this", "them", "into"].includes(w)).map((w) => w.replace(/(s|ing|ed)$/, ""));
@@ -1669,11 +1697,12 @@ export async function suggestSteps(title: string, said: string, have: string[], 
       });
       for (const raw of parseJson<{ items?: unknown[] }>(r.content)?.items ?? []) {
         if (typeof raw !== "string") continue;
-        const item = raw.trim().replace(/^[-•*\d.)\s]+/, "").replace(/[.!]+$/, "");
+        const item = raw.trim().replace(/^[-•*\d.)\s]+/, "").replace(/[.!]+$/, "").replace(/\s+(?:by|before|on)\s+(?:the\s+)?(?:\w+\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}\/\d{1,2}|(?:mon|tues|wednes|thurs|fri|satur|sun)day)$/i, "");
         if (item.length < 8 || item.length > 80 || !/^[A-Za-z]/.test(item) || item.split(/\s+/).length < 3) continue;
         const words = keyWords(item);
         if (!words.length || words.some((w) => taken.has(w))) continue; // repeats something he listed (or already picked)
         if (/^follow/i.test(item) && picked.length + 1 < n) continue; // prep comes before follow-up
+        if (VAGUE_STEP.test(item)) continue; // "Plan follow-up steps to verify accuracy" says nothing
         picked.push(item.charAt(0).toUpperCase() + item.slice(1));
         words.forEach((w) => taken.add(w));
         if (picked.length >= n) break;
@@ -1692,9 +1721,9 @@ async function googleHint(userId: string) {
 }
 
 /** Delete an open to-do or pending reminder by name. Undo recreates it. */
-async function deleteByName(turn: Turn, name: string): Promise<AssistantReply | null> {
+async function deleteByName(turn: Turn, name: string, postponed = false): Promise<AssistantReply | null> {
   const { userId } = turn;
-  const target = name.replace(/^(the|my)\s+/i, "").trim();
+  const target = name.replace(/^(the|my)\s+/i, "").replace(/\s+(reminder|meal|one|item|todo|to-do|task|event|thing)$/i, "").trim();
   if (!target || /^(it|that|this|them|those|everything|all|that one|this one)$/i.test(target)) return null;
   const say = (a: ItemAction) => save(turn, describeActions([a]), { actions: [a] });
   const wantsKind = /\breminder\b/i.test(name) ? "reminder" : /\bmeal\b/i.test(name) ? "meal" : null;
@@ -1719,6 +1748,11 @@ async function deleteByName(turn: Turn, name: string): Promise<AssistantReply | 
     const rem = reminders.find((r) => nameMatches(target, r.text));
     if (rem) {
       await prisma.reminder.delete({ where: { id: rem.id } });
+      // "it got pushed back": the reminder's gone; the new date moves the test too.
+      if (postponed) {
+        const a: ItemAction = { op: "delete", type: "reminder", id: rem.id, title: rem.text, area: "general", href: "/work", prev: JSON.stringify(rem) };
+        return save(turn, `${describeActions([a])}\n\nWhen is it now? Tell me the new date and I'll move it and remind you before.`, { actions: [a] });
+      }
       return say({ op: "delete", type: "reminder", id: rem.id, title: rem.text, area: "general", href: "/work", prev: JSON.stringify(rem) });
     }
   }
@@ -1739,4 +1773,30 @@ const taskWords = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, 
 export function sameTask(a: string, b: string) {
   const [x, y] = [taskWords(a), taskWords(b)].sort((p, q) => p.size - q.size);
   return x.size > 0 && [...x].every((w) => y.has(w));
+}
+
+const TRAILING_WHEN = /\s+(?:finally|today|tonight|just now|at last|already|now|lol|yay)$/i;
+const POSTPONED = /\b(pushed back|postponed|moved|rescheduled|delayed|got canceled|got cancelled)\b/i;
+/** The steps of studying for a test (vs. an unrelated to-do in the same message). */
+const STUDY_STEP = /^(?:study|review|go over|read|reread|re-read|practice|memorize|make (?:flash ?cards|a study guide|notes|a cheat sheet)|do (?:the )?practice|redo|rewrite|finish (?:the )?(?:study guide|review)|outline|watch (?:the )?(?:lecture|videos?))\b/i;
+const SLIP = /\b(?:wasted|blew|lost)\s+(?:the\s+|my\s+|a\s+|an\s+)?(?:whole\s+|entire\s+|like\s+)?(?:\w+\s+)?(?:day|morning|afternoon|evening|night|hours?|time)\b|\bprocrastinat\w*|\bdoom ?scroll\w*|\b(?:didn'?t|did not) (?:do|get) (?:anything|shit|crap|much|any work)(?: done)?\b|\bgot nothing done\b|\b(?:was|been|being) (?:so |super |really )?lazy\b/i;
+
+/** "Finished X" where X isn't tracked: congratulate, and say plainly that nothing was ticked off. */
+async function notOnList(userId: string, missed: string[]) {
+  const what = missed.map((m) => m.replace(TRAILING_WHEN, "").replace(/^(the|my|a|an)\s+/i, "").trim()).filter(Boolean);
+  if (!what.length || what.some((w) => /\b(everything|all of it|it all|my list|all my|all the)\b/i.test(w))) return `🎉 Nice!\n\n${await plateAnswer(userId, new Date(), true)}`;
+  const yours = what.map((w) => w.replace(/\bmy\b/gi, "your").replace(/\bmyself\b/gi, "yourself"));
+  return `🎉 Nice — done: ${yours.join(", ")}. It wasn't on your list, so there was nothing to tick off.`;
+}
+
+/** A slip ("wasted the afternoon on youtube"): no lecture, no question back — the next thing on his list. */
+async function slipReply(userId: string, now = new Date()) {
+  const late = now.getHours() >= 21 || now.getHours() < 5;
+  const next = await prisma.todo.findFirst({ where: { userId, status: "open" }, orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }], select: { title: true, dueAt: true } });
+  const due = next?.dueAt ? ` (due ${fmtWhenShort(next.dueAt)})` : "";
+  if (!next) return `It happens. Nothing's open on your list, so pick one thing you want done ${late ? "tomorrow" : "tonight"} and tell me — I'll remind you.`;
+  const endOfDay = new Date(getStartOfDay(now).getTime() + 86_400_000);
+  if (next.dueAt && next.dueAt < endOfDay) return `It happens — but ${next.title} is still due ${fmtWhenShort(next.dueAt)}. Phone away and get it done now.`;
+  if (late) return `It happens — just don't let it carry into tomorrow. First thing tomorrow: ${next.title}${due}.`;
+  return `It happens, and the day's not over. Next up: ${next.title}${due}. Phone away, 10 minutes on it right now.`;
 }

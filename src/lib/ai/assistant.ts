@@ -5,7 +5,7 @@ import { getStartOfDay } from "@/lib/utils";
 import { actionableCount, extractUpdate, isUpdate, parseNotesRequest, parseWorkout, parseTodos, type Extracted } from "@/lib/ai/update";
 import { needsPrep } from "@/lib/prep";
 import { secondLook } from "@/lib/ai/leftovers";
-import { afterBlock, CALENDAR_Q, calendarAnswer, MOVE_EVENT, moveEvent, nameMatches, newTime, rangeOf, WHEN_Q, whenAnswer } from "@/lib/ai/calendarchat";
+import { afterBlock, CALENDAR_Q, calendarAnswer, DAY_Q, DAY_WORD, MOVE_EVENT, moveEvent, nameMatches, newTime, rangeOf, WHEN_Q, whenAnswer } from "@/lib/ai/calendarchat";
 import { isWorkoutHabit, parseHabitReports, type HabitReport } from "@/lib/ai/habitcheck";
 import { MEALS_Q, mealsAnswer, TARGET_Q, targetsAnswer, REMINDERS_Q, remindersAnswer, WEEK_Q, weekAnswer, DID_I_Q, habitStatusAnswer, NUTRITION_Q, nutritionAnswer, PLATE_Q, plateAnswer, SCORE_Q, scoreAnswer } from "@/lib/ai/facts";
 import * as chrono from "chrono-node";
@@ -79,6 +79,8 @@ export interface ReplyMeta {
 
 const SWITCH_BLOCK = /\b(switch|move|start|go|change)\s+(?:to\s+)?upper\s+([abc])\b/i;
 const WHAT_TO_LIFT = /\b(what|which)\b.*\b(lift|train|workout|work out|hit)\b.*\b(today|tonight|now)\b|\btoday'?s (workout|lifts?)\b|\bwhat do i (lift|do at the gym)\b/i;
+const FOLLOW_DAY = /^\s*(?:(?:and|ok|okay|so|hm+|oh)[,\s]+)*(?:what|how)\s+about\s+(.+?)\s*\??\s*$/i;
+const EVENT_CLAIM = /\b(?:i|we)\s+(?:already\s+|literally\s+|just\s+)?(?:put|added|made|created|entered|saved|scheduled|set up)\s+(?:down\s+|in\s+|up\s+)?(?:an?\s+|the\s+|my\s+|that\s+)?(?:event|it|something|concert|appointment)\b|\bit'?s\s+(?:on|in)\s+(?:my|the)\s+calendar\b|\bthere'?s\s+(?:an?|my)\s+event\b|\bthere should be an? event\b/i;
 const MY_SCHEDULE = /\b(my|today'?s|the) (schedule|timeline)\b|\bwhat'?s (my|the) (day|schedule)\b|\bplan (out )?my day\b|\btime ?block\b/i;
 
 export interface AssistantReply {
@@ -287,7 +289,18 @@ async function handleTurn(userId: string, text: string, source: Source, opts: Ha
     }
     // "what's on my calendar this week?", "what do i have friday?", "what's on my plate tomorrow?"
     const range = asking ? rangeOf(trimmed) : null;
-    if (asking && (CALENDAR_Q.test(trimmed) || (PLATE_Q.test(trimmed) && range && range.label !== "today"))) return save(turn, await calendarAnswer(userId, trimmed));
+    if (asking && (CALENDAR_Q.test(trimmed) || DAY_Q(trimmed) || (PLATE_Q.test(trimmed) && range && range.label !== "today"))) return save(turn, await calendarAnswer(userId, trimmed));
+    // "what about tomorrow?" right after a calendar or schedule question: the same question, for that day.
+    const about = FOLLOW_DAY.exec(trimmed);
+    if (about && (DAY_WORD.test(about[1]) || /\b(today|tonight)\b/i.test(about[1]))) {
+      const prev = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, role: "user", id: { not: userMsg.id } }, orderBy: { createdAt: "desc" }, select: { content: true } });
+      if (prev && (CALENDAR_Q.test(prev.content) || DAY_Q(prev.content) || MY_SCHEDULE.test(prev.content) || PLATE_Q.test(prev.content) || /\b(events?|calendar|plans)\b/i.test(prev.content))) {
+        const schedule = /\b(schedule|busy|free|my day)\b/i.test(prev.content) || MY_SCHEDULE.test(prev.content) ? " schedule" : "";
+        return save(turn, await calendarAnswer(userId, `${about[1]}${schedule}`));
+      }
+    }
+    // "no i put down an event", "i added it to my calendar": show what's actually there instead of arguing.
+    if (!awaiting && EVENT_CLAIM.test(trimmed) && !DAY_WORD.test(trimmed) && !/\b(today|tonight|at \d|\d\s*(?:am|pm))\b/i.test(trimmed)) return save(turn, await claimedEventAnswer(userId));
     if (asking && SCORE_Q.test(trimmed) && /\b(my|i)\b/i.test(trimmed)) return save(turn, await scoreAnswer(userId, trimmed));
     if (/\b(did i (do|finish|get|complete) (everything|it all|all my)|am i done)\b/i.test(trimmed)) return save(turn, await plateAnswer(userId, new Date(), true));
     if ((asking && PLATE_Q.test(trimmed)) || /\b(anything left|what'?s left|what do i have left)\b/i.test(trimmed)) return save(turn, await plateAnswer(userId));
@@ -1799,4 +1812,13 @@ async function slipReply(userId: string, now = new Date()) {
   if (next.dueAt && next.dueAt < endOfDay) return `It happens — but ${next.title} is still due ${fmtWhenShort(next.dueAt)}. Phone away and get it done now.`;
   if (late) return `It happens — just don't let it carry into tomorrow. First thing tomorrow: ${next.title}${due}.`;
   return `It happens, and the day's not over. Next up: ${next.title}${due}. Phone away, 10 minutes on it right now.`;
+}
+
+/** He says there's an event the reply missed: list what's really coming up (or ask to add it). */
+async function claimedEventAnswer(userId: string, now = new Date()) {
+  const events = await prisma.calendarEvent.findMany({ where: { userId, status: "confirmed", end: { gte: now } }, orderBy: { start: "asc" }, take: 6 });
+  if (!events.length) return `I don't see any upcoming events on your calendar. What's it called and when? I'll add it.`;
+  const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const time = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase();
+  return ["Sorry about that — here's what's on your calendar:", ...events.map((e) => `📅 ${e.title} — ${day(e.start)}${e.allDay ? " (all day)" : ` ${time(e.start)}–${time(e.end)}`}`)].join("\n");
 }

@@ -48,18 +48,33 @@ export function rangeOf(text: string, now = new Date()): { from: Date; to: Date;
 export const CALENDAR_Q =
   /\b(what'?s|what is|whats|anything|what do i have|what have i got|do i have anything|show me)\b.{0,25}\b(on my calendar|on the calendar|my calendar|my schedule for|planned|going on|happening|coming up)\b|^\s*(what|anything)\s+(do i have|have i got|is there|'?s on)\s+(on\s+)?(today|tonight|tomorrow|this week|next week|this weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|the \d+)|\bwhat'?s on my (plate|list) (tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
 
+/** A day named in a question ("tomorrow", "saturday", "on the 14th", "next week"), not today. */
+export const DAY_WORD = /\b(tomorrow|tmrw|tmr|this week|next week|this weekend|the weekend|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|on the \d{1,2}(?:st|nd|rd|th)?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2})\b/i;
+/** "what event do i have tomorrow?", "what is on the schedule tomorrow", "any plans saturday", "am i free friday?" */
+export const DAY_Q = (t: string) => DAY_WORD.test(t) && /\b(events?|plans|appointments?|meetings?|schedule|calendar|going on|happening|anything|busy|free|what do i have|what have i got)\b/i.test(t);
+/** Asked about the schedule (not just the calendar): his weekly blocks for that day count too. */
+const WANTS_BLOCKS = /\b(schedule|busy|free|my day)\b/i;
+const DOW = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const hhmm = (day: Date, t: string) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), Number(t.slice(0, 2)), Number(t.slice(3, 5)));
+
 export async function calendarAnswer(userId: string, text: string, now = new Date()) {
   const range = rangeOf(text, now) ?? rangeOf("this week", now)!;
-  const [events, todos] = await Promise.all([
+  const multi = range.to.getTime() - range.from.getTime() > DAY;
+  const [events, todos, blocks] = await Promise.all([
     prisma.calendarEvent.findMany({ where: { userId, status: "confirmed", start: { lt: range.to }, end: { gt: range.from } }, orderBy: { start: "asc" } }),
     prisma.todo.findMany({ where: { userId, status: "open", dueAt: { gte: range.from, lt: range.to } }, orderBy: { dueAt: "asc" } }),
+    !multi && WANTS_BLOCKS.test(text) ? prisma.scheduleBlock.findMany({ where: { userId, days: { has: DOW[range.from.getDay()] } } }) : Promise.resolve([]),
   ]);
-  const multi = range.to.getTime() - range.from.getTime() > DAY;
-  const lines: string[] = [];
-  for (const e of events) lines.push(`📅 ${e.title} — ${multi ? `${fmtDay(e.start)} ` : ""}${e.allDay ? "all day" : fmtTime(e.start)}`);
-  for (const t of todos) lines.push(`💼 ${t.title} — due ${multi ? `${fmtDay(t.dueAt!)} ` : ""}${fmtTime(t.dueAt!)}`);
-  if (!lines.length) return `Nothing on your calendar ${range.label === "today" || range.label === "tomorrow" ? range.label : `for ${range.label}`}.`;
-  return [`${range.label.charAt(0).toUpperCase() + range.label.slice(1)}:`, ...lines].join("\n");
+  const rows: { at: number; line: string }[] = [];
+  for (const e of events) rows.push({ at: e.allDay ? 0 : e.start.getTime(), line: `📅 ${e.title} — ${multi ? `${fmtDay(e.start)} ` : ""}${e.allDay ? "all day" : `${fmtTime(e.start)}–${fmtTime(e.end)}`}` });
+  for (const b of blocks) rows.push({ at: hhmm(range.from, b.start).getTime(), line: `🕒 ${b.title} — ${fmtTime(hhmm(range.from, b.start))}–${fmtTime(hhmm(range.from, b.end))}` });
+  for (const t of todos) rows.push({ at: t.dueAt!.getTime(), line: `💼 ${t.title} — due ${multi ? `${fmtDay(t.dueAt!)} ` : ""}${fmtTime(t.dueAt!)}` });
+  // Events and blocks by time; on a multi-day range events keep their own order and to-dos come after.
+  const lines = (multi ? rows : [...rows].sort((a, b) => a.at - b.at)).map((r) => r.line);
+  const when = range.label === "today" || range.label === "tomorrow" ? range.label : `for ${range.label}`;
+  if (!lines.length) return `Nothing on your calendar ${when}${blocks.length === 0 && WANTS_BLOCKS.test(text) && !multi ? " (and nothing on your weekly schedule)" : ""}.`;
+  const head = multi ? range.label : `${range.label === "today" || range.label === "tomorrow" ? `${range.label} (${fmtDay(range.from)})` : range.label}`;
+  return [`${head.charAt(0).toUpperCase() + head.slice(1)}:`, ...lines].join("\n");
 }
 
 export const WHEN_Q = /^\s*(?:so\s+|wait\s+|and\s+)?(?:when'?s|when is|when are|what time is|what day is)\s+(?:my|the|our)\s+(.+?)\s*\??\s*$/i;

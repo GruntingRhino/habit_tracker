@@ -215,7 +215,7 @@ export function parseEvents(clause: string, now: Date): UpdateEvent[] {
   const thing = lc.match(/\b([a-z]+ (?:game|match|tournament|scrimmage|recital|concert|party|competition)|(?:track|swim) meet)\b/);
   if (thing && !/^(the|a|my|our|this|next|that|big) /.test(thing[1]) && !/\b(had|went|was|were|won|lost|played)\b/.test(lc)) return one(thing[1]);
   // "doctor appointment next monday at 10am", "haircut saturday at 2"
-  const noun = lc.match(/^(?:(?:so|also|oh|and|btw|yo|i have|i've got|ive got|i got|i just got|we have|got)\s+)*(?:(?:a|an|my|the)\s+)?((?:[a-z]+\s+)?(?:appointment|appt|checkup|check-up|physical|haircut|interview|lesson|tutoring|orientation|recital|rehearsal|tryouts?|conference|dentist|doctor|orthodontist))\b(?:\s+(at|with)\s+((?:the\s+)?[a-z][a-z'&]+(?:\s+(?!on\b|at\b|this\b|next\b|tomorrow\b|today\b|tonight\b)[a-z][a-z'&]+)?))?/);
+  const noun = lc.match(/^(?:(?:so|also|oh|and|btw|yo|i have|i've got|ive got|i got|i just got|we have|got|i (?:just )?(?:set up|made|booked|scheduled))\s+)*(?:(?:a|an|my|the)\s+)?((?:[a-z]+\s+)?(?:appointment|appt|checkup|check-up|physical|haircut|interview|lesson|tutoring|orientation|recital|rehearsal|tryouts?|conference|dentist|doctor|orthodontist))\b(?:\s+(at|with)\s+((?:the\s+)?[a-z][a-z'&]+(?:\s+(?!on\b|at\b|this\b|next\b|tomorrow\b|today\b|tonight\b)[a-z][a-z'&]+)?))?/);
   if (noun && !/\b(had|went|was|cancel|move|reschedule|remind)\b/.test(lc)) {
     // "job interview at target on the 9th" → "Job interview at Target"
     const where = noun[3] && !/^(the\s+)?(\d|noon|night|morning|lunch)/.test(noun[3]) ? ` ${noun[2]} ${noun[3].replace(/\b[a-z]/g, (ch) => ch.toUpperCase()).replace(/^The /, "the ")}` : "";

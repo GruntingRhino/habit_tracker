@@ -858,6 +858,26 @@ describe.skipIf(!enabled)("assistant conversation flows (real DB, scripted model
     expect(calls).toEqual([]);
   });
 
+  it("calendar questions about another day are answered from the calendar, never the model (Oct 2 live failure)", async () => {
+    const tmr = new Date(new Date().setHours(0, 0, 0, 0) + 86_400_000);
+    const at = (h: number, m = 0) => new Date(tmr.getFullYear(), tmr.getMonth(), tmr.getDate(), h, m);
+    await prisma.calendarEvent.create({ data: { userId, title: "Soccer game", start: at(18), end: at(23, 45), allDay: false, source: "app", status: "confirmed" } });
+    const dow = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][tmr.getDay()];
+    await prisma.scheduleBlock.create({ data: { userId, title: "Practice", days: [dow], start: "16:00", end: "17:30", source: "web" } });
+    calls.length = 0;
+    const q1 = await say("What event do i have tomorrow?");
+    expect(q1.reply).toMatch(/^Tomorrow \(.+\):\n📅 Soccer game — 6pm–11:45pm$/);
+    // "the schedule tomorrow" is tomorrow's, with the weekly blocks, in time order
+    expect((await say("what is on the schedule tomorrow")).reply).toMatch(/🕒 Practice — 4pm–5:30pm\n📅 Soccer game — 6pm–11:45pm$/);
+    expect((await say("what about tomorrow")).reply).toContain("📅 Soccer game — 6pm–11:45pm");
+    const claim = await say("no i put down an event");
+    expect(claim.reply).toMatch(/^Sorry about that — here's what's on your calendar:\n📅 Soccer game — /);
+    expect(calls).toEqual([]); // no model guessing
+    // A new appointment with a day is an event, not a complaint
+    const made = await say("i booked a haircut saturday at 2");
+    expect(made.actions.map((a) => a.type)).toContain("event");
+  });
+
   it("chat replies never claim actions that didn't happen", async () => {
     const { stripClaims } = await import("@/lib/ai/assistant");
     expect(stripClaims("Great, you've got a meeting set up and added bio and math to your study list. Good luck on the quizzes!")).toBe("Good luck on the quizzes!");
